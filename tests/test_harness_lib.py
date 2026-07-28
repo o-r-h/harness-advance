@@ -66,5 +66,23 @@ class TestPunteroActual(unittest.TestCase):
         self.assertEqual(actual["fase_id"], "fase_1")
 
 
+class TestAutoexclusion(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_reconoce_el_repo_fuente_del_harness(self):
+        (self.root / "harness" / "hooks").mkdir(parents=True)
+        (self.root / "profiles").mkdir()
+        self.assertTrue(harness.is_harness_source(self.root))
+
+    def test_un_proyecto_normal_no_es_el_repo_fuente(self):
+        (self.root / "Scripts").mkdir()
+        self.assertFalse(harness.is_harness_source(self.root))
+
+
 if __name__ == "__main__":
     unittest.main()

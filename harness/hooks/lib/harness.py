@@ -77,3 +77,12 @@ def write_json(path: Path, data: dict) -> None:
     except BaseException:
         Path(temporal).unlink(missing_ok=True)
         raise
+
+
+def is_harness_source(project_root: Path) -> bool:
+    """True si esta carpeta es el repo fuente del harness y no un proyecto.
+
+    Evita que el harness se valide a sí mismo si alguien le pone un perfil.
+    """
+    raiz = Path(project_root)
+    return (raiz / "harness" / "hooks").is_dir() and (raiz / "profiles").is_dir()
