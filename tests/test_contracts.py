@@ -194,5 +194,40 @@ class TestChecksResult(unittest.TestCase):
         self.assertEqual(contracts.validate_checks_result(bueno), [])
 
 
+class TestGuardasPayloadNoDict(unittest.TestCase):
+    """El payload top-level puede ser cualquier cosa deserializable desde JSON
+    (None, string, lista, número): nunca debe provocar AttributeError."""
+
+    def test_validate_ticket_context_con_none(self):
+        errores = contracts.validate_ticket_context(None)
+        self.assertIsInstance(errores, list)
+        self.assertTrue(errores)
+
+    def test_validate_plan_con_string(self):
+        errores = contracts.validate_plan("not a dict")
+        self.assertIsInstance(errores, list)
+        self.assertTrue(errores)
+
+    def test_validate_checks_result_con_lista(self):
+        errores = contracts.validate_checks_result([1, 2, 3])
+        self.assertIsInstance(errores, list)
+        self.assertTrue(errores)
+
+    def test_validate_veredicto_con_entero(self):
+        errores = contracts.validate_veredicto(42)
+        self.assertIsInstance(errores, list)
+        self.assertTrue(errores)
+
+    def test_validate_fase_state_con_string(self):
+        errores = contracts.validate_fase_state("x")
+        self.assertIsInstance(errores, list)
+        self.assertTrue(errores)
+
+    def test_resolve_check_names_con_rules_none(self):
+        resueltos, desconocidos = contracts.resolve_check_names(["a"], None)
+        self.assertEqual(resueltos, [])
+        self.assertEqual(desconocidos, ["a"])
+
+
 if __name__ == "__main__":
     unittest.main()

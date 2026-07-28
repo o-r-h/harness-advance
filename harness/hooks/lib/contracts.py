@@ -38,6 +38,8 @@ def _lista(data: dict, campo: str, errores: list[str], prefijo: str = "",
 
 
 def validate_ticket_context(data: dict) -> list[str]:
+    if not isinstance(data, dict):
+        return ["ticket_context: requerido, objeto JSON"]
     errores: list[str] = []
     for campo in ("ticket_id", "nroticket", "desarrollador", "fecha", "perfil"):
         _texto(data, campo, errores)
@@ -49,6 +51,8 @@ def validate_ticket_context(data: dict) -> list[str]:
 
 def resolve_check_names(nombres: list[str], rules: dict) -> tuple[list[str], list[str]]:
     """Expande grupos a checks individuales. Devuelve (resueltos, desconocidos)."""
+    if not isinstance(rules, dict):
+        return [], list(nombres)
     grupos = rules.get("grupos") or {}
     individuales = {r["id"] for r in rules.get("prohibido", []) if isinstance(r, dict) and "id" in r}
     individuales.update(rules.get("checks_estructurales") or [])
@@ -70,6 +74,8 @@ def resolve_check_names(nombres: list[str], rules: dict) -> tuple[list[str], lis
 
 
 def validate_plan(data: dict, rules: dict | None = None) -> list[str]:
+    if not isinstance(data, dict):
+        return ["plan: requerido, objeto JSON"]
     errores: list[str] = []
     for campo in ("ticket_id", "perfil"):
         _texto(data, campo, errores)
@@ -126,6 +132,8 @@ def validate_plan(data: dict, rules: dict | None = None) -> list[str]:
 
 
 def validate_checks_result(data: dict) -> list[str]:
+    if not isinstance(data, dict):
+        return ["checks_result: requerido, objeto JSON"]
     errores: list[str] = []
     _texto(data, "fase_id", errores)
     if not isinstance(data.get("intento"), int) or isinstance(data.get("intento"), bool):
@@ -159,6 +167,8 @@ def validate_checks_result(data: dict) -> list[str]:
 
 
 def validate_veredicto(data: dict) -> list[str]:
+    if not isinstance(data, dict):
+        return ["veredicto: requerido, objeto JSON"]
     errores: list[str] = []
     _texto(data, "fase_id", errores)
     if not isinstance(data.get("intento"), int) or isinstance(data.get("intento"), bool):
@@ -194,6 +204,8 @@ def validate_veredicto(data: dict) -> list[str]:
 
 
 def validate_fase_state(data: dict) -> list[str]:
+    if not isinstance(data, dict):
+        return ["fase_state: requerido, objeto JSON"]
     errores: list[str] = []
     _texto(data, "fase_id", errores)
     if data.get("estado") not in ESTADOS_FASE:
