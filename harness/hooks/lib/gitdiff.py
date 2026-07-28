@@ -9,19 +9,39 @@ import re
 import subprocess
 from pathlib import Path
 
-RE_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<inicio>\d+)(?:,(?P<cuenta>\d+))? @@")
+RE_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<inicio>\d+)(?:,\d+)? @@")
+
+
+def _decodificar_con_respaldo(datos: bytes) -> str:
+    """Decodifica bytes intentando UTF-8, luego cp1252 (legacy Windows-1252),
+    y solo como último recurso reemplaza los bytes irreconocibles.
+
+    El código legacy de este proyecto (15 años) suele estar en cp1252; decodificar
+    directo con errors="replace" produce texto corrupto en vez de un error, lo cual
+    genera hallazgos falsos aguas abajo cuando se comparan acentos/ñ en el texto.
+    """
+    try:
+        return datos.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    try:
+        return datos.decode("cp1252")
+    except UnicodeDecodeError:
+        return datos.decode("utf-8", errors="replace")
 
 
 def _git(project_root: Path, *args: str) -> subprocess.CompletedProcess | None:
     try:
-        return subprocess.run(["git", *args], cwd=str(project_root), capture_output=True,
-                              text=True, encoding="utf-8", errors="replace")
+        resultado = subprocess.run(["git", *args], cwd=str(project_root), capture_output=True)
     except (OSError, ValueError):
         return None
+    resultado.stdout = _decodificar_con_respaldo(resultado.stdout)
+    resultado.stderr = _decodificar_con_respaldo(resultado.stderr)
+    return resultado
 
 
 def _leer_texto(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    return _decodificar_con_respaldo(path.read_bytes())
 
 
 def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | None:
@@ -35,6 +55,8 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     try:
         relativo = archivo.relative_to(raiz).as_posix()
     except ValueError:
+        # Un archivo fuera de project_root tampoco es verificable: None, igual
+        # que "no hay git usable".
         return None
 
     dentro = _git(raiz, "rev-parse", "--is-inside-work-tree")

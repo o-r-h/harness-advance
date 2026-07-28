@@ -54,6 +54,41 @@ class TestAddedLines(unittest.TestCase):
             self.assertIsNone(gitdiff.added_lines(raiz, suelto))
 
 
+class TestDecodificacionConRespaldoCp1252(unittest.TestCase):
+    """Cobertura del hallazgo 1: archivos legacy en cp1252 no deben corromperse."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        _git(self.root, "init")
+        _git(self.root, "config", "user.email", "t@t.t")
+        _git(self.root, "config", "user.name", "t")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_archivo_sin_rastrear_en_cp1252_conserva_acentos(self):
+        archivo = self.root / "frmLegacyCp1252.aspx.vb"
+        archivo.write_bytes("línea con ñ y á y é".encode("cp1252"))
+        resultado = gitdiff.added_lines(self.root, archivo)
+        self.assertIsNotNone(resultado)
+        _, texto = resultado[0]
+        self.assertEqual(texto, "línea con ñ y á y é")
+        self.assertNotIn("�", texto)
+
+    def test_diff_de_archivo_modificado_en_cp1252_conserva_acentos(self):
+        archivo = self.root / "frmLegacyCp1252Mod.aspx.vb"
+        archivo.write_bytes("Linea1\nLinea2\n".encode("cp1252"))
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+        archivo.write_bytes("Linea1\nlínea con ñ y á y é\nLinea2\n".encode("cp1252"))
+        resultado = gitdiff.added_lines(self.root, archivo)
+        self.assertIsNotNone(resultado)
+        textos = [texto for _, texto in resultado]
+        self.assertIn("línea con ñ y á y é", textos)
+        self.assertFalse(any("�" in texto for texto in textos))
+
+
 class TestCompresionDeNumeros(unittest.TestCase):
     def test_agrupa_rangos_contiguos(self):
         self.assertEqual(gitdiff.compress_line_numbers([3, 4, 5, 9]), "3-5, 9")
