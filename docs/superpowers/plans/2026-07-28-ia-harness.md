@@ -20,7 +20,8 @@ Aplican a **todas** las tareas, sin excepción:
 - **Un bug del harness no debe parecer un bug del código:** si un check crashea se registra como `"resultado": "error_check"` con el traceback y **no** bloquea la fase.
 - **Los hooks son inertes sin perfil:** sin `./.claude/rules.json` salen con código 0 y sin salida.
 - **Nada se aprueba por omisión.** No hay timeouts que cierren fases.
-- **Comentarios y mensajes del harness en español** (es la lengua de trabajo del usuario); el código y los identificadores en inglés.
+- **Comentarios y mensajes del harness en español** (es la lengua de trabajo del usuario). **Superficie pública en inglés** — nombres de funciones, parámetros y constantes exportadas (`added_lines`, `project_root`, `ESTADOS_FASE`); **variables locales en español**, como en todo el código de ejemplo de este plan. Los términos del dominio (`fase`, `intento`, `veredicto`, `ticket`, `anclaje`) van en español incluso en la superficie pública, porque así se llaman los campos de los contratos JSON y renombrarlos rompería la correspondencia.
+- **Nunca forzar UTF-8 sobre archivos del proyecto.** El código legacy suele estar en Windows-1252: decodificar con `errors="replace"` no crashea pero devuelve texto corrupto, y un acento mutilado produce un hallazgo inventado sobre el código del usuario. Leer bytes y decodificar con UTF-8 y respaldo a cp1252.
 - **Formato de fecha del proyecto:** `DD-MM-YYYY`, exacto.
 - **Ruta del repo fuente:** `C:\AZZULE\IA harness`. Remoto del proyecto objetivo: `http://10.10.50.37:3000/AzzuleNew/ReviewSystemGFS`.
 
