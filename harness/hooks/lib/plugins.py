@@ -1,6 +1,6 @@
 """Carga de los checks estructurales del perfil.
 
-Los checks que necesitan entender un stack (Web Forms, SPs) viven en
+Los checks que necesitan entender el stack del proyecto viven en
 <proyecto>/.claude/checks/*.py y se cargan dinámicamente. Cada módulo debe
 exponer:  run(project_root, archivos_modificados, ctx) -> list[Finding]
 """
