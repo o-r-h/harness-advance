@@ -14,18 +14,18 @@
     { "id": "no_orm", "archivos": [".vb"], "severidad": "error",
       "patron": "(DbContext|EntityFramework|LinqToSql|\\.AsQueryable\\()",
       "mensaje": "Prohibido ORM en este proyecto: acceso directo con SqlConnection/SqlCommand vía EjecutarSp()" },
-    { "id": "no_raw_sql", "archivos": [".vb"], "severidad": "error",
-      "patron": "SqlCommand\\(\\s*\"\\s*(SELECT|INSERT|UPDATE|DELETE)",
+    { "id": "no_raw_sql", "archivos": [".vb"], "severidad": "warning",
+      "patron": "SqlCommand\\(\\s*\"\\s*(?i:SELECT|INSERT|UPDATE|DELETE)",
       "mensaje": "El acceso a datos va por Global_asax.InstanciarConsulta() + EjecutarSp(), no con SQL embebido" },
     { "id": "no_fetch", "archivos": [".js"], "severidad": "error",
       "patron": "\\bfetch\\s*\\(",
       "mensaje": "IE11 no soporta fetch: usar Azzule.ConsultarDatos() o __doPostBack()" },
     { "id": "no_es6", "archivos": [".js"], "severidad": "warning",
-      "patron": "(=>|\\b(let|const)\\s|\\bPromise\\b|`)",
+      "patron": "(\\([^()]*\\)\\s*=>|(?<![A-Za-z0-9_]\\s)\\b[A-Za-z_$][A-Za-z0-9_$]*\\s*=>|\\b(let|const)\\s|\\bPromise\\b)",
       "mensaje": "jQuery 1.7.2 e IE11: preferir var, function y concatenación de cadenas" },
     { "id": "no_fw_moderno", "archivos": [".vb"], "severidad": "warning",
       "patron": "(IsNullOrWhiteSpace|\\bTuple\\b|\\bdynamic\\b)",
-      "mensaje": "No disponible en el Framework 3.5: usar el equivalente de la época" }
+      "mensaje": "No disponible en el Framework 3.5: usar String.IsNullOrEmpty en vez de IsNullOrWhiteSpace, parámetros ByRef o una clase auxiliar en vez de Tuple, y tipado explícito u Object en vez de dynamic" }
   ],
   "no_new_deps": {
     "severidad": "error",

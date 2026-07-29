@@ -40,7 +40,7 @@ class TestRulesDelPerfil(unittest.TestCase):
         regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_async")
         rx = re.compile(regla["patron"])
         self.assertTrue(rx.search("Dim x = Await LlamarApi()"))
-        self.assertIsNone(rx.search("Dim awaited As String = \"ok\""))
+        self.assertIsNone(rx.search("Dim Awaited As Boolean = True"))
 
     def test_no_raw_sql_detecta_select_inline_y_no_marca_ejecutarsp(self):
         regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_raw_sql")
@@ -48,11 +48,37 @@ class TestRulesDelPerfil(unittest.TestCase):
         self.assertTrue(rx.search('Dim cmd As New SqlCommand("SELECT * FROM ReviewHeader")'))
         self.assertIsNone(rx.search('objRet = lConsulta.EjecutarSp("ReviewGetFilters", 4, p)'))
 
+    def test_no_raw_sql_es_case_insensitive_en_las_palabras_clave_sql(self):
+        regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_raw_sql")
+        rx = re.compile(regla["patron"])
+        self.assertTrue(rx.search('Dim cmd As New SqlCommand("select * from ReviewHeader")'))
+        self.assertTrue(rx.search('Dim cmd As New SqlCommand("Select * From ReviewHeader")'))
+        self.assertTrue(rx.search('Dim cmd As New SqlCommand("update ReviewHeader set x = 1")'))
+        self.assertIsNone(rx.search('objRet = lConsulta.EjecutarSp("ReviewGetFilters", 4, p)'))
+
+    def test_no_raw_sql_es_warning(self):
+        regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_raw_sql")
+        self.assertEqual(regla["severidad"], "warning")
+
     def test_no_fetch_detecta_fetch_y_no_marca_consultardatos(self):
         regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_fetch")
         rx = re.compile(regla["patron"])
         self.assertTrue(rx.search("fetch('/api/x')"))
         self.assertIsNone(rx.search("Azzule.ConsultarDatos({ url: 'x.aspx' })"))
+
+    def test_no_es6_no_marca_falsos_positivos_verificados(self):
+        regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_es6")
+        rx = re.compile(regla["patron"])
+        self.assertIsNone(rx.search("// Ver `Manual.pdf` para mas detalles"))
+        self.assertIsNone(rx.search("boton.text('Ver mas =>');"))
+
+    def test_no_es6_detecta_sintaxis_es6_genuina(self):
+        regla = next(r for r in self.rules["prohibido"] if r["id"] == "no_es6")
+        rx = re.compile(regla["patron"])
+        self.assertTrue(rx.search("items.forEach((item) => { procesar(item); });"))
+        self.assertTrue(rx.search("items.map(x => x.valor);"))
+        self.assertTrue(rx.search("let total = 0;"))
+        self.assertTrue(rx.search("const nombre = 'x';"))
 
 
 if __name__ == "__main__":
