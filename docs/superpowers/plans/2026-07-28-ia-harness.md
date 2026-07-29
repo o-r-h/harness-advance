@@ -16,7 +16,7 @@ Aplican a **todas** las tareas, sin excepción:
 - **Pruebas con `python -m unittest`**, nunca `pytest`.
 - **El harness genérico (`harness/`) no contiene ningún conocimiento del stack legacy.** Cualquier cosa que mencione VB.NET, `.aspx`, `EjecutarSp` o jQuery pertenece a `profiles/`.
 - **Los contadores (`intento_actual`, `max_reintentos`) los escribe solo el CLI**, nunca el modelo (D5 del spec).
-- **Los checks nuevos entran con `"severidad": "warning"`**, salvo `audit_comments` y `no_new_deps`, que son `error` desde el día uno (D9 del spec).
+- **Severidad por naturaleza de la regla, no por antigüedad del check.** `error` para dos clases: los **hechos de la plataforma** (`Async`/`Await` no compila en FW 3.5, `EntityFramework` no está referenciado, IE11 no tiene `fetch` — no pueden dar falso positivo sobre código legacy válido, porque ese código no existiría) y las **reglas propias del usuario sin ambigüedad** (`audit_comments`, `no_new_deps`). Todo lo demás —convenciones y heurísticas, como `no_raw_sql` o `no_es6`— entra como `warning` y se promueve solo cuando se lo haya visto acertar contra el repo real (D9 del spec).
 - **Un bug del harness no debe parecer un bug del código:** si un check crashea se registra como `"resultado": "error_check"` con el traceback y **no** bloquea la fase.
 - **Los hooks son inertes sin perfil:** sin `./.claude/rules.json` salen con código 0 y sin salida.
 - **Nada se aprueba por omisión.** No hay timeouts que cierren fases.
