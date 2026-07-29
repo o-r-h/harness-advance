@@ -40,8 +40,13 @@ def _git(project_root: Path, *args: str) -> subprocess.CompletedProcess | None:
     return resultado
 
 
-def _leer_texto(path: Path) -> str:
-    return _decodificar_con_respaldo(path.read_bytes())
+def read_text(path: Path) -> str:
+    """Lee un archivo del proyecto sin forzar UTF-8 (ver `_decodificar_con_respaldo`).
+
+    Público porque todo módulo que lea archivos del proyecto —checks.py y los
+    checks estructurales del perfil— debe usar el mismo respaldo cp1252.
+    """
+    return _decodificar_con_respaldo(Path(path).read_bytes())
 
 
 def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | None:
@@ -65,7 +70,7 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
 
     estado = _git(raiz, "status", "--porcelain", "--", relativo)
     if estado is not None and estado.returncode == 0 and estado.stdout.startswith("??"):
-        return [(i, linea) for i, linea in enumerate(_leer_texto(archivo).splitlines(), start=1)]
+        return [(i, linea) for i, linea in enumerate(read_text(archivo).splitlines(), start=1)]
 
     diff = _git(raiz, "diff", "HEAD", "--unified=0", "--no-color", "--", relativo)
     if diff is None or diff.returncode != 0:
