@@ -89,6 +89,30 @@ class TestDecodificacionConRespaldoCp1252(unittest.TestCase):
         self.assertFalse(any("�" in texto for texto in textos))
 
 
+class TestArchivosModificados(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        _git(self.root, "init")
+        _git(self.root, "config", "user.email", "t@t.t")
+        _git(self.root, "config", "user.name", "t")
+        (self.root / "a.vb").write_text("uno\n", encoding="utf-8")
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_lista_modificados_y_sin_rastrear(self):
+        (self.root / "a.vb").write_text("uno\ndos\n", encoding="utf-8")
+        (self.root / "b.js").write_text("var x;\n", encoding="utf-8")
+        nombres = sorted(p.name for p in gitdiff.archivos_modificados(self.root))
+        self.assertEqual(nombres, ["a.vb", "b.js"])
+
+    def test_sin_cambios_devuelve_lista_vacia(self):
+        self.assertEqual(gitdiff.archivos_modificados(self.root), [])
+
+
 class TestCompresionDeNumeros(unittest.TestCase):
     def test_agrupa_rangos_contiguos(self):
         self.assertEqual(gitdiff.compress_line_numbers([3, 4, 5, 9]), "3-5, 9")

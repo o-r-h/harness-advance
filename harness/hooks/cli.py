@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import contracts, harness, state  # noqa: E402
+from lib import checks, contracts, gitdiff, harness, plugins, state  # noqa: E402
 
 VALIDADORES = {
     "ticket_context": contracts.validate_ticket_context,
@@ -134,6 +134,70 @@ def cmd_validate(args) -> int:
     return 0
 
 
+def _fase_activa(raiz: Path) -> tuple[str, dict, dict, dict] | None:
+    """(ticket_id, ctx, fase_del_plan, fase_state) de la fase activa."""
+    actual = harness.read_current(raiz)
+    if not actual or not actual.get("ticket_id") or not actual.get("fase_id"):
+        return None
+    ticket_id, fase_id = actual["ticket_id"], actual["fase_id"]
+    carpeta = harness.ticket_dir(raiz, ticket_id)
+    if not (carpeta / "ticket_context.json").is_file() or not (carpeta / "plan.json").is_file():
+        return None
+    ctx = harness.read_json(carpeta / "ticket_context.json")
+    plan = harness.read_json(carpeta / "plan.json")
+    fase = next((f for f in plan["fases"] if f["id"] == fase_id), None)
+    estado = state.leer_fase(raiz, ticket_id, fase_id)
+    if fase is None or estado is None:
+        return None
+    return ticket_id, ctx, fase, estado
+
+
+def cmd_run_checks(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa con plan y contexto: corre 'open-fase'")
+    ticket_id, ctx, fase, estado = activa
+    reglas = harness.load_rules(raiz)
+
+    pedidos = [c for c in fase.get("checks_deterministas") or [] if isinstance(c, str)]
+    resueltos, desconocidos = contracts.resolve_check_names(pedidos, reglas)
+    hallazgos: list[dict] = []
+    for nombre in desconocidos:
+        hallazgos.append({"id": nombre, "resultado": "error_check", "severidad": "error",
+                          "detalle": f"'{nombre}' no existe como check ni como grupo "
+                                     f"en rules.json"})
+
+    archivos = gitdiff.archivos_modificados(raiz)
+    declarativos = [c for c in resueltos if c not in (reglas.get("checks_estructurales") or [])]
+    for archivo in archivos:
+        hallazgos += checks.run_file_checks(raiz, archivo, reglas, ctx, solo=declarativos)
+
+    estructurales = plugins.cargar_checks_estructurales(raiz)
+    for nombre in resueltos:
+        if nombre in estructurales:
+            hallazgos += plugins.ejecutar(nombre, estructurales[nombre], raiz, archivos, ctx)
+
+    bloqueantes = [h for h in hallazgos
+                   if h.get("resultado") == "fallo" and h.get("severidad") == "error"]
+    resultado = {
+        "fase_id": fase["id"],
+        "intento": estado["intento_actual"],
+        "resultado": "fallo" if bloqueantes else "ok",
+        "checks": hallazgos if hallazgos else [{"id": "sin_hallazgos", "resultado": "ok"}],
+    }
+    errores_contrato = contracts.validate_checks_result(resultado)
+    if errores_contrato:
+        return _error("checks.json generado es inválido (bug del harness): "
+                      + "; ".join(errores_contrato))
+
+    destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
+    harness.write_json(destino / "checks.json", resultado)
+    print(f"checks: {resultado['resultado']} — {len(bloqueantes)} error(es) bloqueante(s), "
+          f"{len(hallazgos) - len(bloqueantes)} no bloqueante(s) → {destino / 'checks.json'}")
+    return 1 if bloqueantes else 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness-cli", description=__doc__)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -157,6 +221,10 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--contrato", required=True, choices=sorted(VALIDADORES))
     p.add_argument("--archivo", required=True)
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("run-checks", help="Corre los checks de la fase activa")
+    p.add_argument("--project")
+    p.set_defaults(func=cmd_run_checks)
 
     return parser
 

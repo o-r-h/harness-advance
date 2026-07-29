@@ -89,6 +89,25 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     return agregadas
 
 
+def archivos_modificados(project_root: Path) -> list[Path]:
+    """Archivos con cambios respecto a HEAD, incluidos los sin rastrear."""
+    raiz = Path(project_root).resolve()
+    estado = _git(raiz, "status", "--porcelain", "--untracked-files=all")
+    if estado is None or estado.returncode != 0:
+        return []
+    rutas: list[Path] = []
+    for linea in estado.stdout.splitlines():
+        if len(linea) < 4:
+            continue
+        relativo = linea[3:].strip().strip('"')
+        if " -> " in relativo:  # renombrado: interesa el destino
+            relativo = relativo.split(" -> ", 1)[1]
+        candidato = raiz / relativo
+        if candidato.is_file():
+            rutas.append(candidato)
+    return rutas
+
+
 def compress_line_numbers(numeros: list[int]) -> str:
     """[3,4,5,9] -> '3-5, 9'."""
     if not numeros:
