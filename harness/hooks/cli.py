@@ -198,6 +198,42 @@ def cmd_run_checks(args) -> int:
     return 1 if bloqueantes else 0
 
 
+def cmd_record_veredicto(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa: corre 'open-fase'")
+    ticket_id, _, fase, estado = activa
+
+    veredicto = harness.read_json(Path(args.archivo))
+    errores = contracts.validate_veredicto(veredicto)
+    if errores:
+        return _error("veredicto inválido: " + "; ".join(errores))
+    if veredicto["fase_id"] != fase["id"]:
+        return _error(f"el veredicto dice fase '{veredicto['fase_id']}' pero la fase "
+                      f"activa es '{fase['id']}'")
+
+    destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
+    harness.write_json(destino / "veredicto.json", veredicto)
+
+    if not veredicto["juicio_esceptico"]["aprobado"]:
+        razon = "; ".join(veredicto["juicio_esceptico"]["razones_rechazo"])
+        nuevo = state.registrar_fallo(raiz, ticket_id, fase["id"], "esceptico", razon)
+        print(f"Escéptico rechazó. Estado: {nuevo['estado']}, "
+              f"intento {nuevo['intento_actual']}/{nuevo['max_reintentos']}")
+        return 0
+
+    if (fase.get("prueba_manual") or {}).get("requerida"):
+        state.set_estado(raiz, ticket_id, fase["id"], "esperando_humano")
+        print("Escéptico aprobó. Falta la prueba manual: responde con "
+              "/fase-ok o /fase-fallo <paso> \"<observación>\".")
+        return 0
+
+    state.aprobar_fase(raiz, ticket_id, fase["id"])
+    print("Escéptico aprobó y la fase no requería prueba manual: fase aprobada.")
+    return 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness-cli", description=__doc__)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -225,6 +261,11 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("run-checks", help="Corre los checks de la fase activa")
     p.add_argument("--project")
     p.set_defaults(func=cmd_run_checks)
+
+    p = sub.add_parser("record-veredicto", help="Registra el veredicto del escéptico")
+    p.add_argument("--project")
+    p.add_argument("--archivo", required=True)
+    p.set_defaults(func=cmd_record_veredicto)
 
     return parser
 
