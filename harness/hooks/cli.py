@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import checks, contracts, gitdiff, harness, plugins, state  # noqa: E402
+from lib import checks, contracts, gitdiff, harness, plugins, prueba_manual, state  # noqa: E402
 
 VALIDADORES = {
     "ticket_context": contracts.validate_ticket_context,
@@ -234,6 +234,74 @@ def cmd_record_veredicto(args) -> int:
     return 0
 
 
+def cmd_generar_prueba(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa: corre 'open-fase'")
+    ticket_id, _, fase, estado = activa
+    pasos = harness.read_json(Path(args.pasos_json))
+    if not isinstance(pasos, list) or not pasos:
+        return _error("--pasos-json debe contener una lista no vacía de "
+                      "objetos {paso, esperado}")
+    destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
+    destino.mkdir(parents=True, exist_ok=True)
+    archivo = destino / "prueba_manual.md"
+    archivo.write_text(prueba_manual.render(fase, estado["intento_actual"], pasos),
+                       encoding="utf-8")
+    print(f"Guion de prueba escrito en {archivo}")
+    return 0
+
+
+def cmd_record_manual(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa: corre 'open-fase'")
+    ticket_id, _, fase, estado = activa
+
+    if estado["estado"] != "esperando_humano":
+        return _error(f"la fase está en estado '{estado['estado']}': solo se registra la "
+                      f"prueba manual cuando está en 'esperando_humano'")
+    if args.resultado == "fallo" and (args.paso is None or not args.observacion):
+        return _error("un fallo exige --paso y --observacion: sin eso el intento "
+                      "siguiente no sabe qué corregir")
+
+    carpeta = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
+    ruta_veredicto = carpeta / "veredicto.json"
+    if not ruta_veredicto.is_file():
+        return _error(f"falta {ruta_veredicto}: el escéptico debe emitir su veredicto antes "
+                      f"de la prueba manual")
+    veredicto = harness.read_json(ruta_veredicto)
+
+    veredicto["prueba_manual"].update({
+        "requerida": True, "ejecutada": True, "resultado": args.resultado})
+    if args.resultado == "fallo":
+        veredicto["prueba_manual"]["fallo_en_paso"] = args.paso
+        veredicto["prueba_manual"]["observacion"] = args.observacion
+        veredicto["aprobado"] = False
+    else:
+        veredicto["prueba_manual"].pop("fallo_en_paso", None)
+        veredicto["prueba_manual"].pop("observacion", None)
+        veredicto["aprobado"] = bool(veredicto["juicio_esceptico"]["aprobado"])
+
+    errores = contracts.validate_veredicto(veredicto)
+    if errores:
+        return _error("el veredicto resultante es inválido: " + "; ".join(errores))
+    harness.write_json(ruta_veredicto, veredicto)
+
+    if args.resultado == "ok":
+        state.aprobar_fase(raiz, ticket_id, fase["id"])
+        print(f"Prueba manual OK. Fase {fase['id']} aprobada.")
+        return 0
+
+    razon = f"prueba manual: falló en el paso {args.paso} — {args.observacion}"
+    nuevo = state.registrar_fallo(raiz, ticket_id, fase["id"], "humano", razon)
+    print(f"Prueba manual falló. Estado: {nuevo['estado']}, "
+          f"intento {nuevo['intento_actual']}/{nuevo['max_reintentos']}")
+    return 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness-cli", description=__doc__)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -266,6 +334,18 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--project")
     p.add_argument("--archivo", required=True)
     p.set_defaults(func=cmd_record_veredicto)
+
+    p = sub.add_parser("generar-prueba", help="Escribe el guion de prueba manual")
+    p.add_argument("--project")
+    p.add_argument("--pasos-json", required=True)
+    p.set_defaults(func=cmd_generar_prueba)
+
+    p = sub.add_parser("record-manual", help="Registra el resultado de la prueba manual")
+    p.add_argument("--project")
+    p.add_argument("--resultado", required=True, choices=["ok", "fallo"])
+    p.add_argument("--paso", type=int)
+    p.add_argument("--observacion")
+    p.set_defaults(func=cmd_record_manual)
 
     return parser
 
