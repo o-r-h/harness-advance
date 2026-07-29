@@ -23,7 +23,10 @@ foreach ($sub in @("hooks", "agents", "skills", "commands")) {
   if (-not (Test-Path $origen)) { continue }
   $destino = Join-Path $Global $sub
   New-Item -ItemType Directory -Force -Path $destino | Out-Null
-  Copy-Item -Path (Join-Path $origen "*") -Destination $destino -Recurse -Force
+  # probe_hook.py es la sonda temporal que documentó los payloads: no es parte
+  # del harness final y no tiene por qué vivir en ~/.claude.
+  Copy-Item -Path (Join-Path $origen "*") -Destination $destino -Recurse -Force `
+            -Exclude "probe_hook.py"
   Write-Host "harness/$sub -> $destino"
 }
 
