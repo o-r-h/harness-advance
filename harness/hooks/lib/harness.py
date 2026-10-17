@@ -27,6 +27,14 @@ def load_rules(project_root: Path) -> dict:
     return read_json(Path(project_root) / ".claude" / PROFILE_MARKER)
 
 
+def list_agents(project_root: Path) -> set[str]:
+    """Nombres de los subagentes del perfil: <proyecto>/.claude/agents/<nombre>.md."""
+    carpeta = Path(project_root) / ".claude" / "agents"
+    if not carpeta.is_dir():
+        return set()
+    return {ruta.stem for ruta in carpeta.glob("*.md") if ruta.is_file()}
+
+
 def harness_dir(project_root: Path) -> Path:
     return Path(project_root) / ".harness"
 

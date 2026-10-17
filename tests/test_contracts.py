@@ -61,6 +61,39 @@ class TestPlan(unittest.TestCase):
     def test_plan_valido_no_produce_errores(self):
         self.assertEqual(contracts.validate_plan(PLAN_OK, REGLAS_OK), [])
 
+    def test_acepta_agente_ejecutor_opcional_bien_formado(self):
+        plan = copy.deepcopy(PLAN_OK)
+        plan["fases"][0]["agente_ejecutor"] = "agent-notif-api"
+        self.assertEqual(contracts.validate_plan(plan, REGLAS_OK), [])
+
+    def test_rechaza_agente_ejecutor_vacio_o_que_no_es_texto(self):
+        for valor in ("", "   ", 7, None):
+            with self.subTest(valor=valor):
+                plan = copy.deepcopy(PLAN_OK)
+                plan["fases"][0]["agente_ejecutor"] = valor
+                errores = contracts.validate_plan(plan, REGLAS_OK)
+                self.assertTrue(any("agente_ejecutor" in e for e in errores))
+
+    def test_rechaza_agente_ejecutor_con_forma_de_ruta_o_espacios(self):
+        for valor in ("../agent-x", "agents/agent-x.md", "Agent X"):
+            with self.subTest(valor=valor):
+                plan = copy.deepcopy(PLAN_OK)
+                plan["fases"][0]["agente_ejecutor"] = valor
+                errores = contracts.validate_plan(plan, REGLAS_OK)
+                self.assertTrue(any("agente_ejecutor" in e for e in errores))
+
+    def test_rechaza_agente_ejecutor_que_no_existe_en_el_proyecto(self):
+        plan = copy.deepcopy(PLAN_OK)
+        plan["fases"][0]["agente_ejecutor"] = "agent-notif-api"
+        errores = contracts.validate_plan(plan, REGLAS_OK, agentes={"agent-notif-web"})
+        self.assertTrue(any("agent-notif-api" in e and ".claude/agents" in e for e in errores))
+
+    def test_acepta_agente_ejecutor_que_existe_en_el_proyecto(self):
+        plan = copy.deepcopy(PLAN_OK)
+        plan["fases"][0]["agente_ejecutor"] = "agent-notif-api"
+        self.assertEqual(
+            contracts.validate_plan(plan, REGLAS_OK, agentes={"agent-notif-api"}), [])
+
     def test_rechaza_lista_de_fases_vacia(self):
         malo = dict(PLAN_OK, fases=[])
         self.assertTrue(contracts.validate_plan(malo))

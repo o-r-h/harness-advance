@@ -1,0 +1,47 @@
+{
+  "perfil": "editornotificaciones",
+  "audit_comments": {
+    "requerido": false,
+    "severidad": "warning",
+    "nota": "Repo nuevo con historial git: no usa los bloques [B]/[E] del código legacy"
+  },
+  "prohibido": [
+    { "id": "no_sql_exec", "archivos": [".cs"], "severidad": "error",
+      "patron": "\\b(ExecuteNonQuery|ExecuteScalar)(Async)?\\s*\\(|\\.Execute(Async)?\\s*\\(|\\bSqlBulkCopy\\b",
+      "mensaje": "La app nunca ejecuta comandos contra SQL Server: Masterdb se lee solo con Query/QueryAsync de Dapper desde MasterdbReader; los borradores van por EF Core (SaveChanges) en SQLite y los cambios salen como script .sql" },
+    { "id": "no_sp_con_escritura", "archivos": [".cs", ".json", ".js", ".vue"], "severidad": "error",
+      "patron": "CSGetCustomerNotificationDetail",
+      "mensaje": "CSGetCustomerNotificationDetail NO es de solo lectura (puede hacer UPDATE a CustomerNotificationHistory): la app no lo invoca; sus columnas se simulan o se capturan a mano" },
+    { "id": "no_ddl", "archivos": [".cs"], "severidad": "error",
+      "patron": "(?i)\\b(ALTER|CREATE|DROP|TRUNCATE)\\s+(TABLE|PROC|PROCEDURE|VIEW|INDEX|TRIGGER|FUNCTION|SCHEMA)\\b",
+      "mensaje": "Cero cambios en tablas de Masterdb: ni la app ni los scripts generados contienen DDL, solo INSERT/UPDATE de configuración" },
+    { "id": "no_credenciales", "archivos": [".cs", ".json", ".js", ".vue"], "severidad": "error",
+      "patron": "(?i)((^|[;\"'\\s])(password|pwd)=[^;\"'\\s{]|\"(password|pwd)\"\\s*:\\s*\"[^\"$]+\")",
+      "mensaje": "Credenciales solo desde .env o variables de entorno (MSSQL_*), nunca escritas en código ni en appsettings" },
+    { "id": "ids_tipo_fijos", "archivos": [".cs", ".js", ".vue"], "severidad": "warning",
+      "patron": "\\b(1095|1539|1540|1541|1542|1543|1544|1569|1747|1924)\\b",
+      "mensaje": "Los tipos con reglas especiales por ID se leen de reglas-especiales.json, no se escriben en el código" },
+    { "id": "no_vue3", "archivos": [".vue", ".js"], "severidad": "error",
+      "patron": "\\bcreateApp\\s*\\(|\\bcreateRouter\\s*\\(|element-plus|\\bv-model:|<\\s*(Teleport|Suspense)\\b",
+      "mensaje": "El frontend es Vue 2.7 + Element UI + vue-router 3: no usar APIs ni librerías de Vue 3 (createApp, createRouter, element-plus, v-model:arg, Teleport, Suspense)" },
+    { "id": "no_v_html", "archivos": [".vue"], "severidad": "error",
+      "patron": "\\bv-html\\b",
+      "mensaje": "El HTML de notificaciones se muestra solo en el visor con <iframe sandbox srcdoc>: v-html ejecutaría HTML de la BD dentro de la app" },
+    { "id": "no_fetch_directo", "archivos": [".vue", ".js"], "severidad": "warning",
+      "patron": "\\bfetch\\s*\\(",
+      "mensaje": "Las llamadas a la API van por el cliente central src/api (axios), no con fetch suelto" }
+  ],
+  "no_new_deps": {
+    "severidad": "warning",
+    "vigilar": ["package.json", "EditorNotificaciones.Api.csproj", "EditorNotificaciones.Core.csproj",
+                "EditorNotificaciones.Tests.csproj", "Directory.Packages.props"],
+    "patron": "(<PackageReference\\s|<PackageVersion\\s|^\\s*\"(?!version\"|node\"|npm\")[@a-z0-9][@a-z0-9._/-]*\"\\s*:\\s*\"[\\^~>=<]*\\d)",
+    "mensaje": "Dependencia nueva: requiere aprobación humana explícita (Node 16 limita a Vite 4; Vue 2.7 con Element UI 2)"
+  },
+  "checks_estructurales": ["dotnet_build", "web_build"],
+  "grupos": {
+    "api_reglas": ["no_sql_exec", "no_sp_con_escritura", "no_ddl", "no_credenciales", "ids_tipo_fijos"],
+    "web_reglas": ["no_vue3", "no_v_html", "no_fetch_directo", "no_credenciales", "ids_tipo_fijos"],
+    "build": ["dotnet_build", "web_build"]
+  }
+}

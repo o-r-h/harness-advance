@@ -19,7 +19,10 @@ sientes tentado a hacerlo, es que falta un subcomando.
 2. Pregunta **una sola vez**: número de ticket ISR, nombre del desarrollador y fecha
    (`DD-MM-YYYY`). No los inventes ni los deduzcas del sistema.
 3. `CLI open-ticket --ticket-id ISR-<nro> --nroticket <nro> --desarrollador "<NOMBRE>" --fecha <DD-MM-YYYY> --perfil <perfil>`
-4. Invoca la skill `task-planner` para producir `plan.md` y `plan.json`.
+4. Invoca la skill `task-planner` para producir `plan.md` y `plan.json`. Si el perfil
+   tiene **más de un agente** en `.claude/agents/` (p. ej. uno de backend y otro de
+   frontend), cada fase lleva `agente_ejecutor` con el nombre del que la ejecuta, y
+   una fase no mezcla stacks: si toca los dos, se parte en dos fases con `depende_de`.
 5. `CLI validate --contrato plan --archivo .harness/tickets/<id>/plan.json`
    Si falla, corrige el plan. **No abras ninguna fase con un plan inválido.**
 
@@ -27,8 +30,10 @@ sientes tentado a hacerlo, es que falta un subcomando.
 
 1. **Abrir:** `CLI open-fase --fase fase_N`. Si una dependencia no está aprobada, el
    CLI lo rechaza — respeta ese orden, no lo saltes.
-2. **Ejecutar:** delega el trabajo al **subagente ejecutor del perfil** (para
-   ReviewSystemGFS, `agent-rsgfs`). Pásale:
+2. **Ejecutar:** delega el trabajo al subagente indicado en el campo
+   **`agente_ejecutor`** de la fase (`open-fase` lo imprime en la línea `Ejecutor:`).
+   Si la fase no lo trae, al **subagente ejecutor del perfil** (para ReviewSystemGFS,
+   `agent-rsgfs`). Pásale:
    - la fase completa de `plan.json` (pasos, criterio de éxito, anclajes);
    - `ticket_context.json`, para que los comentarios de auditoría lleven los valores
      correctos;
@@ -58,8 +63,9 @@ sientes tentado a hacerlo, es que falta un subcomando.
    Los pasos deben ser ejecutables por alguien que no leyó el código.
 7. **Detente.** Muestra el contenido de `prueba_manual.md` y espera. El humano
    responde `/fase-ok` o `/fase-fallo`. **No aproximes, no supongas, no cierres la
-   fase por tu cuenta:** no hay build ni tests en este proyecto, así que su
-   navegador es la única prueba funcional que existe.
+   fase por tu cuenta:** aunque el perfil tenga build y pruebas automáticas (que
+   corren como checks estructurales), la prueba en el navegador es la única
+   verificación funcional de punta a punta.
 
 ## Cuando una fase escala
 

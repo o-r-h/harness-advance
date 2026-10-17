@@ -20,6 +20,8 @@ RESULTADOS_PRUEBA = frozenset({"ok", "fallo", "pendiente", "na"})
 
 RE_FECHA = re.compile(r"^\d{2}-\d{2}-\d{4}$")
 RE_FASE_ID = re.compile(r"^fase_\d+$")
+# Nombre de un agente de <proyecto>/.claude/agents/<nombre>.md: nunca una ruta.
+RE_AGENTE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 def _texto(data: dict, campo: str, errores: list[str], prefijo: str = "") -> None:
@@ -73,7 +75,28 @@ def resolve_check_names(nombres: list[str], rules: dict) -> tuple[list[str], lis
     return resueltos, desconocidos
 
 
-def validate_plan(data: dict, rules: dict | None = None) -> list[str]:
+def _validar_agente_ejecutor(fase: dict, agentes: set[str] | None,
+                             errores: list[str], prefijo: str) -> None:
+    """Campo opcional: qué subagente ejecuta la fase cuando el perfil tiene varios.
+
+    `agentes` son los nombres disponibles en <proyecto>/.claude/agents/; None
+    significa que no hay proyecto contra el cual verificar la existencia.
+    """
+    if "agente_ejecutor" not in fase:
+        return
+    agente = fase.get("agente_ejecutor")
+    if not isinstance(agente, str) or not agente.strip():
+        errores.append(f"{prefijo}agente_ejecutor: si se indica, string no vacío")
+    elif not RE_AGENTE.match(agente):
+        errores.append(f"{prefijo}agente_ejecutor: se espera el nombre de un agente "
+                       f"(minúsculas, dígitos, '-' o '_'), no una ruta: '{agente}'")
+    elif agentes is not None and agente not in agentes:
+        errores.append(f"{prefijo}agente_ejecutor: '{agente}' no existe en "
+                       f".claude/agents/ del proyecto")
+
+
+def validate_plan(data: dict, rules: dict | None = None,
+                  agentes: set[str] | None = None) -> list[str]:
     if not isinstance(data, dict):
         return ["plan: requerido, objeto JSON"]
     errores: list[str] = []
@@ -121,6 +144,8 @@ def validate_plan(data: dict, rules: dict | None = None) -> list[str]:
         for dependencia in fase.get("depende_de") or []:
             if dependencia not in ids:
                 errores.append(f"{prefijo}depende_de: '{dependencia}' no es una fase del plan")
+
+        _validar_agente_ejecutor(fase, agentes, errores, prefijo)
 
         if rules is not None:
             _, desconocidos = resolve_check_names(

@@ -96,8 +96,10 @@ def cmd_open_fase(args) -> int:
         return _error(f"falta {ruta_plan}: el planner debe emitir plan.json "
                       f"antes de abrir una fase")
     plan = harness.read_json(ruta_plan)
-    reglas = harness.load_rules(raiz) if harness.find_project_root(raiz) else None
-    errores = contracts.validate_plan(plan, reglas)
+    con_perfil = harness.find_project_root(raiz) is not None
+    reglas = harness.load_rules(raiz) if con_perfil else None
+    agentes = harness.list_agents(raiz) if con_perfil else None
+    errores = contracts.validate_plan(plan, reglas, agentes)
     if errores:
         return _error("plan.json inválido: " + "; ".join(errores))
 
@@ -116,6 +118,7 @@ def cmd_open_fase(args) -> int:
     harness.write_current(raiz, ticket_id, fase["id"])
     print(f"Fase {fase['id']} en estado '{estado['estado']}', "
           f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
+    print(f"Ejecutor: {fase.get('agente_ejecutor') or 'el agente del perfil'}")
     return 0
 
 
@@ -124,8 +127,10 @@ def cmd_validate(args) -> int:
     datos = harness.read_json(Path(args.archivo))
     if args.contrato == "plan":
         raiz = resolver_proyecto(args.project)
-        reglas = harness.load_rules(raiz) if harness.find_project_root(raiz) else None
-        errores = validador(datos, reglas)
+        con_perfil = harness.find_project_root(raiz) is not None
+        reglas = harness.load_rules(raiz) if con_perfil else None
+        agentes = harness.list_agents(raiz) if con_perfil else None
+        errores = validador(datos, reglas, agentes)
     else:
         errores = validador(datos)
     if errores:

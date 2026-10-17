@@ -101,6 +101,38 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
         self.assertEqual(resultado.returncode, 1)
         self.assertIn("fase_1", resultado.stderr)
 
+    def _plan_con_agente(self, agente: str) -> dict:
+        plan = json.loads(json.dumps(PLAN))
+        plan["fases"][0]["agente_ejecutor"] = agente
+        return plan
+
+    def test_open_fase_informa_el_agente_ejecutor_de_la_fase(self):
+        self.abrir_ticket()
+        (self.root / ".claude" / "agents").mkdir()
+        (self.root / ".claude" / "agents" / "agent-notif-api.md").write_text(
+            "---\nname: agent-notif-api\n---\n", encoding="utf-8")
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json",
+                           self._plan_con_agente("agent-notif-api"))
+        resultado = correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn("agent-notif-api", resultado.stdout)
+
+    def test_open_fase_rechaza_un_agente_ejecutor_que_no_existe(self):
+        self.abrir_ticket()
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json",
+                           self._plan_con_agente("agent-fantasma"))
+        resultado = correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("agent-fantasma", resultado.stderr)
+
+    def test_validate_rechaza_un_agente_ejecutor_que_no_existe(self):
+        ruta = self.root / "plan_agente.json"
+        ruta.write_text(json.dumps(self._plan_con_agente("agent-fantasma")), encoding="utf-8")
+        resultado = correr("validate", "--project", str(self.root),
+                           "--contrato", "plan", "--archivo", str(ruta))
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("agent-fantasma", resultado.stderr)
+
     def test_validate_reporta_los_errores_del_contrato(self):
         malo = self.root / "plan_malo.json"
         malo.write_text(json.dumps({"ticket_id": "ISR-1", "perfil": "x", "fases": []}),

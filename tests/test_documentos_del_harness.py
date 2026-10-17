@@ -36,6 +36,9 @@ class TestSkillOrquestadora(unittest.TestCase):
             with self.subTest(comando=comando):
                 self.assertIn(comando, self.texto)
 
+    def test_explica_como_elegir_el_agente_ejecutor_de_cada_fase(self):
+        self.assertIn("agente_ejecutor", self.texto)
+
     def test_deja_claro_que_el_esceptico_va_aislado(self):
         self.assertIn("contexto aislado", self.texto)
 
