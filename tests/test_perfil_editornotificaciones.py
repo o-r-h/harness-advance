@@ -175,13 +175,16 @@ class TestAgentesDelPerfil(unittest.TestCase):
     def test_el_agente_api_conoce_las_reglas_criticas_del_dominio(self):
         texto = self.leer("agent-notif-api")
         for concepto in ("CSGetCustomerNotificationDetail", "XACT_ABORT", "SCOPE_IDENTITY",
-                         "NotificationTypeID", "analisis_modelo_notificaciones.md"):
+                         "NotificationTypeID", "analisis_modelo_notificaciones.md",
+                         "#Rollback_Backup_Table", "deshacer_<ticket>.sql",
+                         "solo_dev_<ticket>.sql", "IF NOT EXISTS", "BuildType = 0"):
             with self.subTest(concepto=concepto):
                 self.assertIn(concepto, texto)
 
     def test_el_agente_web_conoce_el_visor_y_el_stack(self):
         texto = self.leer("agent-notif-web")
-        for concepto in ("Element UI", "sandbox", "srcdoc", "Vue 2.7", "Node 16"):
+        for concepto in ("Element UI", "sandbox", "srcdoc", "Vue 2.7", "Node 16",
+                         "Basar en un tipo Legacy", "solo dev"):
             with self.subTest(concepto=concepto):
                 self.assertIn(concepto, texto)
 

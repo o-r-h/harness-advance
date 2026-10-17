@@ -80,8 +80,14 @@ src/styles/tema.scss  variables de Element UI: primario #005394
 - "Notificación nueva" exige el `NotificationTypeID` **capturado a mano** y lo valida contra
   la API antes de continuar. El CRON es opcional. Avisa que la lógica que dispara la
   notificación queda fuera de la app.
-- "Revisar y generar script" muestra resumen, impacto, el script de cambio y el de deshacer
-  en pestañas, y permite copiar o descargar; **nunca ejecuta** nada.
+- "Notificación nueva" ofrece **"Basar en un tipo Legacy"** (opcional): el usuario elige uno
+  o más tipos `BuildType = 0`, confirma el idioma de cada uno (la API lo propone por el
+  sufijo `_EN`/`_ES`/`_FR`) y la API devuelve el cuerpo prellenado por idioma. Se muestran
+  sus avisos (encabezado/pie duplicados, `%X%` fuera del catálogo, idiomas sin archivo) y
+  el texto "El tipo Legacy no se modifica; el código que lo dispara se cambia aparte".
+- "Revisar y generar script" muestra resumen, impacto y, en pestañas, el script de cambio,
+  el de deshacer y, si existe, el de solo dev (marcado "no llevar a producción"). Permite
+  copiar o descargar cada uno; **nunca ejecuta** nada.
 - Accesibilidad: botones y enlaces reales, `label` asociado a cada campo, foco visible,
   contraste AA.
 

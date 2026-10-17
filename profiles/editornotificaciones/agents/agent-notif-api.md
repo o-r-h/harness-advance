@@ -106,25 +106,72 @@ cargando".
 idioma y posición; cada idioma enlazado por un botón `rm_url` existe; CSS compatible con
 CSS2; aviso si el tipo está en `reglas-especiales.json`.
 
+**Basar en un tipo Legacy** (§13 del análisis): para "Notificación nueva", la API lista
+los tipos `BuildType = 0` y lee su `FileName` desde una carpeta **configurable**
+(`appsettings.json`, la carpeta `html/` de Customer Site), **solo lectura** y sin salir de
+esa carpeta (rechaza rutas con `..` o absolutas). Devuelve por idioma el contenido de
+`<body>` dentro de `<td class="notificacion-cuerpo">` como borrador, más avisos: encabezado
+y pie propios del Legacy que se duplicarían, `%X%` encontrados y que no estén en el
+catálogo, e idiomas sin archivo. No genera ningún cambio sobre el tipo Legacy.
+
 **Impacto**: editar un componente compartido hace `UPDATE` del original y afecta a
 **todas** las notificaciones que lo usan; la API devuelve cuántas y cuáles.
 
 ## 4. Contrato del generador de scripts
 
-Cada script generado:
+Formato **híbrido** (§0 y §13 del análisis): la convención del equipo (`TRY/CATCH` +
+transacción + `OUTPUT` a `#Rollback_Backup_Table`, como el script de 105249) más
+precondiciones, `XACT_ABORT` e idempotencia real. Cada generación produce **tres archivos**:
+`<ticket>.sql` (el que va a producción), `deshacer_<ticket>.sql` y, solo si aplica,
+`solo_dev_<ticket>.sql`.
 
-- `USE Masterdb; SET XACT_ABORT ON; BEGIN TRANSACTION; … COMMIT TRANSACTION;`
-- **Precondiciones** antes de cada `UPDATE`: el contenido actual debe ser el que se tomó
-  para el borrador (`CHECKSUM` o comparación); si no, `RAISERROR` + `ROLLBACK` + `RETURN`.
+Esqueleto del principal:
+
+```sql
+-- Ticket <n> · Tipo <NotificationTypeID> · generado <fecha> por <autor>
+USE Masterdb;
+SET NOCOUNT ON; SET XACT_ABORT ON;
+-- 1. Precondiciones (sin transacción abierta): si falla una, THROW 50001, '<motivo>', 1;
+CREATE TABLE #Rollback_Backup_Table (Orden INT IDENTITY, Sentencia NVARCHAR(MAX));
+BEGIN TRY
+    BEGIN TRANSACTION;
+    -- 2. Cambios: IF NOT EXISTS (<llave natural de esta fila>) INSERT … OUTPUT … INTO #Rollback_Backup_Table
+    COMMIT TRANSACTION;
+END TRY
+BEGIN CATCH
+    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+    THROW;
+END CATCH;
+SELECT Sentencia FROM #Rollback_Backup_Table ORDER BY Orden DESC;
+```
+
+- **Precondiciones** antes de `BEGIN TRANSACTION`: existen la plantilla, el estilo, los
+  disclaimers y las secciones compartidas que se vinculan; antes de cada `UPDATE`, el
+  contenido actual debe ser el que se tomó para el borrador (`CHECKSUM` o comparación).
+  Si no se cumple, `THROW` con un mensaje claro y no se escribe nada.
+- **Idempotente**: `IF NOT EXISTS` por **cada fila**, contra su propia llave natural
+  (`NotificationTemplateLang`: `NotificationTypeID + Lang_id`; `NotificationSectionContent`:
+  `NotificationTypeID + InternalSectionID + SectionContentID`). Nunca depender de una tabla
+  temporal que queda vacía en la segunda corrida (error del script de 105249, que duplica
+  los vínculos de encabezado y pie). El cuerpo se deduplica **por idioma**. Prueba
+  obligatoria: correr dos veces el script deja la BD igual.
+- `OUTPUT inserted.…` en cada `INSERT` y `OUTPUT deleted.…` en cada `UPDATE` alimentan
+  `#Rollback_Backup_Table` con la sentencia inversa.
 - **Notificación nueva**: el `NotificationTypeID` lo captura el usuario (no es IDENTITY,
-  debe ser igual en todos los ambientes); precondición `IF EXISTS … RAISERROR`.
+  debe ser igual en todos los ambientes); precondición `IF EXISTS … THROW`.
   `Subject` y `FileName` = `''` en `NotificationTypes`; `BuildType = 1`.
+- **Partes solo de dev** (`NotificationTypeDebugEmails`, `hasDebugMails = 1`) van en
+  `solo_dev_<ticket>.sql`, nunca en el principal.
 - **IDs IDENTITY** (`SectionContent`, `NotificationTemplateContent`, `Disclaimer`): se
   capturan con `SCOPE_IDENTITY()` en variables y se usan en las filas que los referencian.
   `StyleID` no es IDENTITY: `MAX(StyleID) + 1` con `UPDLOCK, HOLDLOCK` dentro de la transacción.
 - Literales: `'…'` para columnas `varchar`, `N'…'` para `nvarchar`; comillas duplicadas.
 - `@@ROWCOUNT` verificado después de cada `UPDATE`.
-- Siempre se acompaña de un **script para deshacer** con los valores anteriores.
+- **`deshacer_<ticket>.sql`** (siempre): mismo esqueleto `TRY/CATCH`. Ubica las filas por
+  llave natural a partir del `NotificationTypeID`, **nunca** por IDs IDENTITY escritos a
+  mano. Borra una `SectionContent` solo si ya no la vincula otro tipo. En un `UPDATE` de un
+  componente compartido, restaura el valor anterior leído al generar, con precondición de
+  que el valor actual sea el que dejó el script principal.
 - El CRON (`CustomerNotificationTypeCronConfiguration`) solo si el borrador lo pide.
 - La lógica que **dispara** la notificación (historial y parámetros) queda **fuera** de la app.
 
