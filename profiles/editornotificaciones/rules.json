@@ -38,10 +38,10 @@
     "patron": "(<PackageReference\\s|<PackageVersion\\s|^\\s*\"(?!version\"|node\"|npm\")[@a-z0-9][@a-z0-9._/-]*\"\\s*:\\s*\"[\\^~>=<]*\\d)",
     "mensaje": "Dependencia nueva: requiere aprobación humana explícita (Node 16 limita a Vite 4; Vue 2.7 con Element UI 2)"
   },
-  "checks_estructurales": ["dotnet_build", "web_build"],
+  "checks_estructurales": ["dotnet_build", "web_build", "web_contraste"],
   "grupos": {
     "api_reglas": ["no_sql_exec", "no_sp_con_escritura", "no_ddl", "no_credenciales", "ids_tipo_fijos"],
-    "web_reglas": ["no_vue3", "no_v_html", "no_fetch_directo", "no_credenciales", "ids_tipo_fijos"],
+    "web_reglas": ["no_vue3", "no_v_html", "no_fetch_directo", "no_credenciales", "ids_tipo_fijos", "web_contraste"],
     "build": ["dotnet_build", "web_build"]
   }
 }

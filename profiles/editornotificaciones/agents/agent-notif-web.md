@@ -100,6 +100,12 @@ src/styles/tema.scss  variables de Element UI: primario #005394
   en el mismo intento.
 - El check `web_build` corre `npm run lint`, `npm run test:unit` y `npm run build` en
   `src/Web/` antes del escéptico: déjalos pasando.
+- El check `web_contraste` (grupo `web_reglas`) construye `src/Web`, la abre en Chrome/Edge sin
+  interfaz con una API simulada y mide el contraste de **todo** texto visible, valor y placeholder
+  en ~19 estados de la pantalla 1 (lectura, cargas, visor, idiomas, borradores, edición,
+  confirmaciones, conflictos, foco). Falla bajo 4.5:1 (3:1 en texto grande) y lista elemento,
+  colores y ratio. Si avisa `web_contraste_cobertura` (estados no alcanzados porque la pantalla
+  cambió), dilo en `resultado.md`.
 - Al terminar, escribe `intento_N/resultado.md`: qué hiciste, archivos, comandos con su
   salida y lo que **no** pudiste verificar (p. ej. lo que solo se ve en el navegador).
 - No toques `src/Api/`, `src/Core/` ni `tests/` (son de `agent-notif-api`). Si falta un

@@ -1,0 +1,101 @@
+{
+ "id": 1223,
+ "nombre": "71670 - PSCP/ Failed audits notifications",
+ "inactivo": false,
+ "idiomas": [
+  {
+   "lang": 1,
+   "inactivo": false,
+   "plantillaId": 1,
+   "estiloBaseId": 2,
+   "styleSection": "",
+   "subject": "%CustomerName% Reporte de Auditor?as Fallidas",
+   "title": null,
+   "disclaimerSuperior": {
+    "id": 3,
+    "advertencia": null
+   },
+   "disclaimerInferior": {
+    "id": 5,
+    "advertencia": null
+   },
+   "secciones": [
+    {
+     "internalSectionId": 4,
+     "sectionName": "ContentHeader_0",
+     "sectionContentId": 1,
+     "resumen": "PLATAFORMA AZZULE",
+     "usoTipos": 20,
+     "advertencia": null
+    },
+    {
+     "internalSectionId": 1,
+     "sectionName": "ContentBody_0",
+     "sectionContentId": 38,
+     "resumen": "Reporte de Auditorías Fallidas %CustomerName%, Las siguiente…",
+     "usoTipos": 1,
+     "advertencia": null
+    },
+    {
+     "internalSectionId": 3,
+     "sectionName": "ContentBottom_0",
+     "sectionContentId": 37,
+     "resumen": "Si tienes alguna pregunta o necesitas asistencia, no dudes e…",
+     "usoTipos": 25,
+     "advertencia": null
+    }
+   ],
+   "advertencia": null
+  },
+  {
+   "lang": 2,
+   "inactivo": false,
+   "plantillaId": 1,
+   "estiloBaseId": 2,
+   "styleSection": "",
+   "subject": "%CustomerName% - Failed Audits Report",
+   "title": null,
+   "disclaimerSuperior": {
+    "id": 4,
+    "advertencia": null
+   },
+   "disclaimerInferior": {
+    "id": 6,
+    "advertencia": null
+   },
+   "secciones": [
+    {
+     "internalSectionId": 4,
+     "sectionName": "ContentHeader_0",
+     "sectionContentId": 3,
+     "resumen": "AZZULE PLATFORM",
+     "usoTipos": 34,
+     "advertencia": null
+    },
+    {
+     "internalSectionId": 1,
+     "sectionName": "ContentBody_0",
+     "sectionContentId": 35,
+     "resumen": "Failed Audits Report %CustomerName%, The following failed au…",
+     "usoTipos": 1,
+     "advertencia": null
+    },
+    {
+     "internalSectionId": 3,
+     "sectionName": "ContentBottom_0",
+     "sectionContentId": 34,
+     "resumen": "If you have questions or need assistance, please do not hesi…",
+     "usoTipos": 26,
+     "advertencia": null
+    }
+   ],
+   "advertencia": null
+  }
+ ],
+ "idiomasSinConfiguracion": [
+  4
+ ],
+ "estructuraDifiere": false,
+ "camposQueDifieren": [],
+ "reglasEspeciales": []
+}

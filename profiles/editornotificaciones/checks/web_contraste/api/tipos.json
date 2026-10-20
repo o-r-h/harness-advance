@@ -1,0 +1,410 @@
+[
+ {
+  "id": 119,
+  "nombre": "SCP: Login Management (Platinum)",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 332,
+  "nombre": "Compliance: Assign a new grid to a supplier",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 333,
+  "nombre": "Compliance: Assign a new activity to an existing grid",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 476,
+  "nombre": "Compliance document resubmission request",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 505,
+  "nombre": "Compliance:  Supplier Approval  Update",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 633,
+  "nombre": "ISR 56768 - Shopping Cart Notificacion (ESB)",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 778,
+  "nombre": "SendNewContactNotification",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 782,
+  "nombre": "104318 - ESB - crear config, correo de errores en shoppingc",
+  "inactivo": false,
+  "idiomas": [
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 817,
+  "nombre": "Supplier Removes a Buyer",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1223,
+  "nombre": "71670 - PSCP/ Failed audits notifications",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1255,
+  "nombre": "Request to sign multiple documents in Compliance Grid",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1257,
+  "nombre": "Electronically Signed Documents are now available in your Compliance Grid!",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1259,
+  "nombre": "Request Not Completed! Technical Issues",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1294,
+  "nombre": "71930 - CG - Supplier Approval expiration date",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1408,
+  "nombre": "61722 - PSCP/Receive failed audits Notifications",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1522,
+  "nombre": "ISR 84731 - Shopping Cart Notificacion (ESB)",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1539,
+  "nombre": "Generic Notification - Audits About to Expire Report in N Days",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": true
+ },
+ {
+  "id": 1541,
+  "nombre": "85472 - Audits About to Expire Report - EN",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": true
+ },
+ {
+  "id": 1543,
+  "nombre": "86400 - Audits About to Expire Report - EN",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": true
+ },
+ {
+  "id": 1561,
+  "nombre": "87014 - Suspended Audits Transfered to Walmart / Sam's Club",
+  "inactivo": false,
+  "idiomas": [
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1569,
+  "nombre": "Four Seasons Produce Inc (Expire 15 days ago)",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": true
+ },
+ {
+  "id": 1747,
+  "nombre": "95923 - Hortifrut Custom Report",
+  "inactivo": false,
+  "idiomas": [
+   1
+  ],
+  "tieneReglasEspeciales": true
+ },
+ {
+  "id": 1774,
+  "nombre": "96249 - CB - SCP / Create notifications for CBs",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1806,
+  "nombre": "Supplier Facility Food Safety Risk Disclosure Review",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1815,
+  "nombre": "Supplier Disconnected in Site SCP",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1838,
+  "nombre": "Notification activity is declined",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1875,
+  "nombre": "Azzule App Completed Logs",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1895,
+  "nombre": "103020 - Costco Test and Hold Shopping Cart",
+  "inactivo": false,
+  "idiomas": [
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1917,
+  "nombre": "Compliance Tasks Incomplete",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1924,
+  "nombre": "105011 - REPORTE AUTOMATICO PARA HORTIFRUT",
+  "inactivo": false,
+  "idiomas": [
+   1
+  ],
+  "tieneReglasEspeciales": true
+ },
+ {
+  "id": 1932,
+  "nombre": "105096 - SCP: Create new email notification for grids",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1974,
+  "nombre": "109402 - PSCP: Enable PSCP Notifications",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1983,
+  "nombre": "108832 - Automatic Notification for Gem-pack when Tolerances are exceeded",
+  "inactivo": false,
+  "idiomas": [
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1984,
+  "nombre": "108832 - Monthly Notification for Gem-pack when Tolerances are exceeded",
+  "inactivo": false,
+  "idiomas": [
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1985,
+  "nombre": "108832 - Empty Monthly Notification for Gem-pack when Tolerances are exceeded",
+  "inactivo": false,
+  "idiomas": [
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1987,
+  "nombre": "109519 - PGFS AI Integrity Program",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 1989,
+  "nombre": "106815 - SCP - FEI Number request",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 2002,
+  "nombre": "105249 - Grid declination accepted",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 2009,
+  "nombre": "100865 - Compliance Grid Improvements - Azzule report about pending compliance activities",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ },
+ {
+  "id": 2045,
+  "nombre": "113634 - PSCP - New & Current Vendor Questionnaire Completed",
+  "inactivo": false,
+  "idiomas": [
+   1,
+   2,
+   4
+  ],
+  "tieneReglasEspeciales": false
+ }
+]

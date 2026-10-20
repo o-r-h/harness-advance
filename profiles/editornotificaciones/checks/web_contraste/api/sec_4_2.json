@@ -1,0 +1,92 @@
+[
+ {
+  "id": 3,
+  "inactivo": false,
+  "resumen": "AZZULE PLATFORM",
+  "usoTipos": 34
+ },
+ {
+  "id": 4,
+  "inactivo": false,
+  "resumen": "SUPPLY CHAIN PROGRAM",
+  "usoTipos": 3
+ },
+ {
+  "id": 9,
+  "inactivo": false,
+  "resumen": "%CustomerName% %ContactAddress% %Location% %ContactPhone%",
+  "usoTipos": 0
+ },
+ {
+  "id": 22,
+  "inactivo": false,
+  "resumen": "Buy additional commodities from your supplier Supplier: %Sup…",
+  "usoTipos": 0
+ },
+ {
+  "id": 23,
+  "inactivo": false,
+  "resumen": "A new business opportunity is waiting! Potential Buyer: %Cus…",
+  "usoTipos": 0
+ },
+ {
+  "id": 24,
+  "inactivo": false,
+  "resumen": "A new business opportunity is waiting! Potential Buyer: %Cus…",
+  "usoTipos": 0
+ },
+ {
+  "id": 25,
+  "inactivo": false,
+  "resumen": "A new business opportunity is waiting! Potential Buyer: %Cus…",
+  "usoTipos": 0
+ },
+ {
+  "id": 26,
+  "inactivo": false,
+  "resumen": "Grow your business relationship Buyer: %CustomerName% %SupNa…",
+  "usoTipos": 0
+ },
+ {
+  "id": 27,
+  "inactivo": false,
+  "resumen": "Test body notification More info here",
+  "usoTipos": 0
+ },
+ {
+  "id": 28,
+  "inactivo": false,
+  "resumen": "Your potential supplier rejected your invitation Supplier: %…",
+  "usoTipos": 0
+ },
+ {
+  "id": 30,
+  "inactivo": false,
+  "resumen": "You have a new supplier connection Supplier: %SupName% %Cust…",
+  "usoTipos": 0
+ },
+ {
+  "id": 31,
+  "inactivo": false,
+  "resumen": "Your invitation to expand your business relationship was rej…",
+  "usoTipos": 0
+ },
+ {
+  "id": 32,
+  "inactivo": false,
+  "resumen": "",
+  "usoTipos": 0
+ },
+ {
+  "id": 62,
+  "inactivo": false,
+  "resumen": "%CompanyName% has added a new requirement to %ComplianceGrid…",
+  "usoTipos": 0
+ },
+ {
+  "id": 90,
+  "inactivo": false,
+  "resumen": "AZZULE PLATFORM",
+  "usoTipos": 2
+ }
+]

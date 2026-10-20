@@ -1,0 +1,5 @@
+{
+ "conectado": true,
+ "servidor": "servidor-simulado",
+ "baseDatos": "Masterdb"
+}

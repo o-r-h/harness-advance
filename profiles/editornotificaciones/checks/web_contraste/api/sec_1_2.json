@@ -1,0 +1,284 @@
+[
+ {
+  "id": 9,
+  "inactivo": false,
+  "resumen": "%CustomerName% %ContactAddress% %Location% %ContactPhone%",
+  "usoTipos": 0
+ },
+ {
+  "id": 22,
+  "inactivo": false,
+  "resumen": "Buy additional commodities from your supplier Supplier: %Sup…",
+  "usoTipos": 0
+ },
+ {
+  "id": 23,
+  "inactivo": false,
+  "resumen": "A new business opportunity is waiting! Potential Buyer: %Cus…",
+  "usoTipos": 0
+ },
+ {
+  "id": 24,
+  "inactivo": false,
+  "resumen": "A new business opportunity is waiting! Potential Buyer: %Cus…",
+  "usoTipos": 0
+ },
+ {
+  "id": 25,
+  "inactivo": false,
+  "resumen": "A new business opportunity is waiting! Potential Buyer: %Cus…",
+  "usoTipos": 0
+ },
+ {
+  "id": 26,
+  "inactivo": false,
+  "resumen": "Grow your business relationship Buyer: %CustomerName% %SupNa…",
+  "usoTipos": 0
+ },
+ {
+  "id": 27,
+  "inactivo": false,
+  "resumen": "Test body notification More info here",
+  "usoTipos": 0
+ },
+ {
+  "id": 28,
+  "inactivo": false,
+  "resumen": "Your potential supplier rejected your invitation Supplier: %…",
+  "usoTipos": 0
+ },
+ {
+  "id": 29,
+  "inactivo": false,
+  "resumen": "Supply Chain Map: Operation Level setting Dear Azzule Suppor…",
+  "usoTipos": 1
+ },
+ {
+  "id": 30,
+  "inactivo": false,
+  "resumen": "You have a new supplier connection Supplier: %SupName% %Cust…",
+  "usoTipos": 0
+ },
+ {
+  "id": 31,
+  "inactivo": false,
+  "resumen": "Your invitation to expand your business relationship was rej…",
+  "usoTipos": 0
+ },
+ {
+  "id": 32,
+  "inactivo": false,
+  "resumen": "",
+  "usoTipos": 0
+ },
+ {
+  "id": 33,
+  "inactivo": false,
+  "resumen": "%NotificationTitle% %SupplierName%, Our records show that th…",
+  "usoTipos": 5
+ },
+ {
+  "id": 35,
+  "inactivo": false,
+  "resumen": "Failed Audits Report %CustomerName%, The following failed au…",
+  "usoTipos": 1
+ },
+ {
+  "id": 40,
+  "inactivo": false,
+  "resumen": "Failed Audits Reports %CustomerName%, The following failed a…",
+  "usoTipos": 1
+ },
+ {
+  "id": 42,
+  "inactivo": false,
+  "resumen": "%NotificationTitle% %CustomerName%, Our records show that th…",
+  "usoTipos": 1
+ },
+ {
+  "id": 45,
+  "inactivo": false,
+  "resumen": "Request to sign multiple documents in Compliance Grid Dear %…",
+  "usoTipos": 1
+ },
+ {
+  "id": 47,
+  "inactivo": false,
+  "resumen": "Request Not Completed! Technical Issues Dear %ContactFirstNa…",
+  "usoTipos": 1
+ },
+ {
+  "id": 49,
+  "inactivo": false,
+  "resumen": "Request Completed! Signed Documents are now available in you…",
+  "usoTipos": 1
+ },
+ {
+  "id": 50,
+  "inactivo": false,
+  "resumen": "Welcome to the Azzule platform! Dear %ContactName%, Azzule S…",
+  "usoTipos": 1
+ },
+ {
+  "id": 52,
+  "inactivo": false,
+  "resumen": "Disconnected from Supplier List Dear %BuyerName_B%, This ema…",
+  "usoTipos": 1
+ },
+ {
+  "id": 54,
+  "inactivo": false,
+  "resumen": "Disconnected from Customer List Dear %BuyerName_B%, This ema…",
+  "usoTipos": 1
+ },
+ {
+  "id": 56,
+  "inactivo": false,
+  "resumen": "Supplier Facility Food Safety Risk Disclosure Dear %Customer…",
+  "usoTipos": 1
+ },
+ {
+  "id": 58,
+  "inactivo": false,
+  "resumen": "Update on Compliance Requirements %CompanyName%, This is to…",
+  "usoTipos": 1
+ },
+ {
+  "id": 60,
+  "inactivo": false,
+  "resumen": "%CompanyName% has added you to the %ComplianceGridName% Comp…",
+  "usoTipos": 1
+ },
+ {
+  "id": 62,
+  "inactivo": false,
+  "resumen": "%CompanyName% has added a new requirement to %ComplianceGrid…",
+  "usoTipos": 0
+ },
+ {
+  "id": 66,
+  "inactivo": false,
+  "resumen": "Here are your activities regarding your Operations Organizat…",
+  "usoTipos": 1
+ },
+ {
+  "id": 67,
+  "inactivo": false,
+  "resumen": "Login Info Dear %UserContactName% , Per your request, a user…",
+  "usoTipos": 1
+ },
+ {
+  "id": 70,
+  "inactivo": false,
+  "resumen": "Shopping Cart Receipt %CustomerName% Dear %UserName_B% , Tha…",
+  "usoTipos": 2
+ },
+ {
+  "id": 71,
+  "inactivo": false,
+  "resumen": "Shopping Cart Receipt %CustomerName% Dear %UserName_B% , Tha…",
+  "usoTipos": 1
+ },
+ {
+  "id": 72,
+  "inactivo": false,
+  "resumen": "Your Compliance Tasks Are Waiting %SupplierName%, We have id…",
+  "usoTipos": 1
+ },
+ {
+  "id": 79,
+  "inactivo": false,
+  "resumen": "Transaction Error Information Details about an error that oc…",
+  "usoTipos": 1
+ },
+ {
+  "id": 81,
+  "inactivo": false,
+  "resumen": "Document Not Accepted %SupplierName% , Your customer %Custom…",
+  "usoTipos": 1
+ },
+ {
+  "id": 91,
+  "inactivo": false,
+  "resumen": "%CompanyName% has added a new requirement to %ComplianceGrid…",
+  "usoTipos": 1
+ },
+ {
+  "id": 97,
+  "inactivo": false,
+  "resumen": "Document Resubmission Required %SupplierName%, %CustomerName…",
+  "usoTipos": 1
+ },
+ {
+  "id": 101,
+  "inactivo": false,
+  "resumen": "New Approval Status in Compliance Grid %SupplierName%, This…",
+  "usoTipos": 1
+ },
+ {
+  "id": 103,
+  "inactivo": false,
+  "resumen": "Residue Results Over Tolerance %CustomerName%, We inform you…",
+  "usoTipos": 1
+ },
+ {
+  "id": 104,
+  "inactivo": false,
+  "resumen": "Monthly Report - Residue Results Over Tolerance %CustomerNam…",
+  "usoTipos": 1
+ },
+ {
+  "id": 105,
+  "inactivo": false,
+  "resumen": "Monthly Report - Residue Results Over Tolerance %CustomerNam…",
+  "usoTipos": 1
+ },
+ {
+  "id": 107,
+  "inactivo": false,
+  "resumen": "AI Report Generation Failed Dear Azzule Support Team, Incide…",
+  "usoTipos": 1
+ },
+ {
+  "id": 109,
+  "inactivo": false,
+  "resumen": "Your customer has updated your FEI %SupplierName_B%, Your cu…",
+  "usoTipos": 1
+ },
+ {
+  "id": 112,
+  "inactivo": false,
+  "resumen": "Your Approval Status Has Expired %SupplierName%, Your approv…",
+  "usoTipos": 1
+ },
+ {
+  "id": 114,
+  "inactivo": false,
+  "resumen": "Compliance grid %ComplianceGridName% is no longer active for…",
+  "usoTipos": 1
+ },
+ {
+  "id": 118,
+  "inactivo": false,
+  "resumen": "Your Monthly Pending Activities Summary %SupplierName%, Here…",
+  "usoTipos": 1
+ },
+ {
+  "id": 122,
+  "inactivo": false,
+  "resumen": "Thank you for Completing the %ActivityName%! Dear %SupplierN…",
+  "usoTipos": 1
+ },
+ {
+  "id": 127,
+  "inactivo": false,
+  "resumen": "New audit with unlisted scheme Dear Customer Service team, A…",
+  "usoTipos": 1
+ },
+ {
+  "id": 129,
+  "inactivo": false,
+  "resumen": "Suspended Audits Report Dear %SupplierName% Please be advise…",
+  "usoTipos": 1
+ }
+]

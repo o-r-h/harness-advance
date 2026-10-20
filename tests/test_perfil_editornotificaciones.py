@@ -152,6 +152,72 @@ class TestChecksEstructurales(unittest.TestCase):
             hallazgos = check.run(self.root, [self.root / "src" / "Web" / "src" / "App.vue"], {})
         self.assertEqual(hallazgos[0]["resultado"], "error_check")
 
+    def test_web_contraste_se_omite_si_la_fase_no_toco_el_frontend(self):
+        check = cargar_check("web_contraste")
+        hallazgos = check.run(self.root, [self.root / "src" / "Api" / "Program.cs"], {})
+        self.assertEqual([h["resultado"] for h in hallazgos], ["ok"])
+
+    def test_web_contraste_reporta_error_check_sin_node(self):
+        check = cargar_check("web_contraste")
+        with mock.patch.object(check.shutil, "which", return_value=None):
+            hallazgos = check.run(self.root, [self.root / "src" / "Web" / "src" / "App.vue"], {})
+        self.assertEqual(hallazgos[0]["resultado"], "error_check")
+
+    def test_web_contraste_reporta_error_check_sin_navegador(self):
+        check = cargar_check("web_contraste")
+        vite = self.root / "src" / "Web" / "node_modules" / "vite" / "bin" / "vite.js"
+        vite.parent.mkdir(parents=True)
+        vite.write_text("", encoding="utf-8")
+        with mock.patch.object(check, "_navegador", return_value=None), \
+                mock.patch.object(check.shutil, "which", return_value="node"):
+            hallazgos = check.run(self.root, [self.root / "src" / "Web" / "src" / "App.vue"], {})
+        self.assertEqual(hallazgos[0]["resultado"], "error_check")
+        self.assertIn("Chrome", hallazgos[0]["detalle"])
+
+    def test_web_contraste_falla_con_el_placeholder_sin_capturar(self):
+        # Caso real de ISR-111269 (TablaValoresEjemplo.vue): placeholder de Element #c0c4cc = 1.75:1.
+        check = cargar_check("web_contraste")
+        bajo = {"tipo": "placeholder", "texto": "Sin capturar", "elemento": "td > div.el-input > input#valor-CustomerName",
+                "color": "#c0c4cc", "fondo": "#ffffff", "tam": "13px", "peso": "400", "ratio": 1.75, "minimo": 4.5}
+        resultado = {"estados": [
+            {"nombre": "modo lectura · visor correo", "alcanzado": True, "medidos": 190, "bajos": [bajo]},
+            {"nombre": "modo edición sin cambios", "alcanzado": True, "medidos": 150, "bajos": [dict(bajo)]}]}
+        hallazgos = check._reporte(resultado)
+        self.assertEqual(len(hallazgos), 1)
+        self.assertEqual((hallazgos[0]["resultado"], hallazgos[0]["severidad"]), ("fallo", "error"))
+        for dato in ("Sin capturar", "#c0c4cc", "#ffffff", "1.75:1", "input#valor-CustomerName",
+                     "modo lectura · visor correo, modo edición sin cambios"):
+            with self.subTest(dato=dato):
+                self.assertIn(dato, hallazgos[0]["detalle"])
+
+    def test_web_contraste_aprueba_y_avisa_estados_no_alcanzados(self):
+        check = cargar_check("web_contraste")
+        resultado = {"estados": [
+            {"nombre": "modo lectura · visor correo", "alcanzado": True, "medidos": 190, "bajos": []},
+            {"nombre": "conflicto en modo edición", "alcanzado": False, "error": "no apareció: botón \"Continuar\""}]}
+        hallazgos = {h["id"]: h for h in check._reporte(resultado)}
+        self.assertEqual(hallazgos["web_contraste"]["resultado"], "ok")
+        cobertura = hallazgos["web_contraste_cobertura"]
+        self.assertEqual((cobertura["resultado"], cobertura["severidad"]), ("fallo", "warning"))
+        self.assertIn("Continuar", cobertura["detalle"])
+
+    def test_web_contraste_api_simulada_sigue_el_contrato_de_borradores(self):
+        from urllib.parse import urlparse
+        check = cargar_check("web_contraste")
+        api = check.ApiSimulada(check.RECURSOS / "api")
+        status, _, _ = api.responder("GET", urlparse("/api/borradores/1223"), None)
+        self.assertEqual(status, 404)
+        status, datos, cabeceras = api.responder("PUT", urlparse("/api/borradores/1223"), {"cambios": [
+            {"campo": "Asunto", "lang": 2, "sectionContentId": None, "valor": "Nuevo"},
+            {"campo": "EstiloExtra", "lang": 2, "sectionContentId": None, "valor": ""}]})
+        self.assertEqual((status, cabeceras["X-Borrador-Nuevo"]), (200, "true"))
+        self.assertEqual([c["campo"] for c in datos["borrador"]["cambios"]], ["Asunto"])
+        campos = {(b["campo"], b["lang"]) for b in datos["borrador"]["base"]}
+        self.assertIn(("ContenidoSeccion", 2), campos)
+        api.escenario({"borrador": "conflicto"})
+        _, lista, _ = api.responder("GET", urlparse("/api/borradores"), None)
+        self.assertTrue(lista[0]["tieneConflictos"])
+
 
 class TestAgentesDelPerfil(unittest.TestCase):
     def leer(self, nombre: str) -> str:

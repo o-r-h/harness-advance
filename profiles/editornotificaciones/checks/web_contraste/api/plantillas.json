@@ -1,0 +1,26 @@
+[
+ {
+  "id": 1,
+  "secciones": "Header_0 + Body_0 + Bottom_0",
+  "inactivo": false,
+  "usoTipos": 39
+ },
+ {
+  "id": 2,
+  "secciones": "Header_0 + Body_0 + Body_1 + Bottom_0",
+  "inactivo": false,
+  "usoTipos": 0
+ },
+ {
+  "id": 3,
+  "secciones": "Body_0",
+  "inactivo": false,
+  "usoTipos": 1
+ },
+ {
+  "id": 4,
+  "secciones": "Header_0 + Body_0 + Bottom_0",
+  "inactivo": false,
+  "usoTipos": 2
+ }
+]
