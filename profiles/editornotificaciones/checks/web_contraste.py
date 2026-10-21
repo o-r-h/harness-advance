@@ -1,10 +1,12 @@
-"""Check estructural: contraste WCAG AA de todo texto visible de la pantalla 1, si la fase tocó el frontend.
+"""Check estructural: contraste WCAG AA de todo texto visible de las pantallas 1 y 3, si la fase tocó el frontend.
 
 Construye src/Web en una carpeta temporal (vite build), la sirve con una API simulada (respuestas
-capturadas del tipo 1223 en web_contraste/api; nunca toca Masterdb, la API real ni %LOCALAPPDATA%) y
-la abre en Chrome o Edge sin interfaz. web_contraste/recorrido.js lleva la app por estados
-representativos (lectura, cargas, visor correo y web, idiomas, lista de borradores, edición, guardado,
-confirmaciones, conflictos, foco) y web_contraste/medir.js mide cada texto, valor y placeholder.
+capturadas del tipo 1223 y de la sección compartida 3 en web_contraste/api; nunca toca Masterdb, la API
+real ni %LOCALAPPDATA%) y la abre en Chrome o Edge sin interfaz. web_contraste/recorrido.js lleva la app
+por estados representativos (pantalla 1: lectura, cargas, visor correo y web, idiomas, lista de
+borradores, edición, guardado, confirmaciones, conflictos, aviso de componentes; pantalla 3: lectura,
+validación sin guardar, diálogo de N, "Ver en el visor", conflicto; foco) y web_contraste/medir.js mide
+cada texto, valor y placeholder.
 Falla si alguno queda bajo 4.5:1 (3:1 en texto grande), con elemento, colores y ratio.
 
 Sin dependencias nuevas: solo la biblioteca estándar de Python y el Chrome/Edge instalado (o el que
@@ -79,16 +81,19 @@ def _hash(valor):
 
 
 class ApiSimulada:
-    """Respuestas de /api con el contrato de src/Api (ticket 4) a partir de web_contraste/api/*.json.
+    """Respuestas de /api con el contrato de src/Api (tickets 4 y 5) a partir de web_contraste/api/*.json.
 
-    El borrador vive en memoria; recorrido.js elige el escenario (sin borrador o con un borrador con
-    conflictos) y los retrasos por ruta para poder medir los estados de carga.
+    Los borradores (del tipo y de la sección compartida 3) viven en memoria; recorrido.js elige el
+    escenario (sin borrador o con un borrador con conflictos) y los retrasos por ruta para poder medir
+    los estados de carga.
     """
 
     def __init__(self, carpeta: Path):
         self.carpeta = carpeta
         self.tipo = self.json("tipo_1223.json")
+        self.componente = self.json("componente_seccion_3.json")
         self.borrador = None
+        self.borrador_componente = None
         self.retrasos: dict[str, int] = {}
         self.candado = threading.Lock()
 
@@ -117,6 +122,10 @@ class ApiSimulada:
                 self.retrasos = {k: int(v) for k, v in (datos.get("retrasos") or {}).items()}
             if "borrador" in datos:
                 self.borrador = self.con_conflicto() if datos["borrador"] == "conflicto" else None
+            if "componente" in datos:
+                modo = datos["componente"]
+                self.borrador_componente = None if not modo else self.nuevo_borrador_componente(
+                    self.componente["componente"]["valor"] + "<!-- cambio del check -->", conflicto=modo == "conflicto")
 
     def nuevo_borrador(self, cambios: list[dict]) -> dict:
         ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -140,6 +149,89 @@ class ApiSimulada:
                                       "componente": "marcador:CustomerName"}]
         return respuesta
 
+    # ---------- componentes compartidos (ticket 5): solo la sección 3
+
+    def nuevo_borrador_componente(self, valor: str, conflicto: bool = False) -> dict:
+        ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        actual = self.componente["componente"]["valor"]
+        base = actual + "<!-- base anterior -->" if conflicto else actual
+        return {"clase": "Seccion", "id": 3, "valor": valor, "base": {"valor": base, "hash": _hash(base)},
+                "creado": ahora, "modificado": ahora, "tieneCambio": valor != base}
+
+    def validaciones_componente(self, valor) -> list[dict]:
+        capturadas = (self.json("validar_seccion_3.json") or {}).get("validaciones") or []
+        base = (self.borrador_componente or {}).get("base", {}).get("valor", self.componente["componente"]["valor"])
+        # El texto sin cambios no agrega CSS: solo queda el aviso de reglas especiales del impacto.
+        return capturadas if valor != base else [v for v in capturadas if not v["codigo"].startswith("css2")]
+
+    def respuesta_componente(self) -> dict:
+        b = self.borrador_componente
+        actual = self.componente["componente"]["valor"]
+        conflicto = None
+        if b and b["base"]["hash"] != _hash(actual):
+            conflicto = {"clase": "Seccion", "id": 3, "valorBase": b["base"]["valor"], "valorActual": actual,
+                         "hashBase": b["base"]["hash"], "hashActual": _hash(actual), "motivo": "ValorCambiado",
+                         "conCambio": b["valor"] != b["base"]["valor"]}
+        return {"borrador": b, "componenteExiste": True, "conflicto": conflicto,
+                "impacto": self.componente["impacto"],
+                "validaciones": self.validaciones_componente(b["valor"]) if b else [], "eliminado": False}
+
+    def resumen_componente(self) -> list[dict]:
+        b = self.borrador_componente
+        if not b:
+            return []
+        impacto = self.componente["impacto"]
+        return [{"clase": "Seccion", "id": 3, "creado": b["creado"], "modificado": b["modificado"],
+                 "tieneCambio": b["tieneCambio"], "componenteExiste": True,
+                 "tieneConflicto": self.respuesta_componente()["conflicto"] is not None,
+                 "cantidadTipos": impacto["cantidadTipos"], "cantidadUsos": impacto["cantidadUsos"], "error": None}]
+
+    def responder_componente(self, metodo: str, ruta: str, cuerpo, no_encontrado) -> tuple[int, object, dict]:
+        seccion = "/api/componentes/seccion/3"
+        if metodo == "GET" and ruta == "/api/componentes/borradores":
+            return 200, self.resumen_componente(), {}
+        if not ruta.startswith(seccion):
+            return no_encontrado
+        resto = ruta[len(seccion):]
+        b = self.borrador_componente
+        if metodo == "GET" and resto == "":
+            return 200, dict(self.componente, borrador=b), {}
+        if metodo == "GET" and resto == "/impacto":
+            return 200, self.componente["impacto"], {}
+        if metodo == "POST" and resto == "/validar":
+            valor = (cuerpo or {}).get("valor")
+            if valor is None:
+                return 400, {"title": "Borrador inválido", "status": 400, "detail": "falta 'valor'"}, {}
+            base = b["base"]["valor"] if b else self.componente["componente"]["valor"]
+            return 200, {"clase": "Seccion", "id": 3, "tieneCambio": valor != base, "conBorrador": b is not None,
+                         "validaciones": self.validaciones_componente(valor)}, {}
+        if resto == "/borrador":
+            if metodo == "GET":
+                return (200, self.respuesta_componente(), {}) if b else no_encontrado
+            if metodo == "PUT":
+                valor = (cuerpo or {}).get("valor")
+                with self.candado:
+                    nuevo = b is None
+                    if nuevo:
+                        self.borrador_componente = self.nuevo_borrador_componente(valor)
+                    else:
+                        b.update(valor=valor, tieneCambio=valor != b["base"]["valor"],
+                                 modificado=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+                return 200, self.respuesta_componente(), {"X-Borrador-Nuevo": "true" if nuevo else "false"}
+            if metodo == "DELETE":
+                if not b:
+                    return no_encontrado
+                self.borrador_componente = None
+                return 204, None, {}
+        if metodo == "POST" and resto == "/borrador/conflictos/resolver" and b:
+            actual = self.componente["componente"]["valor"]
+            if (cuerpo or {}).get("accion") == "descartarCambio":
+                self.borrador_componente = None
+                return 200, dict(self.respuesta_componente(), eliminado=True), {}
+            b.update(base={"valor": actual, "hash": _hash(actual)}, tieneCambio=b["valor"] != actual)
+            return 200, self.respuesta_componente(), {}
+        return no_encontrado
+
     def responder(self, metodo: str, url, cuerpo) -> tuple[int, object, dict]:
         """(status, cuerpo JSON o None, cabeceras extra)."""
         ruta = url.path.rstrip("/")
@@ -150,6 +242,8 @@ class ApiSimulada:
         no_encontrado = (404, {"title": "No encontrado", "status": 404, "detail": f"{ruta} no existe en la API simulada"}, {})
         tipo_id = str(self.tipo["id"])
         borradores = f"/api/borradores/{tipo_id}"
+        if ruta.startswith("/api/componentes/"):
+            return self.responder_componente(metodo, ruta, cuerpo, no_encontrado)
 
         if metodo == "GET":
             fijas = {"/api/salud": "salud.json", "/api/tipos": "tipos.json",
@@ -355,7 +449,7 @@ def _reporte(resultado: dict) -> list[dict]:
         if resultado.get("error"):
             motivos.append(f"- recorrido: {resultado['error']}")
         hallazgos.append({"id": CHECK_ID + "_cobertura", "resultado": "fallo", "severidad": "warning",
-                          "detalle": "estados de la pantalla 1 que el recorrido no pudo medir (revisa "
+                          "detalle": "estados de las pantallas 1 y 3 que el recorrido no pudo medir (revisa "
                                      ".claude/checks/web_contraste/recorrido.js si la pantalla cambió):\n"
                                      + ("\n".join(motivos) or "- ningún estado medido")})
 

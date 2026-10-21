@@ -1,9 +1,14 @@
-// Recorrido de estados de la pantalla 1 (check web_contraste). Lo inyecta el servidor del check después
-// de medir.js. Lleva la app por estados representativos, mide cada uno con window.__contraste y manda el
-// resultado al servidor (POST /__contraste/resultado). La API es la simulada del check: el estado del
-// borrador y los retrasos de respuesta se fijan con POST /__contraste/escenario.
+// Recorrido de estados de las pantallas 1 y 3 (check web_contraste). Lo inyecta el servidor del check
+// después de medir.js. Lleva la app por estados representativos, mide cada uno con window.__contraste y
+// manda el resultado al servidor (POST /__contraste/resultado). La API es la simulada del check: el estado
+// de los borradores (del tipo y de la sección compartida 3) y los retrasos de respuesta se fijan con
+// POST /__contraste/escenario.
 (function () {
   const TIPO = '1223'
+  // Pantalla 3: la sección compartida 3 (cabecera en inglés de 34 tipos, 2 de ellos Legacy) desde el tipo 1223
+  const COMPONENTE = '/componente/seccion/3?tipo=' + TIPO + '&lang=2'
+  // Texto con CSS fuera de CSS2: la API simulada responde la advertencia capturada de la API real
+  const CSS3 = '<td class="notificacion-cabecera" style="border-radius:4px;box-shadow:0 0 2px #000">X</td>'
   const esperar = ms => new Promise(resolve => setTimeout(resolve, ms))
 
   function enviar (ruta, datos) {
@@ -56,6 +61,14 @@
     const r = await hasta(router, 'vue-router en .app')
     if (r.currentRoute.fullPath !== ruta) await r.push(ruta).catch(() => {})
   }
+
+  // Navega sin esperar: la ruta puede quedar detenida en una confirmación de salida.
+  async function irSinEsperar (ruta) {
+    const r = await hasta(router, 'vue-router en .app')
+    r.push(ruta).catch(() => {})
+  }
+
+  const textoDe = el => (el ? el.textContent.replace(/\s+/g, ' ') : '')
 
   function escribir (input, valor) {
     input.value = valor
@@ -246,6 +259,98 @@
       await esperar(200)
       await visorListo()
       await esperar(200)
+    })
+
+    // ---------- ticket 5: aviso de componentes (pantalla 1) y pantalla 3 ----------
+
+    await estado('pantalla 1 · aviso de componentes compartidos con borrador', async () => {
+      await escenario({ borrador: null, componente: 'cambio' })
+      await ir('/editor')
+      await esperar(300)
+      await ir('/editor/' + TIPO + '?lang=2')
+      await hasta(() => document.getElementById('titulo-aviso-componentes'), 'aviso de componentes')
+      await visorListo()
+      await esperar(300)
+    }, { foco: true })
+
+    await estado('pantalla 3 · cargando el componente', async () => {
+      await escenario({ componente: null, retrasos: { 'GET /api/componentes/seccion/3': 2500 } })
+      const abrir = await hasta(() => document.querySelector('.aviso-componentes__abrir'), 'enlace Abrir sección')
+      abrir.click()
+      await cargaVisible('Cargando el componente')
+    })
+    await escenario({ retrasos: {} })
+
+    await estado('pantalla 3 · lectura con impacto y tipos Legacy', async () => {
+      await hasta(() => document.getElementById('titulo-impacto-aviso'), 'aviso de impacto')
+      await hasta(() => [...document.querySelectorAll('.chip-uso')].some(c => c.textContent.includes('Legacy')), 'marca Legacy de la API')
+      await visorListo()
+      await esperar(300)
+    }, { foco: true })
+
+    await estado('pantalla 3 · validando el texto sin guardar', async () => {
+      await escenario({ retrasos: { 'POST /api/componentes/seccion/3/validar': 2500 } })
+      escribir(await hasta(() => document.getElementById('contenido-componente'), 'contenido editable'), CSS3)
+      await hasta(() => textoDe(document.querySelector('.validaciones__nota')).includes('Validando'), 'nota "Validando el texto actual"')
+      await esperar(300)
+    })
+    await escenario({ retrasos: {} })
+
+    await estado('pantalla 3 · advertencia CSS2 antes de guardar', async () => {
+      await hasta(() => textoDe(document.querySelector('.validaciones__nota')).includes('Del texto actual') &&
+        [...document.querySelectorAll('.validacion__mensaje')].some(m => m.textContent.includes('CSS2')),
+      'advertencia CSS2 del texto actual', 15000)
+      await esperar(300)
+    }, { foco: true })
+
+    await estado('pantalla 3 · diálogo "Guardar en el original" (N)', async () => {
+      await pulsar('Guardar en el original')
+      const campo = await hasta(() => { const c = document.getElementById('confirmar-n'); return visible(c) && c }, 'campo de N')
+      await esperar(500)
+      escribir(campo, String(document.querySelector('.confirmar-original') &&
+        textoDe(document.querySelector('label[for="confirmar-n"]')).replace(/\D+/g, '')))
+      await esperar(200)
+    }, { foco: true })
+
+    await estado('pantalla 3 · borrador del componente guardado', async () => {
+      await pulsar('Guardar en el original', document.querySelector('.confirmar-original .el-dialog__footer'))
+      await hasta(() => document.getElementById('titulo-borrador-componente'), 'aviso del borrador del componente')
+      await hasta(() => !document.querySelector('.confirmar-original') || !visible(document.querySelector('.confirmar-original')), 'cierre del diálogo de N')
+      await esperar(400)
+    })
+
+    await estado('pantalla 3 · "Ver en el visor" de un tipo afectado', async () => {
+      await pulsar('Ver en el visor', document.getElementById('impacto'))
+      await hasta(() => {
+        const d = document.querySelector('.visor-impacto')
+        return visible(d) && d.querySelector('iframe') &&
+          !d.querySelector('.el-loading-mask:not([style*="display: none"])')
+      }, 'visor del tipo afectado', 15000)
+      await esperar(500)
+    }, { foco: true })
+
+    await estado('pantalla 3 · conflicto con Masterdb', async () => {
+      await pulsar('Cerrar', document.querySelector('.visor-impacto .el-dialog__footer'))
+      await esperar(400)
+      await escenario({ componente: 'conflicto' })
+      await ir('/editor')
+      await esperar(300)
+      await ir(COMPONENTE)
+      await hasta(() => document.querySelector('.aviso-borrador--conflicto'), 'conflicto del componente')
+      await visorListo()
+      await esperar(300)
+    }, { foco: true })
+
+    await estado('pantalla 3 · conflicto con cambios sin guardar', async () => {
+      escribir(document.getElementById('contenido-componente'), CSS3)
+      await hasta(() => document.querySelector('.aviso-borrador__bloqueo'), 'aviso "Guarda o revierte"')
+      await hasta(() => textoDe(document.querySelector('.validaciones__nota')).includes('Del texto actual'), 'validación del texto actual', 15000)
+      await esperar(300)
+    })
+
+    await estado('pantalla 3 · confirmación "Cambios sin guardar"', async () => {
+      await irSinEsperar('/editor')
+      await confirmacion()
     })
   }
 

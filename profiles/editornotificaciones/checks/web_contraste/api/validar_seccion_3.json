@@ -1,0 +1,20 @@
+{
+  "clase": "Seccion",
+  "id": 3,
+  "tieneCambio": true,
+  "conBorrador": false,
+  "validaciones": [
+    {
+      "nivel": "advertencia",
+      "codigo": "css2",
+      "mensaje": "Sección compartida #3: esto solo trabaja con CSS2. El cambio agrega CSS fuera de CSS2: border-radius, box-shadow. No bloquea el guardado ni el script: queda a criterio del desarrollador.",
+      "componente": "seccion:#3"
+    },
+    {
+      "nivel": "advertencia",
+      "codigo": "impacto_reglas_especiales",
+      "mensaje": "Sección compartida #3: entre los 34 tipos afectados hay 4 con reglas especiales en SPs (reglas-especiales.json): 1539, 1541, 1543, 1569. Revisa que el cambio no rompa su lógica fija.",
+      "componente": "seccion:#3"
+    }
+  ]
+}

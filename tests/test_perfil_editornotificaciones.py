@@ -218,6 +218,57 @@ class TestChecksEstructurales(unittest.TestCase):
         _, lista, _ = api.responder("GET", urlparse("/api/borradores"), None)
         self.assertTrue(lista[0]["tieneConflictos"])
 
+    def test_web_contraste_api_simulada_sigue_el_contrato_de_componentes(self):
+        # Ticket 5: pantalla 3 (sección compartida 3) y el aviso de componentes de la pantalla 1.
+        from urllib.parse import urlparse
+        check = cargar_check("web_contraste")
+        api = check.ApiSimulada(check.RECURSOS / "api")
+        seccion = "/api/componentes/seccion/3"
+        status, datos, _ = api.responder("GET", urlparse(seccion), None)
+        self.assertEqual(status, 200)
+        self.assertIsNone(datos["borrador"])
+        # buildType viene de la API en cada uso: hay tipos Legacy (0) para la marca de la pantalla 3.
+        self.assertEqual({u["buildType"] for u in datos["impacto"]["usos"]}, {0, 1})
+        self.assertEqual(api.responder("GET", urlparse(seccion + "/borrador"), None)[0], 404)
+        self.assertEqual(api.responder("GET", urlparse("/api/componentes/borradores?tipoId=1223"), None)[1], [])
+
+        # Validar sin guardar: CSS fuera de CSS2 → advertencia css2; el texto de Masterdb no la trae.
+        css3 = '<td class="notificacion-cabecera" style="box-shadow:0 0 2px #000">X</td>'
+        status, validado, _ = api.responder("POST", urlparse(seccion + "/validar"), {"valor": css3})
+        self.assertEqual((status, validado["tieneCambio"], validado["conBorrador"]), (200, True, False))
+        self.assertIn("css2", [v["codigo"] for v in validado["validaciones"]])
+        _, igual, _ = api.responder("POST", urlparse(seccion + "/validar"), {"valor": datos["componente"]["valor"]})
+        self.assertNotIn("css2", [v["codigo"] for v in igual["validaciones"]])
+        self.assertEqual(api.responder("POST", urlparse(seccion + "/validar"), {})[0], 400)
+        self.assertIsNone(api.borrador_componente, "validar no debe guardar")
+
+        status, guardado, cabeceras = api.responder("PUT", urlparse(seccion + "/borrador"), {"valor": css3})
+        self.assertEqual((status, cabeceras["X-Borrador-Nuevo"]), (200, "true"))
+        self.assertTrue(guardado["borrador"]["tieneCambio"])
+        self.assertIsNone(guardado["conflicto"])
+        _, lista, _ = api.responder("GET", urlparse("/api/componentes/borradores?tipoId=1223"), None)
+        self.assertEqual((lista[0]["clase"], lista[0]["id"], lista[0]["tieneConflicto"]), ("Seccion", 3, False))
+
+        api.escenario({"componente": "conflicto"})
+        _, conflicto, _ = api.responder("GET", urlparse(seccion + "/borrador"), None)
+        self.assertEqual(conflicto["conflicto"]["motivo"], "ValorCambiado")
+        _, resuelto, _ = api.responder("POST", urlparse(seccion + "/borrador/conflictos/resolver"),
+                                       {"accion": "tomarActual"})
+        self.assertIsNone(resuelto["conflicto"])
+        self.assertEqual(api.responder("DELETE", urlparse(seccion + "/borrador"), None)[0], 204)
+        self.assertEqual(api.responder("GET", urlparse("/api/componentes/seccion/9/impacto"), None)[0], 404)
+
+    def test_web_contraste_recorre_la_pantalla_3_y_el_aviso_de_componentes(self):
+        recorrido = (PERFIL / "checks" / "web_contraste" / "recorrido.js").read_text(encoding="utf-8")
+        for estado in ("pantalla 1 · aviso de componentes compartidos con borrador",
+                       "pantalla 3 · lectura con impacto y tipos Legacy",
+                       "pantalla 3 · advertencia CSS2 antes de guardar",
+                       "pantalla 3 · diálogo \"Guardar en el original\" (N)",
+                       "pantalla 3 · \"Ver en el visor\" de un tipo afectado",
+                       "pantalla 3 · conflicto con Masterdb"):
+            with self.subTest(estado=estado):
+                self.assertIn("estado('" + estado + "'", recorrido)
+
 
 class TestAgentesDelPerfil(unittest.TestCase):
     def leer(self, nombre: str) -> str:
