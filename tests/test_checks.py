@@ -110,6 +110,44 @@ class TestCheckProhibited(unittest.TestCase):
         self.assertIn("IE11", hallazgos[0]["detalle"])
 
 
+class TestCheckProhibitedExcluir(unittest.TestCase):
+    """`excluir`: prefijos de ruta (relativa a la raíz, con /) donde la regla no aplica."""
+
+    def setUp(self):
+        self.rules = {"prohibido": [
+            {"id": "no_ddl", "archivos": [".cs"], "severidad": "error",
+             "patron": r"(?i)\bCREATE\s+TABLE\b", "mensaje": "sin DDL",
+             "excluir": ["tests/Proyecto.IntegracionSql/"]},
+            {"id": "no_exec", "archivos": [".cs"], "severidad": "error",
+             "patron": r"ExecuteNonQuery", "mensaje": "sin exec"}]}
+        self.linea = [(3, 'sql = "CREATE TABLE T (Id INT)"; cmd.ExecuteNonQuery();')]
+
+    def test_la_regla_no_aplica_dentro_del_prefijo_excluido(self):
+        hallazgos = checks.check_prohibited("tests/Proyecto.IntegracionSql/Base.cs", self.linea, self.rules)
+        self.assertEqual([h["id"] for h in hallazgos], ["no_exec"])
+
+    def test_la_regla_sigue_aplicando_fuera_del_prefijo(self):
+        for ruta in ("src/Api/Datos/Lector.cs", "tests/Proyecto.Tests/Base.cs",
+                     "tests/Proyecto.IntegracionSqlOtro/Base.cs"):
+            with self.subTest(ruta=ruta):
+                hallazgos = checks.check_prohibited(ruta, self.linea, self.rules)
+                self.assertEqual(sorted(h["id"] for h in hallazgos), ["no_ddl", "no_exec"])
+
+    def test_acepta_barras_invertidas_y_prefijo_sin_barra_final(self):
+        reglas = {"prohibido": [dict(self.rules["prohibido"][0], excluir=["tests\\Proyecto.IntegracionSql"])]}
+        self.assertEqual(checks.check_prohibited("tests/Proyecto.IntegracionSql/Base.cs", self.linea, reglas), [])
+        self.assertEqual(len(checks.check_prohibited("tests/Proyecto.IntegracionSqlOtro/Base.cs", self.linea, reglas)), 1)
+
+    def test_no_permite_escapar_con_rutas_relativas(self):
+        hallazgos = checks.check_prohibited("tests/Proyecto.IntegracionSql/../../src/Api/X.cs", self.linea, self.rules)
+        self.assertIn("no_ddl", [h["id"] for h in hallazgos])
+
+    def test_excluir_invalido_es_error_de_configuracion(self):
+        reglas = {"prohibido": [dict(self.rules["prohibido"][0], excluir="tests/")]}
+        hallazgos = checks.check_prohibited("src/X.cs", self.linea, reglas)
+        self.assertEqual(hallazgos[0]["resultado"], "error_check")
+
+
 class TestCheckNoNewDeps(unittest.TestCase):
     def setUp(self):
         self.rules = {"no_new_deps": {

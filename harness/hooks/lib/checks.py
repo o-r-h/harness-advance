@@ -93,6 +93,30 @@ def check_audit_comments(rel_path: str, texto_nuevo: str,
     return hallazgos
 
 
+def _ruta_normalizada(ruta: str) -> str:
+    """Ruta relativa con / y sin segmentos '.' ni '..' (no se puede escapar de un prefijo)."""
+    partes: list[str] = []
+    for parte in ruta.replace("\\", "/").split("/"):
+        if parte in ("", "."):
+            continue
+        if parte == "..":
+            if partes:
+                partes.pop()
+            continue
+        partes.append(parte)
+    return "/".join(partes)
+
+
+def _excluida(rel_path: str, excluir: list[str]) -> bool:
+    """True si la ruta cae dentro de alguno de los prefijos de carpeta de `excluir`."""
+    ruta = _ruta_normalizada(rel_path).lower()
+    for prefijo in excluir:
+        carpeta = _ruta_normalizada(prefijo).lower()
+        if carpeta and (ruta == carpeta or ruta.startswith(carpeta + "/")):
+            return True
+    return False
+
+
 def check_prohibited(rel_path: str, agregadas: list[tuple[int, str]],
                      rules: dict) -> list[dict]:
     extension = Path(rel_path).suffix.lower()
@@ -100,6 +124,18 @@ def check_prohibited(rel_path: str, agregadas: list[tuple[int, str]],
     for regla in rules.get("prohibido") or []:
         if extension not in [e.lower() for e in regla.get("archivos") or []]:
             continue
+        # `excluir`: carpetas (relativas a la raíz del proyecto) donde la regla no aplica.
+        # Es una excepción explícita y visible en rules.json; una lista mal formada es un
+        # error de configuración, nunca un permiso silencioso.
+        excluir = regla.get("excluir")
+        if excluir is not None:
+            if not isinstance(excluir, list) or not all(isinstance(e, str) for e in excluir):
+                hallazgos.append(_hallazgo(regla.get("id", "?"), "error",
+                                           "'excluir' en rules.json debe ser una lista de rutas",
+                                           resultado="error_check"))
+                continue
+            if _excluida(rel_path, excluir):
+                continue
         try:
             patron = re.compile(regla["patron"])
         except re.error as error:

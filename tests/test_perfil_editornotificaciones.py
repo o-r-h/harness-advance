@@ -11,7 +11,7 @@ from unittest import mock
 RAIZ = Path(__file__).resolve().parents[1]
 PERFIL = RAIZ / "profiles" / "editornotificaciones"
 sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
-from lib import contracts  # noqa: E402
+from lib import checks, contracts  # noqa: E402
 
 
 def regla(rules: dict, regla_id: str) -> re.Pattern:
@@ -48,6 +48,19 @@ class TestReglasDelPerfil(unittest.TestCase):
             with self.subTest(regla=r["id"]):
                 re.compile(r["patron"])
                 self.assertGreater(len(r["mensaje"]), 15)
+
+    def test_la_unica_excepcion_es_localdb_en_las_pruebas_de_integracion(self):
+        # Aprobado por el humano el 2026-10-20 (ticket 6): DDL y ejecución solo contra una base
+        # desechable de LocalDB, en el proyecto de pruebas de integración. Nunca en src/.
+        excepciones = {r["id"]: r["excluir"] for r in self.rules["prohibido"] if "excluir" in r}
+        self.assertEqual(excepciones, {
+            "no_sql_exec": ["tests/EditorNotificaciones.IntegracionSql/"],
+            "no_ddl": ["tests/EditorNotificaciones.IntegracionSql/"]})
+        linea = [(1, 'var sql = "CREATE TABLE T (Id INT)"; cmd.ExecuteNonQuery();')]
+        self.assertEqual(checks.check_prohibited(
+            "tests/EditorNotificaciones.IntegracionSql/Base.cs", linea, self.rules), [])
+        self.assertEqual(sorted(h["id"] for h in checks.check_prohibited(
+            "src/Api/Datos/MasterdbReader.cs", linea, self.rules)), ["no_ddl", "no_sql_exec"])
 
     def test_grupos_y_checks_estructurales_existen(self):
         for grupo, miembros in self.rules["grupos"].items():

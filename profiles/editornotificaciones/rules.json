@@ -6,13 +6,13 @@
     "nota": "Repo nuevo con historial git: no usa los bloques [B]/[E] del código legacy"
   },
   "prohibido": [
-    { "id": "no_sql_exec", "archivos": [".cs"], "severidad": "error",
+    { "id": "no_sql_exec", "archivos": [".cs"], "excluir": ["tests/EditorNotificaciones.IntegracionSql/"], "severidad": "error",
       "patron": "\\b(ExecuteNonQuery|ExecuteScalar)(Async)?\\s*\\(|\\.Execute(Async)?\\s*\\(|\\bSqlBulkCopy\\b",
       "mensaje": "La app nunca ejecuta comandos contra SQL Server: Masterdb se lee solo con Query/QueryAsync de Dapper desde MasterdbReader; los borradores van por EF Core (SaveChanges) en SQLite y los cambios salen como script .sql" },
     { "id": "no_sp_con_escritura", "archivos": [".cs", ".json", ".js", ".vue"], "severidad": "error",
       "patron": "CSGetCustomerNotificationDetail",
       "mensaje": "CSGetCustomerNotificationDetail NO es de solo lectura (puede hacer UPDATE a CustomerNotificationHistory): la app no lo invoca; sus columnas se simulan o se capturan a mano" },
-    { "id": "no_ddl", "archivos": [".cs"], "severidad": "error",
+    { "id": "no_ddl", "archivos": [".cs"], "excluir": ["tests/EditorNotificaciones.IntegracionSql/"], "severidad": "error",
       "patron": "(?i)\\b(ALTER|CREATE|DROP|TRUNCATE)\\s+(TABLE|PROC|PROCEDURE|VIEW|INDEX|TRIGGER|FUNCTION|SCHEMA)\\b",
       "mensaje": "Cero cambios en tablas de Masterdb: ni la app ni los scripts generados contienen DDL, solo INSERT/UPDATE de configuración" },
     { "id": "no_credenciales", "archivos": [".cs", ".json", ".js", ".vue"], "severidad": "error",
