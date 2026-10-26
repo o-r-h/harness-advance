@@ -61,6 +61,11 @@ sientes tentado a hacerlo, es que falta un subcomando.
    ejecutor** — un verificador que leyó el razonamiento ya está contaminado.
    Guarda su JSON y córrelo: `CLI record-veredicto --archivo <ruta>`.
    Si rechazó, el CLI ya incrementó el intento: vuelve al paso 2.
+
+   Lo que se escriba en `.claude/biblioteca/` mientras la fase está abierta (por
+   ejemplo, un hallazgo resuelto a mitad de fase) aparece en el diff que ven
+   `run-checks` y el escéptico, pero **no es parte del cambio de la fase**: díselo
+   al escéptico para que no lo juzgue como tal.
 6. **Guion de prueba:** si el escéptico aprobó y la fase requiere prueba manual,
    deriva del `criterio_exito` una lista de pasos concretos —clic por clic, con qué
    debería verse en cada uno— y córrela:
@@ -84,14 +89,20 @@ ni pases a la fase siguiente. Reporta al humano, en este orden:
 3. Si el patrón es un fallo del escéptico que ya apareció más de una vez,
    propón la corrección según la escalera *dónde va cada corrección*: la pieza más
    barata que lo habría atrapado. Ese es el ciclo de mejora del harness: convertir
-   juicio caro en verificación barata. Después ejecuta "Al cerrar una fase".
+   juicio caro en verificación barata.
+
+Haya o no patrón, después del reporte ejecuta siempre "Al cerrar una fase": la
+fase escalada es la que más enseña. Esto vale también cuando la fase escaló por un
+`/fase-fallo`.
 
 ## Al cerrar una fase
 
 Aplica a toda fase que quede `aprobada` (tras `/fase-ok` o directamente tras
 `record-veredicto`) o `escalado`. Corre de inmediato, antes de cualquier
-`CLI open-fase` de la fase siguiente: `record-hallazgos` solo funciona sobre la
-fase activa.
+`CLI open-fase` de la fase siguiente: sin más argumentos, `record-hallazgos`
+registra sobre la fase activa. Si la fase siguiente ya se abrió, registra la
+propuesta igual, indicando la fase cerrada:
+`CLI record-hallazgos --archivo <ruta> --ticket <id> --fase <fase>`.
 
 1. Invoca al **subagente `reflector`, con contexto aislado**. Dale: la fase de
    `plan.json`; el `historial_fallos` completo; el `checks.json` y el
@@ -101,10 +112,14 @@ fase activa.
    está contaminado.
 2. Guarda su JSON en `.harness/tickets/<id>/<fase>/propuesta_hallazgos.json` y
    córrelo: `CLI record-hallazgos --archivo <ruta>`. Una propuesta vacía
-   (`"hallazgos": []`) también se registra.
-3. Muestra el contenido de `hallazgos.md` y explica al humano sus opciones:
-   `/hallazgo-ok <id>`, `/hallazgo-editar <id> "<lección>"`,
-   `/hallazgo-no <id> "<motivo>"` y `/hallazgo "<lección>"` para proponer una
+   (`"hallazgos": []`) también se registra. Si el CLI rechaza la propuesta,
+   devuélvele el error al reflector **una vez** para que la corrija y vuelve a
+   registrarla; si falla de nuevo, avisa al humano con el error tal cual y termina
+   el turno: no escribas `hallazgos.json` a mano.
+3. Muestra el contenido de `hallazgos.md` y explica al humano sus opciones, con la
+   referencia completa que trae cada hallazgo (`TICKET/fase_N/hN`):
+   `/hallazgo-ok <ref>`, `/hallazgo-editar <ref> "<lección>"`,
+   `/hallazgo-no <ref> "<motivo>"` y `/hallazgo "<lección>"` para proponer una
    propia. Los hallazgos pendientes no bloquean la fase ni el ticket. Tras aprobar,
    sugiere versionar `.claude/biblioteca/` con el proyecto.
 4. **El turno termina ahí.** No resuelvas hallazgos por tu cuenta.

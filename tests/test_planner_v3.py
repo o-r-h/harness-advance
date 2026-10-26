@@ -45,7 +45,23 @@ class TestPlannerV3(unittest.TestCase):
                 planes.append(datos)
         self.assertTrue(planes, "la skill debe incluir un ejemplo completo de plan.json")
         for plan in planes:
-            self.assertEqual(contracts.validate_plan(plan), [])
+            errores = contracts.validate_plan(plan)
+            self.assertEqual(errores, [], msg="; ".join(errores))
+
+    def test_conoce_la_biblioteca_como_entrada_opcional(self):
+        for esperado in ("biblioteca", ".claude/biblioteca/INDEX.md", "entradas/",
+                         "rechazad", '"confianza": "por_confirmar"'):
+            with self.subTest(esperado=esperado):
+                self.assertIn(esperado, self.texto)
+        entradas = self.texto.split("## Entradas", 1)[1].split("\n---", 1)[0]
+        self.assertIn("INDEX.md", entradas)
+        checklist = self.texto.split("## Checklist antes de entregar el plan", 1)[1]
+        self.assertIn("biblioteca", checklist)
+
+    def test_aclara_que_cambia_en_la_v3(self):
+        self.assertIn("Skill: task-planner-v3", self.texto)
+        self.assertNotIn("de la v2, sin cambios", self.texto)
+        self.assertIn("La v3", self.texto)
 
 
 if __name__ == "__main__":

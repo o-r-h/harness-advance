@@ -16,7 +16,9 @@ del proyecto** — solo produce el documento de plan.
 > **Qué cambia respecto a la v1:** la v1 producía planes bien estructurados pero "en el aire" — no obligaba a
 > mirar el código. Un plan que dice "ajustar el backend" sin saber qué archivo, qué función o qué ya existe
 > genera subtareas inventadas. La v2 **exige una fase de anclaje en el código antes de planificar** y que cada
-> afirmación del plan quede etiquetada como **verificada** o **supuesto**.
+> afirmación del plan quede etiquetada como **verificada** o **supuesto**. La v3 conserva todo eso y agrega
+> dos cosas: emite también `plan.json`, que el harness valida y ejecuta fase por fase, y consulta la
+> biblioteca de lecciones del proyecto (`.claude/biblioteca/INDEX.md`), tratando cada lección como hipótesis.
 
 ## Cuándo usar esta skill
 
@@ -33,6 +35,15 @@ y ofrecer ayudar directamente en lugar de generar un plan.
 2. **`available_agents`** (opcional): roles disponibles para asignar. Si el usuario los da, **usar solo esos**.
    Si no, usar la tabla por defecto (abajo) y **aclararlo en el plan**.
 3. **`codebase`** (implícito): el repositorio de trabajo. Si existe, **es obligatorio anclarse en él** (Fase 0).
+4. **`.claude/biblioteca/INDEX.md`** (opcional): el índice de la biblioteca de lecciones del proyecto, que
+   dejan las fases de tickets anteriores. Cada línea de `## Aprobadas` trae la clasificación, la señal (o la
+   lección, si no tiene señal) y el archivo `entradas/<archivo>.md`; **el índice no trae la lección
+   completa**. Cuando la señal coincide con lo que pide el ticket, abre
+   `.claude/biblioteca/entradas/<archivo>.md` y léela entera. Las de `## Rechazadas — no volver a proponer`
+   **no se aplican**. Una lección es hipótesis: se verificó en otro ticket y puede no valer en este (DA8).
+   Si el plan la usa, la ancla en la fase como
+   `{"ref": ".claude/biblioteca/entradas/<archivo>.md", "confianza": "por_confirmar"}` y la Fase 0 la
+   re-verifica en el código como cualquier otro supuesto.
 
 ---
 
@@ -124,7 +135,8 @@ prioridad en vez de forzar uno solo.
 
 ### 1. `plan.md` — para el humano
 
-El mismo documento de 12 secciones de la v2, sin cambios. Es lo que el usuario lee.
+El mismo documento de 12 secciones de la v2; lo único que cambia es la línea `Skill: task-planner-v3` del
+encabezado. Es lo que el usuario lee.
 Se genera como `<nombre-de-la-tarea>-plan.md` (o `implementation-plan.md` si no hay nombre claro) con esta
 estructura exacta:
 
@@ -278,6 +290,8 @@ Cómo llenar cada campo nuevo:
 - [ ] Cada subtarea tiene un agente sugerido de `available_agents` (nunca inventado).
 - [ ] Hay tabla de archivos afectados y checklist de aceptación mapeado a los CA del ticket.
 - [ ] Otro agente podría tomar el plan y ejecutarlo sin volver a preguntar lo básico.
+- [ ] Si existe `.claude/biblioteca/INDEX.md`, se leyó; cada lección de la biblioteca que usa el plan se
+      abrió completa en `entradas/` y quedó anclada como `por_confirmar`, y ninguna rechazada se aplicó.
 - [ ] Se emitió `plan.json` además de `plan.md`, y ambos describen el mismo plan.
 - [ ] Se leyó el `rules.json` del perfil y todos los `checks_deterministas` existen ahí.
 - [ ] `plan.json` pasa la validación:

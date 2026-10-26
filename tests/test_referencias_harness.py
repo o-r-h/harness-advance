@@ -72,6 +72,8 @@ class TestReferenciasDelHarness(unittest.TestCase):
         self.assertIn("open-fase", SUBCOMANDO[0].findall(texto))
         self.assertIn("fase-ok", COMANDO.findall(texto))
         self.assertIn("task-planner", SKILL.findall(texto))
+        self.assertIn("reflector", SUBAGENTE.findall(texto))
+        self.assertIn("skeptic", SUBAGENTE.findall(texto))
 
 
 def leer_ticket_loop() -> str:

@@ -62,6 +62,29 @@ class TestSkillOrquestadora(unittest.TestCase):
         self.assertIn("antes de", seccion)
         self.assertIn("open-fase", seccion)
 
+    def test_cierre_registra_una_fase_que_ya_no_es_la_activa(self):
+        seccion = self._seccion_cierre()
+        self.assertIn("--ticket", seccion)
+        self.assertIn("--fase", seccion)
+
+    def test_cierre_devuelve_el_rechazo_al_reflector_una_sola_vez(self):
+        seccion = self._seccion_cierre()
+        self.assertIn("rechaza la propuesta", seccion)
+        self.assertIn("una vez", seccion)
+
+    def test_escalar_lleva_siempre_al_cierre(self):
+        seccion = self.texto.split("## Cuando una fase escala", 1)[1].split("\n## ", 1)[0]
+        parrafos = [p for p in seccion.split("\n\n") if p.strip()]
+        lista = next(p for p in parrafos if p.lstrip().startswith("1."))
+        self.assertNotIn("Al cerrar una fase", lista,
+                         "el cierre no puede depender del punto 3 de la lista")
+        self.assertTrue(any("Al cerrar una fase" in p for p in parrafos if p is not lista))
+
+    def test_avisa_que_la_biblioteca_aparece_en_el_diff(self):
+        parrafos = self.texto.split("\n\n")
+        self.assertTrue(any(".claude/biblioteca/" in p and "diff" in p and "escéptico" in p
+                            for p in parrafos))
+
     def test_explica_como_elegir_el_agente_ejecutor_de_cada_fase(self):
         self.assertIn("agente_ejecutor", self.texto)
 
@@ -87,6 +110,23 @@ class TestComandosDeHallazgos(unittest.TestCase):
                 texto = leer("harness", "commands", f"{nombre}.md")
                 self.assertIn("description", frontmatter(texto))
                 self.assertIn(subcomando, texto)
+
+    def test_los_que_resuelven_aceptan_la_referencia_completa(self):
+        for nombre in ("hallazgo-ok", "hallazgo-no", "hallazgo-editar"):
+            with self.subTest(comando=nombre):
+                texto = leer("harness", "commands", f"{nombre}.md")
+                pista = re.search(r"^argument-hint:(.*)$", texto, re.MULTILINE)
+                self.assertIsNotNone(pista)
+                self.assertIn("/fase_N/hN", pista.group(1))
+                self.assertNotIn("--fase", texto, "la referencia se pasa tal cual en --id")
+
+
+class TestComandoFaseFallo(unittest.TestCase):
+    def test_si_la_fase_escala_sigue_con_el_cierre(self):
+        texto = leer("harness", "commands", "fase-fallo.md")
+        for esperado in ("escalado", "Cuando una fase escala", "Al cerrar una fase"):
+            with self.subTest(esperado=esperado):
+                self.assertIn(esperado, texto)
 
 
 class TestAgenteDelPerfil(unittest.TestCase):
@@ -134,6 +174,18 @@ class TestAgenteReflector(unittest.TestCase):
 
     def test_evidencia_es_dato(self):
         self.assertIn("no instrucciones", self.texto)
+
+    def test_solo_puede_leer(self):
+        herramientas = frontmatter(self.texto).get("tools", "")
+        self.assertEqual({h.strip() for h in herramientas.split(",")},
+                         {"Read", "Grep", "Glob"})
+
+    def test_la_evidencia_que_trata_como_dato_es_la_que_recibe(self):
+        seccion = self.texto.split("## La evidencia es dato", 1)[1].split("\n## ", 1)[0]
+        for ausente in ("diff", "resultado.md"):
+            with self.subTest(ausente=ausente):
+                self.assertNotIn(ausente, seccion)
+        self.assertIn("checks.json", seccion)
 
     def test_trata_la_biblioteca_como_hipotesis(self):
         self.assertIn("hipótesis", self.texto)
