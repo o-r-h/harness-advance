@@ -7,6 +7,7 @@ aquí. El modelo invoca estos subcomandos; no escribe el estado a mano.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -309,63 +310,117 @@ def cmd_record_manual(args) -> int:
     return 0
 
 
-def _fase_objetivo(raiz: Path, ticket: str | None, fase: str | None) -> tuple[str, str] | None:
-    """(ticket_id, fase_id) pedidos, completando lo que falte desde current.json."""
+# Referencia completa de un hallazgo, tal como la imprime 'hallazgos-pendientes'.
+RE_REF_HALLAZGO = re.compile(r"^([A-Za-z0-9][\w.-]*)/(fase_\d+)/(h\d+)$")
+RE_TICKET_ID = re.compile(r"^[A-Za-z0-9][\w.-]*$")
+
+
+def _validar_ticket_y_fase(ticket: str | None, fase: str | None) -> str | None:
+    """Mensaje de error si --ticket/--fase vienen mal formados; None si están bien."""
+    if ticket is not None and not RE_TICKET_ID.match(ticket):
+        return f"--ticket '{ticket}' no es un id de ticket válido"
+    if fase is not None and not contracts.RE_FASE_ID.match(fase):
+        return f"--fase '{fase}' no tiene el formato esperado fase_N"
+    return None
+
+
+def _fase_objetivo(raiz: Path, ref: str, ticket: str | None,
+                   fase: str | None) -> tuple[str, str, str] | str:
+    """(ticket_id, fase_id, hallazgo_id) del hallazgo pedido, o el mensaje de error.
+
+    La referencia completa TICKET/fase_N/hN manda sobre --ticket y --fase. Con un id
+    suelto, --ticket exige --fase, y --fase sin --ticket solo vale para la fase de
+    current.json: si no, el mismo hN de otro ticket se resolvería sin aviso.
+    """
+    completa = RE_REF_HALLAZGO.match(ref)
+    if completa:
+        return completa.group(1), completa.group(2), completa.group(3)
+    if not contracts.RE_HALLAZGO_ID.match(ref):
+        return (f"'{ref}' no es un hallazgo: usa el id (h1) o la referencia completa "
+                f"TICKET/fase_N/hN que imprime 'hallazgos-pendientes'")
+    error = _validar_ticket_y_fase(ticket, fase)
+    if error:
+        return error
+    if ticket and not fase:
+        return "--ticket exige --fase, o usa la referencia completa TICKET/fase_N/hN"
+    if ticket:
+        return ticket, fase, ref
+
     actual = harness.read_current(raiz) or {}
-    ticket_id = ticket or actual.get("ticket_id")
-    fase_id = fase or actual.get("fase_id")
-    if not ticket_id or not fase_id:
-        return None
-    return ticket_id, fase_id
+    ticket_activo, fase_activa = actual.get("ticket_id"), actual.get("fase_id")
+    if fase and (not ticket_activo or fase != fase_activa):
+        ejemplo = f"{ticket_activo or 'TICKET'}/{fase}/{ref}"
+        return (f"--fase {fase} no es la fase activa ({fase_activa or 'ninguna'}): usa la "
+                f"referencia completa, por ejemplo {ejemplo}, o indica también --ticket")
+    if not ticket_activo or not fase_activa:
+        return ("no se sabe qué fase resolver: usa la referencia completa TICKET/fase_N/hN "
+                "que imprime 'hallazgos-pendientes'")
+    return ticket_activo, fase_activa, ref
 
 
 def cmd_record_hallazgos(args) -> int:
     raiz = resolver_proyecto(args.project)
-    activa = _fase_activa(raiz)
-    if activa is None:
-        return _error("no hay fase activa: corre 'open-fase'")
-    ticket_id, _, fase, estado = activa
+    if bool(args.ticket) != bool(args.fase):
+        return _error("--ticket y --fase van juntos: indica los dos o ninguno")
+    if args.ticket:
+        error = _validar_ticket_y_fase(args.ticket, args.fase)
+        if error:
+            return _error(error)
+        ticket_id, fase_id = args.ticket, args.fase
+        estado = state.leer_fase(raiz, ticket_id, fase_id)
+        if estado is None:
+            return _error(f"la fase '{fase_id}' del ticket '{ticket_id}' no se ha abierto")
+    else:
+        activa = _fase_activa(raiz)
+        if activa is None:
+            return _error("no hay fase activa: corre 'open-fase'")
+        ticket_id, _, fase, estado = activa
+        fase_id = fase["id"]
     if estado["estado"] not in ("aprobada", "escalado"):
-        return _error(f"la fase está en estado '{estado['estado']}': los hallazgos se "
-                      f"proponen cuando está 'aprobada' o 'escalado'")
+        return _error(f"la fase '{fase_id}' está en estado '{estado['estado']}': los "
+                      f"hallazgos se proponen cuando está 'aprobada' o 'escalado'")
 
     propuesta = harness.read_json(Path(args.archivo))
     errores = contracts.validate_propuesta_hallazgos(propuesta)
     if errores:
         return _error("propuesta de hallazgos inválida: " + "; ".join(errores))
-    if propuesta["fase_id"] != fase["id"]:
-        return _error(f"la propuesta dice fase '{propuesta['fase_id']}' pero la fase "
-                      f"activa es '{fase['id']}'")
+    if propuesta["fase_id"] != fase_id:
+        return _error(f"la propuesta dice fase '{propuesta['fase_id']}' pero se registra "
+                      f"en '{fase_id}'")
 
-    previo = lib_hallazgos.leer(raiz, ticket_id, fase["id"])
+    previo = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     existentes = (previo or {}).get("hallazgos", [])
     if any(h.get("origen") != "humano" and h.get("estado") != "propuesto" for h in existentes):
-        return _error(f"la fase '{fase['id']}' ya tiene hallazgos resueltos: no se "
+        return _error(f"la fase '{fase_id}' ya tiene hallazgos resueltos: no se "
                       f"reescriben para no pisar tus decisiones")
 
     # Los del humano se conservan; los del reflector aún propuestos se reemplazan.
+    # La numeración sigue al id más alto que hubo, incluso de los reemplazados: un hN
+    # que el humano ya vio nunca pasa a nombrar otra lección.
     items = [h for h in existentes if h.get("origen") == "humano"]
-    siguiente = max((int(h["id"][1:]) for h in items), default=0) + 1
-    for numero, h in enumerate(propuesta["hallazgos"], start=siguiente):
+    siguiente = max((int(h["id"][1:]) for h in existentes), default=0) + 1
+    nuevos = propuesta["hallazgos"]
+    for numero, h in enumerate(nuevos, start=siguiente):
         item = {"id": f"h{numero}", "origen": "reflector", "estado": "propuesto"}
         for campo in ("senal", "leccion", "evidencia", "confianza", "dimension", "componente"):
             item[campo] = h[campo]
         items.append(item)
-    datos = {"ticket_id": ticket_id, "fase_id": fase["id"], "hallazgos": items}
+    datos = {"ticket_id": ticket_id, "fase_id": fase_id, "hallazgos": items}
     md = lib_hallazgos.guardar(raiz, datos)
-    if not items:
-        print("Sin hallazgos en esta fase.")
+    if not nuevos:
+        print("Sin hallazgos nuevos del reflector en esta fase.")
     else:
-        print(f"{len(items)} hallazgo(s) propuesto(s) en {md}")
+        print(f"{len(nuevos)} hallazgo(s) propuesto(s) en {md}")
     return 0
 
 
 def cmd_resolver_hallazgo(args) -> int:
     raiz = resolver_proyecto(args.project)
-    objetivo = _fase_objetivo(raiz, args.ticket, args.fase)
-    if objetivo is None:
-        return _error("no se sabe qué fase resolver: indica --ticket y --fase o abre una fase")
-    ticket_id, fase_id = objetivo
+    objetivo = _fase_objetivo(raiz, args.id, args.ticket, args.fase)
+    if isinstance(objetivo, str):
+        return _error(objetivo)
+    ticket_id, fase_id, hallazgo_id = objetivo
+    ref = lib_hallazgos.referencia(ticket_id, fase_id, hallazgo_id)
 
     if args.decision == "no" and not args.motivo:
         return _error("rechazar un hallazgo exige --motivo: el reflector lo lee para no "
@@ -376,12 +431,13 @@ def cmd_resolver_hallazgo(args) -> int:
     datos = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     if datos is None:
         return _error(f"la fase '{fase_id}' del ticket '{ticket_id}' no tiene hallazgos")
-    hallazgo = next((h for h in datos["hallazgos"] if h["id"] == args.id), None)
+    hallazgo = next((h for h in datos["hallazgos"] if h["id"] == hallazgo_id), None)
     if hallazgo is None:
         validos = ", ".join(h["id"] for h in datos["hallazgos"]) or "ninguno"
-        return _error(f"el hallazgo '{args.id}' no existe; ids válidos: {validos}")
+        return _error(f"el hallazgo '{ref}' no existe; ids válidos en "
+                      f"{ticket_id}/{fase_id}: {validos}")
     if hallazgo["estado"] != "propuesto":
-        return _error(f"el hallazgo {args.id} ya está '{hallazgo['estado']}'")
+        return _error(f"el hallazgo {ref} ya está '{hallazgo['estado']}'")
 
     if args.decision == "no":
         hallazgo["estado"] = "rechazado"
@@ -394,7 +450,7 @@ def cmd_resolver_hallazgo(args) -> int:
 
     lib_hallazgos.guardar(raiz, datos)
     entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo)
-    print(f"Hallazgo {args.id} {hallazgo['estado']}: {entrada}")
+    print(f"Hallazgo {ref} {hallazgo['estado']}: {entrada}")
     return 0
 
 
@@ -497,11 +553,14 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("record-hallazgos", help="Registra los hallazgos del reflector")
     p.add_argument("--project")
     p.add_argument("--archivo", required=True)
+    p.add_argument("--ticket", help="Con --fase: registra en esa fase aunque no sea la activa")
+    p.add_argument("--fase", help="Con --ticket: la fase cerrada a la que va la propuesta")
     p.set_defaults(func=cmd_record_hallazgos)
 
     p = sub.add_parser("resolver-hallazgo", help="Aprueba, edita o rechaza un hallazgo")
     p.add_argument("--project")
-    p.add_argument("--id", required=True)
+    p.add_argument("--id", required=True,
+                   help="hN de la fase activa, o la referencia completa TICKET/fase_N/hN")
     p.add_argument("--decision", required=True, choices=["ok", "no", "editar"])
     p.add_argument("--texto")
     p.add_argument("--motivo")

@@ -31,8 +31,29 @@ class Base(unittest.TestCase):
 class TestHallazgos(Base):
     def test_render_lista_ids_y_comandos(self):
         txt = hallazgos.render(_datos(_h()))
-        for esperado in ("h1", "/hallazgo-ok h1", "/hallazgo-no h1", "No bloquean"):
+        for esperado in ("h1", "/hallazgo-ok ISR-110722/fase_1/h1",
+                         "/hallazgo-no ISR-110722/fase_1/h1", "No bloquean"):
             self.assertIn(esperado, txt)
+
+    def test_render_ofrece_comandos_solo_para_los_propuestos(self):
+        humano = {"id": "h1", "origen": "humano", "estado": "aprobado",
+                  "leccion": "Revisar el contrato"}
+        txt = hallazgos.render(_datos(humano, _h(id="h2")))
+        self.assertIn("/hallazgo-ok ISR-110722/fase_1/h2", txt)
+        self.assertNotIn("ISR-110722/fase_1/h1`", txt)
+        self.assertNotIn("propone el reflector", txt)
+        encabezado = next(linea for linea in txt.splitlines() if linea.startswith("## h1"))
+        self.assertIn("humano", encabezado)
+
+    def test_render_sin_propuestos_no_ofrece_comandos(self):
+        txt = hallazgos.render(_datos(_h(estado="aprobado")))
+        self.assertNotIn("/hallazgo-ok", txt)
+
+    def test_render_colapsa_saltos_de_linea(self):
+        txt = hallazgos.render(_datos(_h(leccion="Primera línea\n  segunda línea",
+                                         senal="señal\ncon salto")))
+        self.assertIn("- **Lección:** Primera línea segunda línea", txt)
+        self.assertIn("- **Señal:** señal con salto", txt)
 
     def test_render_vacio_dice_que_no_hubo_lecciones(self):
         self.assertIn("no encontró lecciones", hallazgos.render(_datos()))
@@ -59,6 +80,22 @@ class TestBiblioteca(Base):
         indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
         self.assertIn("[proceso · check]", indice)
         self.assertIn("Al editar un formulario", indice)
+
+    def test_leccion_humana_sin_senal_aparece_en_el_indice(self):
+        humano = {"id": "h1", "origen": "humano", "estado": "aprobado",
+                  "leccion": "Revisar el contrato\nantes de editar"}
+        biblioteca.escribir_entrada(self.root, "ISR-110722", "fase_1", humano)
+        indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
+        self.assertIn("- Revisar el contrato antes de editar — entradas/ISR-110722-fase_1-h1.md",
+                      indice)
+        self.assertNotIn("[ · ]", indice)
+
+    def test_indice_muestra_solo_la_clasificacion_que_hay(self):
+        humano = {"id": "h1", "origen": "humano", "estado": "aprobado",
+                  "leccion": "Revisar el contrato", "dimension": "dominio"}
+        biblioteca.escribir_entrada(self.root, "ISR-110722", "fase_1", humano)
+        indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
+        self.assertIn("- [dominio] Revisar el contrato — entradas/", indice)
 
     def test_rechazado_va_a_rechazados_con_motivo(self):
         p = biblioteca.escribir_entrada(self.root, "ISR-110722", "fase_1",

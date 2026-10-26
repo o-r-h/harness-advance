@@ -131,6 +131,23 @@ class TestRecordHallazgosRondaDeCorreccion(Base):
                          [("h1", "aprobado"), ("h2", "propuesto"), ("h3", "propuesto")])
         self.assertEqual(items[0]["origen"], "humano")
 
+    def test_renumera_despues_del_id_mas_alto_aunque_se_reemplace(self):
+        self.preparar()
+        self.proponer(3)
+        resultado = self.proponer(1)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual([h["id"] for h in self.guardados()["hallazgos"]], ["h4"])
+
+    def test_el_mensaje_cuenta_solo_los_propuestos_nuevos(self):
+        self.preparar(cerrar=False)
+        correr("hallazgo", *self.p, "--texto", "Lección del humano")
+        state.aprobar_fase(self.root, TICKET, "fase_1")
+        resultado = self.proponer(2)
+        self.assertIn("2 hallazgo(s) propuesto(s)", resultado.stdout)
+        vacia = self.proponer(0)
+        self.assertIn("Sin hallazgos", vacia.stdout)
+        self.assertNotIn("1 hallazgo", vacia.stdout)
+
     def test_pendientes_salta_archivo_corrupto(self):
         self.preparar()
         self.proponer(1)
@@ -141,6 +158,83 @@ class TestRecordHallazgosRondaDeCorreccion(Base):
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
         self.assertIn("ISR-110722/fase_1/h1", resultado.stdout)
         self.assertIn("fase_2", resultado.stderr)
+
+
+class TestRecordHallazgosDeFaseAnterior(Base):
+    def proponer_en(self, ticket: str, fase: str, cantidad: int = 1,
+                    fase_propuesta: str | None = None) -> subprocess.CompletedProcess:
+        ruta = self.root / "propuesta.json"
+        ruta.write_text(json.dumps({"fase_id": fase_propuesta or fase,
+                                    "hallazgos": [_hallazgo(i + 1) for i in range(cantidad)]}),
+                        encoding="utf-8")
+        return correr("record-hallazgos", *self.p, "--archivo", str(ruta),
+                      "--ticket", ticket, "--fase", fase)
+
+    def test_registra_en_la_fase_indicada_aunque_no_sea_la_activa(self):
+        self.preparar()
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        resultado = self.proponer_en(TICKET, "fase_1", 2)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual([h["id"] for h in self.guardados()["hallazgos"]], ["h1", "h2"])
+        self.assertIsNone(self.guardados("fase_2"))
+
+    def test_la_fase_indicada_debe_estar_cerrada(self):
+        self.preparar()
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        resultado = self.proponer_en(TICKET, "fase_2")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("aprobada", resultado.stderr)
+
+    def test_la_propuesta_debe_ser_de_la_fase_indicada(self):
+        self.preparar()
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        resultado = self.proponer_en(TICKET, "fase_1", fase_propuesta="fase_2")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIsNone(self.guardados())
+
+    def test_ticket_y_fase_van_juntos(self):
+        self.preparar()
+        ruta = self.root / "propuesta.json"
+        ruta.write_text(json.dumps({"fase_id": "fase_1", "hallazgos": []}), encoding="utf-8")
+        for extra in (["--ticket", TICKET], ["--fase", "fase_1"]):
+            with self.subTest(extra=extra):
+                resultado = correr("record-hallazgos", *self.p, "--archivo", str(ruta), *extra)
+                self.assertEqual(resultado.returncode, 1)
+        self.assertIsNone(self.guardados())
+
+    def test_fase_inexistente_falla(self):
+        self.preparar()
+        resultado = self.proponer_en(TICKET, "fase_9")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("HARNESS · ", resultado.stderr)
+
+
+class TestHallazgosJsonMalFormado(Base):
+    def romper(self):
+        destino = hallazgos.ruta(self.root, TICKET, "fase_1")
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        destino.write_text(json.dumps({"ticket_id": TICKET, "fase_id": "fase_1"}),
+                           encoding="utf-8")
+
+    def verificar_error_limpio(self, resultado: subprocess.CompletedProcess):
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("HARNESS · ", resultado.stderr)
+        self.assertNotIn("Traceback", resultado.stderr)
+
+    def test_resolver_hallazgo(self):
+        self.preparar()
+        self.romper()
+        self.verificar_error_limpio(self.resolver("--id", "h1", "--decision", "ok"))
+
+    def test_hallazgo_humano(self):
+        self.preparar(cerrar=False)
+        self.romper()
+        self.verificar_error_limpio(correr("hallazgo", *self.p, "--texto", "algo"))
+
+    def test_record_hallazgos(self):
+        self.preparar()
+        self.romper()
+        self.verificar_error_limpio(self.proponer(1))
 
 
 class TestResolverHallazgo(Base):
@@ -189,13 +283,107 @@ class TestResolverHallazgo(Base):
         self.assertEqual(resultado.returncode, 1)
         self.assertIn("h1", resultado.stderr)
 
-    def test_resuelve_fase_anterior_con_flag_fase(self):
+    def test_resuelve_fase_anterior_con_ticket_y_fase(self):
         self.preparar()
         self.proponer()
         correr("open-fase", *self.p, "--fase", "fase_2")
-        resultado = self.resolver("--fase", "fase_1", "--id", "h1", "--decision", "ok")
+        resultado = self.resolver("--ticket", TICKET, "--fase", "fase_1", "--id", "h1",
+                                  "--decision", "ok")
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
         self.assertEqual(self.guardados()["hallazgos"][0]["estado"], "aprobado")
+
+    def test_resuelve_fase_anterior_con_referencia_completa(self):
+        self.preparar()
+        self.proponer()
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        resultado = self.resolver("--id", f"{TICKET}/fase_1/h1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.guardados()["hallazgos"][0]["estado"], "aprobado")
+
+
+class TestResolverHallazgoEntreTickets(Base):
+    OTRO = "ISR-2"
+
+    def abrir_otro_ticket(self, cerrar: bool = True):
+        plan = dict(PLAN, ticket_id=self.OTRO)
+        harness.write_json(harness.ticket_dir(self.root, self.OTRO) / "plan.json", plan)
+        correr("open-ticket", *self.p, "--ticket-id", self.OTRO, "--nroticket", "2",
+               "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "28-07-2026", "--perfil", "p")
+        correr("open-fase", *self.p, "--fase", "fase_1")
+        if cerrar:
+            state.aprobar_fase(self.root, self.OTRO, "fase_1")
+
+    def estado_h1(self, ticket: str) -> str:
+        return hallazgos.leer(self.root, ticket, "fase_1")["hallazgos"][0]["estado"]
+
+    def test_referencia_completa_aprueba_el_del_ticket_indicado(self):
+        self.preparar()
+        self.proponer(1)
+        self.abrir_otro_ticket()
+        self.assertEqual(self.proponer(1).returncode, 0)
+        resultado = self.resolver("--id", f"{TICKET}/fase_1/h1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.estado_h1(TICKET), "aprobado")
+        self.assertEqual(self.estado_h1(self.OTRO), "propuesto")
+
+    def test_la_referencia_completa_manda_sobre_ticket_y_fase(self):
+        self.preparar()
+        self.proponer(1)
+        self.abrir_otro_ticket()
+        self.proponer(1)
+        resultado = self.resolver("--id", f"{TICKET}/fase_1/h1", "--ticket", self.OTRO,
+                                  "--fase", "fase_1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.estado_h1(TICKET), "aprobado")
+        self.assertEqual(self.estado_h1(self.OTRO), "propuesto")
+
+    def test_fase_sin_ticket_con_otro_ticket_abierto_falla(self):
+        self.preparar()
+        self.proponer(1)
+        correr("open-ticket", *self.p, "--ticket-id", self.OTRO, "--nroticket", "2",
+               "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "28-07-2026", "--perfil", "p")
+        resultado = self.resolver("--fase", "fase_1", "--id", "h1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("HARNESS · ", resultado.stderr)
+        self.assertEqual(self.estado_h1(TICKET), "propuesto")
+
+    def test_fase_sin_ticket_que_no_es_la_activa_falla(self):
+        self.preparar()
+        self.proponer(1)
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        resultado = self.resolver("--fase", "fase_1", "--id", "h1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn(f"{TICKET}/fase_1/h1", resultado.stderr)
+        self.assertEqual(self.estado_h1(TICKET), "propuesto")
+
+    def test_ticket_sin_fase_falla(self):
+        self.preparar()
+        self.proponer(1)
+        resultado = self.resolver("--ticket", TICKET, "--id", "h1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertEqual(self.estado_h1(TICKET), "propuesto")
+
+    def test_fase_con_formato_invalido_falla(self):
+        self.preparar()
+        self.proponer(1)
+        resultado = self.resolver("--ticket", TICKET, "--fase", "../fase_1", "--id", "h1",
+                                  "--decision", "ok")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("fase_N", resultado.stderr)
+
+    def test_referencia_mal_formada_falla(self):
+        self.preparar()
+        self.proponer(1)
+        resultado = self.resolver("--id", f"{TICKET}/fase_1", "--decision", "ok")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("HARNESS · ", resultado.stderr)
+        self.assertEqual(self.estado_h1(TICKET), "propuesto")
+
+    def test_hallazgos_md_ofrece_la_referencia_completa(self):
+        self.preparar()
+        self.proponer(1)
+        md = hallazgos.ruta(self.root, TICKET, "fase_1").with_suffix(".md")
+        self.assertIn(f"/hallazgo-ok {TICKET}/fase_1/h1", md.read_text(encoding="utf-8"))
 
 
 class TestHallazgoHumano(Base):

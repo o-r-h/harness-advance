@@ -287,7 +287,8 @@ def validate_propuesta_hallazgos(data: dict) -> list[str]:
         return ["hallazgos: requerido, objeto JSON"]
     errores: list[str] = []
     _texto(data, "fase_id", errores)
-    if isinstance(data.get("fase_id"), str) and data["fase_id"].strip()             and not RE_FASE_ID.match(data["fase_id"]):
+    fase_id = data.get("fase_id")
+    if isinstance(fase_id, str) and fase_id.strip() and not RE_FASE_ID.match(fase_id):
         errores.append("fase_id: formato esperado fase_N")
     hallazgos = data.get("hallazgos")
     if not isinstance(hallazgos, list):
