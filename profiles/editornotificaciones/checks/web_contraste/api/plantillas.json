@@ -3,24 +3,76 @@
   "id": 1,
   "secciones": "Header_0 + Body_0 + Bottom_0",
   "inactivo": false,
-  "usoTipos": 39
+  "usoTipos": 39,
+  "seccionesDetalle": [
+   {
+    "internalSectionId": 4,
+    "sectionName": "ContentHeader_0"
+   },
+   {
+    "internalSectionId": 1,
+    "sectionName": "ContentBody_0"
+   },
+   {
+    "internalSectionId": 3,
+    "sectionName": "ContentBottom_0"
+   }
+  ]
  },
  {
   "id": 2,
   "secciones": "Header_0 + Body_0 + Body_1 + Bottom_0",
   "inactivo": false,
-  "usoTipos": 0
+  "usoTipos": 0,
+  "seccionesDetalle": [
+   {
+    "internalSectionId": 4,
+    "sectionName": "ContentHeader_0"
+   },
+   {
+    "internalSectionId": 1,
+    "sectionName": "ContentBody_0"
+   },
+   {
+    "internalSectionId": 2,
+    "sectionName": "ContentBody_1"
+   },
+   {
+    "internalSectionId": 3,
+    "sectionName": "ContentBottom_0"
+   }
+  ]
  },
  {
   "id": 3,
   "secciones": "Body_0",
   "inactivo": false,
-  "usoTipos": 1
+  "usoTipos": 1,
+  "seccionesDetalle": [
+   {
+    "internalSectionId": 1,
+    "sectionName": "ContentBody_0"
+   }
+  ]
  },
  {
   "id": 4,
   "secciones": "Header_0 + Body_0 + Bottom_0",
   "inactivo": false,
-  "usoTipos": 2
+  "usoTipos": 2,
+  "seccionesDetalle": [
+   {
+    "internalSectionId": 4,
+    "sectionName": "ContentHeader_0"
+   },
+   {
+    "internalSectionId": 1,
+    "sectionName": "ContentBody_0"
+   },
+   {
+    "internalSectionId": 3,
+    "sectionName": "ContentBottom_0"
+   }
+  ]
  }
 ]

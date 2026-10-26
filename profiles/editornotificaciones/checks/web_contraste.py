@@ -1,12 +1,25 @@
-"""Check estructural: contraste WCAG AA de todo texto visible de las pantallas 1 y 3, si la fase tocó el frontend.
+"""Check estructural: contraste WCAG AA de todo texto visible de las pantallas 1, 3 y 4, si la fase tocó el frontend.
 
 Construye src/Web en una carpeta temporal (vite build), la sirve con una API simulada (respuestas
 capturadas del tipo 1223 y de la sección compartida 3 en web_contraste/api; nunca toca Masterdb, la API
 real ni %LOCALAPPDATA%) y la abre en Chrome o Edge sin interfaz. web_contraste/recorrido.js lleva la app
 por estados representativos (pantalla 1: lectura, cargas, visor correo y web, idiomas, lista de
 borradores, edición, guardado, confirmaciones, conflictos, aviso de componentes; pantalla 3: lectura,
-validación sin guardar, diálogo de N, "Ver en el visor", conflicto; foco) y web_contraste/medir.js mide
-cada texto, valor y placeholder.
+validación sin guardar, diálogo de N, "Ver en el visor", conflicto; pantalla 4: sin borradores, componentes,
+generando, resumen y pestañas, solo dev, desactualizado, conflictos, error; ticket 7: pantalla 2 "Notificación
+nueva" (ID sugerido y validado, tipo base, CRON, creando, CNTC sugerida, lista de borradores de alta), editor del
+borrador de alta (lectura, disclaimer nuevo, sección propia, visor web, guardando; alta vacía con las posiciones
+de la plantilla por llenar, una compartida elegida y una propia, cambio de plantilla) y pantalla 4 del alta (400 por
+pendientes, scripts con solo dev); ticket 9: pantalla Ayuda (cargando, índice con README, capítulo 03 desde el
+botón del encabezado, enlace seguido dentro del capítulo, capítulo inexistente, ayuda no disponible); fase 5: tipo Legacy en la pantalla 1, "migrar en el mismo ID" (pantalla 2, datos,
+editor y pantalla 4) y "basar en un tipo Legacy" (búsqueda, tipos elegidos con sus avisos, archivo inexistente,
+%X% fuera del catálogo, borrador creado y su editor); ticket 10: error del ISR y del ID repetido junto al campo,
+conflictos completos (comparación por renglón y valores completos, pantallas 1 y 3), "Borradores" con los borradores de
+alta y el visor del alta con borradores de componentes aplicados; ticket 11: agregar francés al 1259 (avisos antes de
+crear, creando, pestaña del idioma nuevo con pendientes, avisos, propuesta y posiciones, propuesta quitada y su aviso de
+alcance, marca de propuesta, visor correo y web en francés, pantalla 4 con resumen.idiomasNuevos y con 400, "Borradores",
+quitar el idioma); foco) y web_contraste/medir.js mide cada texto, valor
+y placeholder.
 Falla si alguno queda bajo 4.5:1 (3:1 en texto grande), con elemento, colores y ratio.
 
 Sin dependencias nuevas: solo la biblioteca estándar de Python y el Chrome/Edge instalado (o el que
@@ -17,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -31,7 +45,7 @@ CARPETA_WEB = Path("src") / "Web"
 EXTENSIONES = {".vue", ".js", ".mjs", ".ts", ".json", ".css", ".scss", ".html"}
 RECURSOS = Path(__file__).resolve().parent / "web_contraste"
 TIMEOUT_BUILD_S = 600
-TIMEOUT_RECORRIDO_S = 240
+TIMEOUT_RECORRIDO_S = 420
 MAX_FILAS = 40
 NAVEGADORES = (
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -94,8 +108,33 @@ class ApiSimulada:
         self.componente = self.json("componente_seccion_3.json")
         self.borrador = None
         self.borrador_componente = None
+        # Ticket 7: borradores de alta en memoria ({ id: RespuestaBorradorAlta }); la base es la respuesta real
+        # de POST /api/nuevas { baseTipoId: 1223 } (alta_1223.json).
+        self.alta_base = self.json("alta_1223.json")
+        # Alta vacía: respuesta real de POST /api/nuevas { idiomas: [2, 1], isr } (posiciones de la plantilla 1
+        # por llenar) y plantillas reales con seccionesDetalle.
+        self.alta_vacia = self.json("alta_vacia.json")
+        self.plantillas = {p["id"]: p for p in self.json("plantillas.json") or []}
+        # Fase 5: respuestas reales de POST /api/nuevas { legacy: [334 EN, 337 ES], idiomas: [2, 1] } y
+        # { migrarTipoId: 334, migrarLang: 2, copiarAsunto: true }, y un extracto real de GET /api/legacy/tipos.
+        self.alta_legacy = self.json("alta_legacy.json")
+        self.alta_migracion = self.json("alta_migracion.json")
+        self.legacy_tipos = self.json("legacy_tipos.json") or []
+        # Avisos que la API dio al crear cada alta basada en Legacy o de migración ({ id: [texto] })
+        self.avisos_alta: dict[int, list] = {}
+        self.altas: dict[int, dict] = {}
+        self.siguiente_alta = 1
         self.retrasos: dict[str, int] = {}
         self.candado = threading.Lock()
+        # Ticket 9 · ayuda: índice y capítulos README y 03 capturados de la API real (GET /api/ayuda/…);
+        # ayuda_error = la carpeta de la ayuda no está disponible (503).
+        self.ayuda_error = False
+        # Ticket 11 · idioma nuevo: borrador del tipo 1259 (ES/EN) en memoria, armado con las respuestas reales de
+        # POST /api/borradores/1259/idiomas { lang: 4, langBase: 2 } (idioma_nuevo_1259_post.json), PUT /idiomas/4 con
+        # asunto y cuerpo (…_put.json), PUT del tipo sin la propuesta de ES (…_sin_es.json) y DELETE /idiomas/4
+        # (…_quitado.json).
+        self.tipo_1259 = self.json("tipo_1259.json")
+        self.borrador_1259 = None
 
     def json(self, nombre: str):
         ruta = self.carpeta / nombre
@@ -121,11 +160,264 @@ class ApiSimulada:
             if "retrasos" in datos:
                 self.retrasos = {k: int(v) for k, v in (datos.get("retrasos") or {}).items()}
             if "borrador" in datos:
-                self.borrador = self.con_conflicto() if datos["borrador"] == "conflicto" else None
+                modo = datos["borrador"]
+                self.borrador = self.con_conflicto() if modo == "conflicto" else (
+                    self.nuevo_borrador([{"campo": "Asunto", "lang": 2, "sectionContentId": None,
+                                          "valor": "Asunto cambiado en el borrador"}]) if modo == "cambio" else None)
             if "componente" in datos:
                 modo = datos["componente"]
                 self.borrador_componente = None if not modo else self.nuevo_borrador_componente(
                     self.componente["componente"]["valor"] + "<!-- cambio del check -->", conflicto=modo == "conflicto")
+            if "ayudaError" in datos:
+                self.ayuda_error = bool(datos["ayudaError"])
+            if "borrador1259" in datos:
+                self.borrador_1259 = None
+            if "altas" in datos:
+                self.altas = {}
+                self.avisos_alta = {}
+                self.siguiente_alta = 1
+
+    # ---------- borradores de alta (ticket 7): /api/nuevas, validar-id, siguiente-id y scripts/nuevo
+
+    @staticmethod
+    def ahora() -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def pendientes_alta(self, b: dict) -> list[tuple[str, bool]]:
+        """(mensaje, bloquea) con los textos de ValidadorAlta.PendientesDetalle (solo los casos del recorrido)."""
+        p: list[tuple[str, bool]] = []
+        nombres = {1: "Español (1)", 2: "Inglés (2)", 4: "Francés (4)"}
+        if b.get("notificationTypeId") is None:
+            p.append(("Falta confirmar el NotificationTypeID (usa el sugerido o captura uno libre).", True))
+        nombre = (b.get("notificationName") or "").strip()
+        if not nombre:
+            p.append(("Falta el nombre (NotificationName).", True))
+        elif nombre.endswith("-"):
+            p.append((f"El nombre '{nombre}' solo tiene el prefijo: complétalo.", True))
+        for i in b.get("idiomas") or []:
+            idioma = nombres.get(i["lang"], f"Idioma {i['lang']}")
+            if not (i.get("subject") or "").strip():
+                p.append((f"{idioma}: falta el asunto.", True))
+            for clave, texto in (("disclaimerSuperior", "superior (DisclaimerTopID = 0); el correo sale sin encabezado de disclaimer."),
+                                 ("disclaimerInferior", "inferior (DisclaimerBottomID = 0); el correo sale sin pie de disclaimer.")):
+                d = i.get(clave) or {"id": 0}
+                if d.get("id") == 0:
+                    p.append((f"{idioma}: sin disclaimer {texto}", False))
+            # Una posición de la plantilla sin sección, o con la sección por llenar (los dos nulos), bloquea. La API
+            # las lista en orden de RelId (Body, Bottom, Header en la plantilla 1); aquí, por nombre (mismo orden).
+            # Textos reales: alta_vacia.json y alta_vacia_parcial.json (PUT con EN parcial y ES por llenar).
+            plantilla = self.plantillas.get(i.get("contentId")) or {}
+            llenas = {s["internalSectionId"] for s in i.get("secciones") or []
+                      if s.get("sectionContentId") is not None or s.get("contenido") is not None}
+            for rel in sorted(plantilla.get("seccionesDetalle") or [], key=lambda r: r["sectionName"]):
+                if rel["internalSectionId"] not in llenas:
+                    p.append((f"{idioma}: la sección {rel['sectionName']} de la plantilla {i.get('contentId')} "
+                              "no tiene contenido.", True))
+        return p
+
+    def respuesta_alta(self, b: dict) -> dict:
+        if b["id"] in self.avisos_alta:
+            avisos = list(self.avisos_alta[b["id"]])
+        else:
+            avisos = list(self.alta_base["avisos"]) if b.get("baseTipoId") else []
+        if b.get("cron"):
+            avisos.append("CRON: la expresión no se valida (solo su largo, 30). La lógica que dispara la notificación "
+                          "(SP o código que inserta en CustomerNotificationHistory) se hace aparte.")
+        if b.get("correosDebug"):
+            avisos.append("Los correos de debug van solo en el script solo_dev (NotificationTypeDebugEmails y "
+                          "hasDebugMails = 1); nunca en producción.")
+        detalle = self.pendientes_alta(b)
+        # Ticket 10: pendientesDetalle [{ mensaje, bloquea }] (mismos textos y orden que pendientes).
+        return {"borrador": b, "pendientes": [m for m, _ in detalle], "avisos": avisos, "validaciones": [],
+                "pendientesDetalle": [{"mensaje": m, "bloquea": x} for m, x in detalle]}
+
+    # ---------- ticket 10: 400 de /api/nuevas por ISR (ReglaIsr.ProblemaAlta) y por ID repetido (ValidadorAlta.IdRepetido)
+
+    @staticmethod
+    def problema_isr(isr):
+        if not isr or not str(isr).strip():
+            return None
+        t = str(isr).strip()
+        if re.match(r"^\s*ISR[\s_-]*\d", t, re.IGNORECASE):
+            numero = re.search(r"\d[\w-]*", t).group(0)
+            return f"ISR '{t}': va solo el número del ticket, sin el prefijo 'ISR' (escribe '{numero}')."
+        if re.fullmatch(r"[A-Za-z0-9_-]{1,60}", t):
+            return None
+        return f"ISR '{t}' no es válido: usa letras, dígitos, '-' o '_' (máximo 60); por convención, solo el número del ticket."
+
+    def problema_id_repetido(self, n, propio):
+        if not isinstance(n, int) or n <= 0:
+            return None
+        otros = sorted(b["id"] for b in self.altas.values() if b.get("notificationTypeId") == n and b["id"] != propio)
+        if not otros:
+            return None
+        lista = ", ".join("#" + str(o) for o in otros)
+        quien = "el borrador de alta" if len(otros) == 1 else "los borradores de alta"
+        return (f"El NotificationTypeID {n} ya lo usa {quien} {lista}: captura otro ID (o abre ese borrador). "
+                "Dos borradores con el mismo ID se bloquearían entre sí.")
+
+    @staticmethod
+    def invalido(problema: str) -> tuple[int, dict, dict]:
+        return 400, {"type": "https://tools.ietf.org/html/rfc9110#section-15.5.1", "title": "Borrador inválido",
+                     "status": 400, "detail": problema, "problemas": [problema]}, {}
+
+    def crear_alta(self, c: dict) -> dict:
+        ahora = self.ahora()
+        nombre = c.get("notificationName") or (f"{c['isr']} - " if c.get("isr") else "")
+        avisos = None
+        if c.get("migrarTipoId"):
+            # Migración en el mismo ID: el ID y el nombre son los del tipo (respuesta real de la migración de 334).
+            b = json.loads(json.dumps(self.alta_migracion["borrador"]))
+            avisos = self.alta_migracion["avisos"]
+            b.update(id=self.siguiente_alta, creado=ahora, modificado=ahora)
+            self.siguiente_alta += 1
+            self.altas[b["id"]] = b
+            self.avisos_alta[b["id"]] = avisos
+            return self.respuesta_alta(b)
+        if c.get("legacy"):
+            b = json.loads(json.dumps(self.alta_legacy["borrador"]))
+            avisos = self.alta_legacy["avisos"]
+        elif c.get("baseTipoId"):
+            b = json.loads(json.dumps(self.alta_base["borrador"]))
+        else:
+            b = json.loads(json.dumps(self.alta_vacia["borrador"]))
+            molde = b["idiomas"][0]
+            b["idiomas"] = [dict(json.loads(json.dumps(molde)), lang=l) for l in (c.get("idiomas") or [2])]
+        b.update(id=self.siguiente_alta, notificationTypeId=c.get("notificationTypeId"), notificationName=nombre,
+                 creado=ahora, modificado=ahora)
+        self.siguiente_alta += 1
+        self.altas[b["id"]] = b
+        if avisos is not None:
+            self.avisos_alta[b["id"]] = avisos
+        return self.respuesta_alta(b)
+
+    def responder_altas(self, metodo: str, ruta: str, q: dict, cuerpo, no_encontrado) -> tuple[int, object, dict]:
+        if metodo == "GET" and ruta == "/api/nuevas":
+            return 200, [{"id": b["id"], "modo": b["modo"], "notificationTypeId": b["notificationTypeId"],
+                          "notificationName": b["notificationName"], "baseTipoId": b["baseTipoId"],
+                          "idiomas": [i["lang"] for i in b["idiomas"]], "creado": b["creado"],
+                          "modificado": b["modificado"]} for b in self.altas.values()], {}
+        if metodo == "POST" and ruta == "/api/nuevas":
+            c = cuerpo or {}
+            problema = self.problema_isr(c.get("isr")) or self.problema_id_repetido(
+                c.get("migrarTipoId") or c.get("notificationTypeId"), None)
+            if problema:
+                return self.invalido(problema)
+            with self.candado:
+                return 201, self.crear_alta(c), {}
+        usados = {b["notificationTypeId"]: b["id"] for b in self.altas.values() if b["notificationTypeId"] is not None}
+        if metodo == "GET" and ruta == "/api/nuevas/siguiente-id":
+            siguiente = 2050
+            while siguiente in usados:
+                siguiente += 1
+            return 200, {"siguienteId": siguiente, "maximoMasterdb": 2049,
+                         "omitidosPorBorradores": sorted(x for x in usados if x >= 2050)}, {}
+        if metodo == "GET" and ruta.startswith("/api/nuevas/validar-id/"):
+            n = int(ruta.rsplit("/", 1)[1])
+            propio = int(q["borradorId"]) if q.get("borradorId", "").isdigit() else None
+            tipos = {t["id"]: t for t in self.json("tipos.json") or []}
+            if (q.get("modo") or "").lower() == "migracion":
+                return 200, self.validar_migracion(n, propio, tipos, usados), {}
+            if n in tipos:
+                capturada = self.json("validar_id_1223.json")
+                return 200, dict(capturada, id=n, tipo=dict(capturada["tipo"], id=n, nombre=tipos[n]["nombre"]),
+                                 problemas=[f"El NotificationTypeID {n} ya existe en NotificationTypes: "
+                                            f"'{tipos[n]['nombre']}' (BuildType = 1)."]), {}
+            otros = [i for x, i in usados.items() if x == n and i != propio]
+            return 200, {"id": n, "libre": not otros, "existeEnMasterdb": False, "tipo": None, "borradoresAlta": otros,
+                         "problemas": [f"El NotificationTypeID {n} ya lo usa otro borrador de alta "
+                                       f"({', '.join('#' + str(o) for o in otros)})."] if otros else []}, {}
+        partes = ruta.split("/")
+        if len(partes) != 4 or not partes[3].isdigit():
+            return no_encontrado
+        b = self.altas.get(int(partes[3]))
+        if not b:
+            return 404, {"title": "Borrador de alta no encontrado", "status": 404,
+                         "detail": f"No hay borrador de alta #{partes[3]}."}, {}
+        if metodo == "GET":
+            return 200, self.respuesta_alta(b), {}
+        if metodo == "PUT":
+            c = cuerpo or {}
+            problema = self.problema_id_repetido(c.get("notificationTypeId"), b["id"])
+            if problema:
+                return self.invalido(problema)
+            with self.candado:
+                b.update(notificationTypeId=c.get("notificationTypeId"), notificationName=c.get("notificationName") or "",
+                         idiomas=c.get("idiomas") or [], cntc=c.get("cntc") or b["cntc"], cron=c.get("cron"),
+                         correosDebug=c.get("correosDebug") or [], modificado=self.ahora())
+            return 200, self.respuesta_alta(b), {}
+        if metodo == "DELETE":
+            del self.altas[b["id"]]
+            return 204, None, {}
+        return no_encontrado
+
+    def validar_migracion(self, n: int, propio, tipos: dict, usados: dict) -> dict:
+        """GET /api/nuevas/validar-id/{n}?modo=Migracion: 'libre' = es Legacy y no lo usa otro borrador de alta."""
+        legacy = {t["id"]: t for t in self.legacy_tipos}
+        if n in legacy:
+            # Respuesta real de validar-id/334?modo=Migracion, con el ID y nombre pedidos.
+            capturada = self.json("validar_id_334_migracion.json")
+            otros = [i for x, i in usados.items() if x == n and i != propio]
+            r = dict(capturada, id=n, tipo=dict(capturada["tipo"], id=n, nombre=legacy[n]["nombre"]), borradoresAlta=otros)
+            if otros:
+                r.update(libre=False, problemas=[f"El NotificationTypeID {n} ya lo usa otro borrador de alta "
+                                                 f"({', '.join('#' + str(o) for o in otros)})."])
+            return r
+        if n in tipos:
+            return {"id": n, "libre": False, "existeEnMasterdb": True,
+                    "tipo": {"id": n, "nombre": tipos[n]["nombre"], "buildType": 1, "inactivo": False},
+                    "borradoresAlta": [], "problemas": [f"El tipo {n} ya es BuildType = 1: no es un tipo Legacy."]}
+        return {"id": n, "libre": False, "existeEnMasterdb": False, "tipo": None, "borradoresAlta": [],
+                "problemas": [f"El NotificationTypeID {n} no existe en NotificationTypes."]}
+
+    # ---------- tipos Legacy (ticket 7, fase 5): /api/legacy/tipos y /api/legacy/tipos/{id}/cuerpo
+
+    def responder_legacy(self, metodo: str, ruta: str, q: dict, no_encontrado) -> tuple[int, object, dict]:
+        if metodo != "GET":
+            return no_encontrado
+        if ruta == "/api/legacy/tipos":
+            buscar = (q.get("buscar") or "").strip()
+            lista = self.legacy_tipos
+            if q.get("soloConArchivo", "").lower() == "true":
+                lista = [t for t in lista if (t.get("fileName") or "").strip()]
+            if buscar.isdigit():
+                lista = [t for t in lista if t["id"] == int(buscar)]
+            elif buscar:
+                b = buscar.lower()
+                lista = [t for t in lista if b in t["nombre"].lower() or b in (t.get("fileName") or "").lower()]
+            return 200, lista, {}
+        m = re.fullmatch(r"/api/legacy/tipos/(\d+)/cuerpo", ruta)
+        if not m:
+            return no_encontrado
+        datos = self.json(f"legacy_cuerpo_{m.group(1)}.json")
+        if not datos:
+            return 404, {"title": "Tipo no encontrado", "status": 404,
+                         "detail": f"No existe el tipo {m.group(1)} en NotificationTypes."}, {}
+        if q.get("lang", "").isdigit():
+            datos = dict(datos, lang=int(q["lang"]))
+        return 200, datos, {}
+
+    def responder_scripts_alta(self, ruta: str, ticket: str, no_encontrado) -> tuple[int, object, dict]:
+        b = self.altas.get(int(ruta.rsplit("/", 1)[1])) if ruta.rsplit("/", 1)[1].isdigit() else None
+        if not b:
+            return 404, {"title": "Borrador de alta no encontrado", "status": 404,
+                         "detail": f"No hay borrador de alta #{ruta.rsplit('/', 1)[1]}."}, {}
+        bloquean = [m for m, x in self.pendientes_alta(b) if x]
+        if bloquean:
+            problemas = [f"El borrador de alta #{b['id']} tiene pendientes que impiden generar el script."] + bloquean
+            return 400, {"title": "No se puede generar el script", "status": 400, "detail": " ".join(problemas),
+                         "problemas": problemas}, {}
+        if b.get("modo") == "Migracion":
+            # Respuesta real de la API para la migración de 334 en el mismo ID (sin correos de debug).
+            datos = self.json("scripts_migracion.json")
+            return 200, dict(datos, archivos=[dict(a, nombre=a["nombre"].replace("111269", ticket))
+                                              for a in datos["archivos"]]), {}
+        # Respuesta real de la API (alta basada en 1223 con CRON y un correo de debug), con el ticket pedido.
+        datos = self.json("scripts_nuevo.json")
+        archivos = [dict(a, nombre=a["nombre"].replace("111269", ticket)) for a in datos["archivos"]
+                    if b.get("correosDebug") or not a["nombre"].startswith("solo_dev_")]
+        resumen = datos["resumen"] if b.get("correosDebug") else dict(datos["resumen"], soloDev=[])
+        return 200, dict(datos, archivos=archivos, resumen=resumen), {}
 
     def nuevo_borrador(self, cambios: list[dict]) -> dict:
         ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -144,6 +436,14 @@ class ApiSimulada:
             {"campo": "EstiloExtra", "lang": 2, "sectionContentId": None, "valorBase": "",
              "valorActual": ".titulo { color: #1b2430; }", "hashBase": _hash(""),
              "hashActual": _hash(".titulo { color: #1b2430; }"), "motivo": "ValorCambiado", "conCambio": False}]
+        # Ticket 10: un valor de varias líneas con cambio de los dos lados (comparación por renglón y valores completos).
+        base_estilo = ".titulo { color: #1b2430; }\r\n.cuerpo { font-size: 13px; }\r\n.pie { color: #5b6675; }"
+        actual_estilo = ".titulo { color: #1b2430; }\r\n.cuerpo { font-size: 14px; }\r\n.pie { color: #5b6675; }"
+        tuyo_estilo = ".titulo { color: #003a6b; }\r\n.cuerpo { font-size: 13px; }\r\n.pie { color: #5b6675; }\r\n.nota { margin: 0; }"
+        respuesta["borrador"]["cambios"].append({"campo": "EstiloExtra", "lang": 1, "sectionContentId": None, "valor": tuyo_estilo})
+        respuesta["conflictos"].append(
+            {"campo": "EstiloExtra", "lang": 1, "sectionContentId": None, "valorBase": base_estilo, "valorActual": actual_estilo,
+             "hashBase": _hash(base_estilo), "hashActual": _hash(actual_estilo), "motivo": "ValorCambiado", "conCambio": True})
         respuesta["validaciones"] = [{"nivel": "advertencia", "codigo": "marcador_sin_reemplazar",
                                       "mensaje": "%CustomerName% queda sin reemplazar (asunto).",
                                       "componente": "marcador:CustomerName"}]
@@ -232,6 +532,205 @@ class ApiSimulada:
             return 200, self.respuesta_componente(), {}
         return no_encontrado
 
+    # ---------- scripts (ticket 6): respuestas 200 capturadas de la API real; 409/404/400 armados aquí
+
+    def responder_scripts(self, ruta: str, cuerpo, no_encontrado) -> tuple[int, object, dict]:
+        c = cuerpo or {}
+        ticket, autor = str(c.get("ticket") or ""), str(c.get("autor") or "").strip()
+        problemas = []
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,60}", ticket):
+            problemas.append(f"El ticket '{ticket}' no es válido: usa letras, dígitos, '-' o '_' (máximo 60); es el nombre de los archivos.")
+        if not autor:
+            problemas.append("Falta el autor.")
+        if problemas:
+            return 400, {"title": "No se puede generar el script", "status": 400, "detail": problemas[0],
+                         "problemas": problemas}, {}
+        if ruta.startswith("/api/scripts/nuevo/"):
+            return self.responder_scripts_alta(ruta, ticket, no_encontrado)
+        b, bc = self.borrador, self.borrador_componente
+        conflicto_c = self.respuesta_componente()["conflicto"] if bc else None
+        if ruta == f"/api/scripts/tipo/{self.tipo['id']}":
+            excluida = any(str(x.get("clase", "")).lower() == "seccion" and x.get("id") == 3
+                           for x in c.get("componentesExcluidos") or [])
+            usa_c = bc is not None and not excluida
+            if not b and not usa_c:
+                return 404, {"title": "Sin borradores", "status": 404,
+                             "detail": f"No hay borrador del tipo {self.tipo['id']} ni borradores de componentes que use: no hay nada que generar."}, {}
+            con_tipo = [x for x in (b or {}).get("conflictos", []) if x["conCambio"]]
+            con_comp = [conflicto_c] if usa_c and conflicto_c and conflicto_c["conCambio"] else []
+            if con_tipo or con_comp:
+                return 409, {"title": "Conflictos sin resolver", "status": 409,
+                             "detail": "Hay conflictos con cambio sin resolver: no se genera el script.",
+                             "problemas": ["Conflicto sin resolver"] * (len(con_tipo) + len(con_comp)),
+                             "conflictosTipo": [dict(x, internalSectionId=None) for x in con_tipo],
+                             "conflictosComponentes": con_comp}, {}
+            # Respuesta real (ticket 10): 111269_tipo1223.sql, conteo { tipo: 2, componentes: 1 } y soloDev [].
+            datos = self.json("scripts_tipo_1223.json")
+            if excluida:
+                cambios = [x for x in datos["resumen"]["cambios"] if "(compartido)" not in x]
+                datos = dict(datos, componentesIncluidos=[], componentesExcluidos=[{"clase": "Seccion", "id": 3}],
+                             resumen=dict(datos["resumen"], impacto=[], cambios=cambios,
+                                          conteo={"tipo": len(cambios), "componentes": 0, "total": len(cambios)}))
+            # Archivo solo dev de muestra (la API real no lo genera en ediciones): se mide su pestaña y su línea del resumen.
+            datos = dict(datos, archivos=datos["archivos"] + [{
+                "nombre": f"solo_dev_{ticket}_tipo{self.tipo['id']}.sql",
+                "contenido": "-- Solo dev: no llevar a producción\r\nUSE [Masterdb];\r\nSELECT 1;\r\n"}],
+                resumen=dict(datos["resumen"], soloDev=["Solo dev (archivo aparte): archivo de muestra del check."]))
+            return 200, datos, {}
+        if ruta == "/api/scripts/componente/seccion/3":
+            if not bc:
+                return 404, {"title": "Sin borrador", "status": 404, "detail": "La sección #3 no tiene borrador."}, {}
+            if conflicto_c and conflicto_c["conCambio"]:
+                return 409, {"title": "Conflictos sin resolver", "status": 409,
+                             "detail": "Hay conflictos con cambio sin resolver: no se genera el script.",
+                             "problemas": ["Conflicto sin resolver"], "conflictosTipo": [],
+                             "conflictosComponentes": [conflicto_c]}, {}
+            return 200, self.json("scripts_componente_seccion_3.json"), {}
+        return no_encontrado
+
+    # PNG 1x1 para las imágenes de la ayuda (el capítulo capturado las pide a /api/ayuda/img/…).
+    PNG_1X1 = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+                            "0000000d49444154789c63b8fbe8c57f0008ee03a7ba52c91c0000000049454e44ae426082")
+
+    def responder_ayuda(self, metodo: str, url) -> tuple[int, bytes, str, dict]:
+        """Ticket 9 · GET /api/ayuda (JSON), /api/ayuda/{capitulo} (HTML con CSP) y /api/ayuda/img/{archivo} (PNG)."""
+        ruta = url.path.rstrip("/")
+        retraso = self.retrasos.get(f"{metodo} {ruta}")
+        if retraso:
+            time.sleep(retraso / 1000)
+        problema = lambda status, titulo, detalle: (
+            status, json.dumps({"title": titulo, "status": status, "detail": detalle}, ensure_ascii=False).encode("utf-8"),
+            "application/problem+json", {})
+        if metodo not in ("GET", "HEAD"):
+            return problema(405, "Método no permitido", ruta)
+        if self.ayuda_error:
+            return problema(503, "Ayuda no disponible",
+                            "No existe la carpeta de la ayuda (Ayuda:Carpeta). Configúrala en appsettings o con Ayuda__Carpeta.")
+        if ruta == "/api/ayuda":
+            return 200, (self.carpeta / "ayuda_indice.json").read_bytes(), "application/json; charset=utf-8", {}
+        nombre = ruta[len("/api/ayuda/"):]
+        if nombre.startswith("img/"):
+            return 200, self.PNG_1X1, "image/png", {"X-Content-Type-Options": "nosniff"}
+        pagina = self.carpeta / f"ayuda_{nombre}.html"
+        if "/" in nombre or "\\" in nombre or ".." in nombre or not pagina.is_file():
+            return problema(404, "No encontrado", f"'{nombre}' no es un capítulo de la ayuda (API simulada: README y 03).")
+        return 200, pagina.read_bytes(), "text/html; charset=utf-8", {
+            "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+            "X-Content-Type-Options": "nosniff"}
+
+    # ---------- ticket 11: idioma nuevo en el borrador del tipo 1259
+
+    def copia(self, nombre: str) -> dict:
+        return json.loads(json.dumps(self.json(nombre)))
+
+    def armar_1259(self, configuracion: dict, es_aceptada: bool) -> dict:
+        """Borrador del 1259 con francés nuevo: respuesta capturada según el estado (asunto vacío = la del POST, sin sus
+        avisos de prellenado y propuesta; con asunto = la del PUT /idiomas/4; sin la propuesta de ES = la del PUT del
+        tipo), con la configuración recibida."""
+        completo = bool((configuracion.get("subject") or "").strip())
+        if not completo:
+            r = self.copia("idioma_nuevo_1259_post.json")
+            nuevo = r["idiomasNuevos"][0]
+            nuevo["avisos"] = [a for a in nuevo["avisos"] if a["codigo"] not in ("prellenado", "propuesta")]
+            if not es_aceptada:
+                plantilla = self.copia("idioma_nuevo_1259_sin_es.json")
+                r["borrador"]["cambios"] = plantilla["borrador"]["cambios"]
+                nuevo["propuestas"] = plantilla["idiomasNuevos"][0]["propuestas"]
+                nuevo["avisos"] += [a for a in plantilla["idiomasNuevos"][0]["avisos"] if a["codigo"] == "alcance_web"]
+        else:
+            r = self.copia("idioma_nuevo_1259_put.json" if es_aceptada else "idioma_nuevo_1259_sin_es.json")
+        nuevo = r["idiomasNuevos"][0]
+        nuevo["configuracion"] = dict(configuracion, lang=4)
+        ahora = self.ahora()
+        creado = self.borrador_1259["borrador"]["creado"] if self.borrador_1259 else ahora
+        r["borrador"].update(creado=creado, modificado=ahora)
+        nuevo.update(creado=creado, modificado=ahora)
+        return r
+
+    @staticmethod
+    def es_aceptada_1259(respuesta: dict) -> bool:
+        return any(c["campo"] == "DisclaimerSuperior" and c["lang"] == 1 and c["valor"] == "9"
+                   for c in respuesta["borrador"]["cambios"])
+
+    def resumen_1259(self) -> list[dict]:
+        b = self.borrador_1259
+        if not b:
+            return []
+        d = b["borrador"]
+        return [{"tipoId": 1259, "nombre": d["nombreTipo"], "creado": d["creado"], "modificado": d["modificado"],
+                 "cantidadCambios": len(d["cambios"]), "tieneConflictos": False, "cantidadConflictos": 0,
+                 "tipoExiste": True, "idiomasNuevos": [i["lang"] for i in b.get("idiomasNuevos") or []]}]
+
+    def responder_1259(self, metodo: str, ruta: str, cuerpo, ticket: str, no_encontrado) -> tuple[int, object, dict]:
+        base = "/api/borradores/1259"
+        b = self.borrador_1259
+        sin_borrador = (404, {"title": "Borrador no encontrado", "status": 404,
+                              "detail": "No hay borrador guardado para el tipo 1259."}, {})
+        if metodo == "GET" and ruta == "/api/tipos/1259":
+            return 200, self.tipo_1259, {}
+        if ruta == base:
+            if metodo == "GET":
+                return (200, b, {}) if b else sin_borrador
+            if metodo == "DELETE":
+                if not b:
+                    return sin_borrador
+                self.borrador_1259 = None
+                return 204, None, {}
+            if metodo == "PUT":
+                cambios = (cuerpo or {}).get("cambios") or []
+                es = any(c.get("campo") == "DisclaimerSuperior" and c.get("lang") == 1 and c.get("valor") == "9"
+                         for c in cambios)
+                with self.candado:
+                    nuevo = b is None
+                    if b and b.get("idiomasNuevos"):
+                        self.borrador_1259 = self.armar_1259(b["idiomasNuevos"][0]["configuracion"], es)
+                    else:
+                        # Sin idioma nuevo el recorrido solo crea el borrador vacío (base de la respuesta del DELETE).
+                        r = self.copia("idioma_nuevo_1259_quitado.json")
+                        r["borrador"]["cambios"] = []
+                        r["borrador"].update(creado=self.ahora(), modificado=self.ahora())
+                        self.borrador_1259 = r
+                return 200, self.borrador_1259, {"X-Borrador-Nuevo": "true" if nuevo else "false"}
+        if ruta == base + "/conflictos" and metodo == "GET":
+            if not b:
+                return sin_borrador
+            return 200, {"tipoId": 1259, "tipoExiste": True, "conflictos": [], "idiomasNuevosEnConflicto": []}, {}
+        if ruta == base + "/idiomas" and metodo == "POST":
+            if b and b.get("idiomasNuevos"):
+                return self.invalido("El borrador del tipo 1259 ya agrega francés (4).")
+            with self.candado:
+                nuevo = b is None
+                r = self.copia("idioma_nuevo_1259_post.json")
+                ahora = self.ahora()
+                r["borrador"].update(creado=ahora, modificado=ahora)
+                r["idiomasNuevos"][0].update(creado=ahora, modificado=ahora)
+                self.borrador_1259 = r
+            return 201, r, {"X-Borrador-Nuevo": "true" if nuevo else "false", "Location": base}
+        if ruta == base + "/idiomas/4":
+            if not b or not b.get("idiomasNuevos"):
+                return sin_borrador
+            if metodo == "PUT":
+                with self.candado:
+                    self.borrador_1259 = self.armar_1259(cuerpo or {}, self.es_aceptada_1259(b))
+                return 200, self.borrador_1259, {}
+            if metodo == "DELETE":
+                r = self.copia("idioma_nuevo_1259_quitado.json")
+                r["borrador"].update(creado=b["borrador"]["creado"], modificado=self.ahora())
+                self.borrador_1259 = r
+                return 200, r, {}
+        if metodo == "POST" and ruta == "/api/scripts/tipo/1259":
+            if not b:
+                return 404, {"title": "Sin borradores", "status": 404,
+                             "detail": "No hay borrador del tipo 1259 ni borradores de componentes que use: no hay nada que generar."}, {}
+            nuevos = b.get("idiomasNuevos") or []
+            if nuevos and not (nuevos[0]["configuracion"].get("subject") or "").strip():
+                return 400, self.json("scripts_tipo_1259_400.json"), {}
+            # Respuesta real: 111269_tipo1259.sql con las propuestas ES/EN y francés (4), resumen.idiomasNuevos.
+            datos = self.copia("scripts_tipo_1259.json")
+            datos["archivos"] = [dict(a, nombre=a["nombre"].replace("111269", ticket)) for a in datos["archivos"]]
+            return 200, datos, {}
+        return no_encontrado
+
     def responder(self, metodo: str, url, cuerpo) -> tuple[int, object, dict]:
         """(status, cuerpo JSON o None, cabeceras extra)."""
         ruta = url.path.rstrip("/")
@@ -244,6 +743,19 @@ class ApiSimulada:
         borradores = f"/api/borradores/{tipo_id}"
         if ruta.startswith("/api/componentes/"):
             return self.responder_componente(metodo, ruta, cuerpo, no_encontrado)
+        if ruta == "/api/tipos/1259" or ruta.startswith("/api/borradores/1259") or ruta == "/api/scripts/tipo/1259":
+            if ruta.startswith("/api/scripts/"):
+                c = cuerpo or {}
+                if not re.fullmatch(r"[A-Za-z0-9_-]{1,60}", str(c.get("ticket") or "")) or not str(c.get("autor") or "").strip():
+                    return self.responder_scripts(ruta, cuerpo, no_encontrado)
+                return self.responder_1259(metodo, ruta, cuerpo, str(c.get("ticket")), no_encontrado)
+            return self.responder_1259(metodo, ruta, cuerpo, "", no_encontrado)
+        if metodo == "POST" and ruta.startswith("/api/scripts/"):
+            return self.responder_scripts(ruta, cuerpo, no_encontrado)
+        if ruta == "/api/nuevas" or ruta.startswith("/api/nuevas/"):
+            return self.responder_altas(metodo, ruta, q, cuerpo, no_encontrado)
+        if ruta.startswith("/api/legacy/"):
+            return self.responder_legacy(metodo, ruta, q, no_encontrado)
 
         if metodo == "GET":
             fijas = {"/api/salud": "salud.json", "/api/tipos": "tipos.json",
@@ -258,12 +770,12 @@ class ApiSimulada:
             if ruta == "/api/borradores":
                 b = self.borrador
                 if not b:
-                    return 200, [], {}
+                    return 200, self.resumen_1259(), {}
                 d = b["borrador"]
                 return 200, [{"tipoId": d["tipoId"], "nombre": d["nombreTipo"], "creado": d["creado"],
                               "modificado": d["modificado"], "cantidadCambios": len(d["cambios"]),
                               "tieneConflictos": bool(b["conflictos"]), "cantidadConflictos": len(b["conflictos"]),
-                              "tipoExiste": True}], {}
+                              "tipoExiste": True}] + self.resumen_1259(), {}
             if ruta == borradores:
                 return (200, self.borrador, {}) if self.borrador else no_encontrado
             if ruta == borradores + "/conflictos":
@@ -274,7 +786,27 @@ class ApiSimulada:
             return no_encontrado
 
         if metodo == "POST" and ruta in ("/api/visor/correo", "/api/visor/web"):
-            return 200, self.json("visor_correo.json" if ruta.endswith("correo") else "visor_web.json"), {}
+            modo = "correo" if ruta.endswith("correo") else "web"
+            c = cuerpo or {}
+            alta = self.altas.get(c.get("borradorAltaId"))
+            # Ticket 10: la API aplica los borradores de componentes compartidos con borradorAltaId (si el alta usa la
+            # sección) y con tipoId + usarBorrador; lo indica en componentesAplicados (capturado: [{ Seccion, 3 }]).
+            usa_3 = alta is not None and any(s.get("sectionContentId") == 3 for i in alta.get("idiomas") or []
+                                             for s in i.get("secciones") or [])
+            aplicados = [{"clase": "Seccion", "id": 3}] if self.borrador_componente and self.borrador_componente["tieneCambio"] and (
+                usa_3 or (alta is None and c.get("usarBorrador") is True)) else []
+            # Ticket 11: el 1259 con francés nuevo en el borrador (respuestas reales del visor con usarBorrador, lang 4)
+            if c.get("tipoId") == 1259 and c.get("lang") == 4 and c.get("usarBorrador") is True and \
+                    self.borrador_1259 and self.borrador_1259.get("idiomasNuevos"):
+                return 200, self.json(f"visor_{modo}_1259_fr.json"), {}
+            if alta and alta.get("origenLegacy"):
+                # Respuesta real del visor de un alta basada en Legacy (334 EN + 337 ES), en inglés.
+                return 200, dict(self.json(f"visor_{modo}_alta_legacy.json"), componentesAplicados=aplicados), {}
+            if alta and not alta.get("baseTipoId"):
+                # Respuesta real del visor de un alta vacía en inglés con la cabecera compartida 3, el cuerpo
+                # propio y el pie por llenar (marcador %ContentBottom_0% sin reemplazar).
+                return 200, dict(self.json(f"visor_{modo}_alta_parcial.json"), componentesAplicados=aplicados), {}
+            return 200, dict(self.json(f"visor_{modo}.json"), componentesAplicados=aplicados), {}
 
         if metodo == "PUT" and ruta == borradores:
             base = {(b["campo"], b["lang"], b["sectionContentId"]): b["valor"] for b in self.base()}
@@ -344,6 +876,9 @@ def _servidor(dist: Path, api: ApiSimulada, resultado: dict, listo: threading.Ev
         def _atender(self):
             url = urlparse(self.path)
             cuerpo = self._cuerpo() if self.command in ("POST", "PUT") else None
+            if url.path == "/api/ayuda" or url.path.startswith("/api/ayuda/"):
+                status, contenido, tipo, extra = api.responder_ayuda(self.command, url)
+                return self._enviar(status, contenido, tipo, extra)
             if url.path.startswith("/api/"):
                 status, datos, extra = api.responder(self.command, url, cuerpo)
                 tipo = "application/problem+json" if status >= 400 else "application/json; charset=utf-8"
@@ -449,7 +984,7 @@ def _reporte(resultado: dict) -> list[dict]:
         if resultado.get("error"):
             motivos.append(f"- recorrido: {resultado['error']}")
         hallazgos.append({"id": CHECK_ID + "_cobertura", "resultado": "fallo", "severidad": "warning",
-                          "detalle": "estados de las pantallas 1 y 3 que el recorrido no pudo medir (revisa "
+                          "detalle": "estados de las pantallas 1, 2, 3 y 4 que el recorrido no pudo medir (revisa "
                                      ".claude/checks/web_contraste/recorrido.js si la pantalla cambió):\n"
                                      + ("\n".join(motivos) or "- ningún estado medido")})
 

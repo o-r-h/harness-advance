@@ -1,0 +1,1 @@
+{"id":1223,"libre":false,"existeEnMasterdb":true,"tipo":{"id":1223,"nombre":"71670 - PSCP/ Failed audits notifications","buildType":1,"inactivo":false},"borradoresAlta":[],"problemas":["El NotificationTypeID 1223 ya existe en NotificationTypes: '71670 - PSCP/ Failed audits notifications' (BuildType = 1)."]}

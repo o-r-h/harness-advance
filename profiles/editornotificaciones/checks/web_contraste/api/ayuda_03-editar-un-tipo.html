@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>3 · Editar un tipo existente · Ayuda</title>
+<style>:root{color-scheme:light dark;--fondo:#ffffff;--texto:#1f2328;--suave:#57606a;--enlace:#0a58ca;--borde:#d0d7de;--codigo:#f3f4f6;--cabecera:#eef1f4;}
+@media (prefers-color-scheme: dark){:root{--fondo:#15171b;--texto:#e6e8eb;--suave:#b1b8c0;--enlace:#8cb4ff;--borde:#3a3f47;--codigo:#23262c;--cabecera:#1f2329;}}
+*{box-sizing:border-box;}
+html,body{margin:0;background:var(--fondo);color:var(--texto);}
+body{font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;font-size:16px;line-height:1.6;}
+main.ayuda{max-width:960px;margin:0 auto;padding:24px 20px 48px;}
+h1,h2,h3,h4{line-height:1.3;margin:1.6em 0 .6em;}
+h1{font-size:1.9em;margin-top:.4em;border-bottom:1px solid var(--borde);padding-bottom:.3em;}
+h2{font-size:1.45em;border-bottom:1px solid var(--borde);padding-bottom:.25em;}
+h3{font-size:1.2em;}
+p,ul,ol,table,pre,blockquote{margin:0 0 1em;}
+ul,ol{padding-left:1.6em;}
+li+li{margin-top:.25em;}
+a{color:var(--enlace);text-decoration:underline;text-underline-offset:2px;}
+a:focus-visible{outline:2px solid var(--enlace);outline-offset:2px;}
+code{font-family:Consolas,"Cascadia Mono","Courier New",monospace;font-size:.92em;background:var(--codigo);color:var(--texto);padding:.1em .35em;border-radius:4px;}
+pre{background:var(--codigo);color:var(--texto);padding:12px 14px;border-radius:6px;overflow-x:auto;line-height:1.45;}
+pre code{background:none;padding:0;font-size:.9em;white-space:pre;}
+table{border-collapse:collapse;display:block;max-width:100%;overflow-x:auto;}
+th,td{border:1px solid var(--borde);padding:6px 10px;text-align:left;vertical-align:top;}
+th{background:var(--cabecera);font-weight:600;}
+blockquote{border-left:4px solid var(--borde);padding:.2em 1em;color:var(--suave);}
+blockquote p:last-child{margin-bottom:0;}
+img{max-width:100%;height:auto;border:1px solid var(--borde);border-radius:4px;}
+hr{border:0;border-top:1px solid var(--borde);margin:2em 0;}</style>
+</head>
+<body>
+<main class="ayuda">
+<h1 id="3--editar-un-tipo-existente">3 · Editar un tipo existente</h1>
+<p><a href="/api/ayuda/02-ver-una-notificacion">← Ver una notificación</a> · <a href="/api/ayuda/README">Índice</a> · Siguiente: <a href="/api/ayuda/04-editar-seccion-compartida">Editar una sección compartida →</a></p>
+<p><strong>Objetivo:</strong> cambiar en el tipo <strong>1223</strong> (inglés) el asunto, el texto de su sección propia (#35) y
+el disclaimer superior; verlo en el visor y guardarlo en un borrador local. Después, retomar ese
+borrador.</p>
+<p><strong>Qué se puede editar en este caso</strong> (por idioma):</p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Tabla</th>
+<th>Cómo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Asunto</td>
+<td><code>NotificationTemplateLang.Subject</code></td>
+<td>Texto</td>
+</tr>
+<tr>
+<td>Disclaimer superior e inferior</td>
+<td><code>NotificationTemplateLang.DisclaimerTopID</code> / <code>DisclaimerBottomID</code></td>
+<td>Elegir otro del catálogo del mismo idioma y posición</td>
+</tr>
+<tr>
+<td>Estilos extra</td>
+<td><code>NotificationTemplateLang.StyleSection</code></td>
+<td>CSS</td>
+</tr>
+<tr>
+<td>Contenido de una sección <strong>propia</strong></td>
+<td><code>SectionContent.Content</code></td>
+<td>HTML</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Qué no se edita aquí:</strong> la plantilla, el estilo base y las secciones <strong>compartidas</strong> (esas van por
+la pantalla 3, <a href="/api/ayuda/04-editar-seccion-compartida">caso 4</a>). Tampoco se cambia qué sección va en cada
+posición ni se agregan idiomas a un tipo existente.</p>
+<h2 id="paso-1--entrar-en-modo-edición">Paso 1 · Entrar en modo edición</h2>
+<ol>
+<li>Abre <code>/editor/1223</code> y elige la pestaña <strong>Inglés · Lang 2</strong>.</li>
+<li>En la barra <strong>Solo lectura</strong>, pulsa <strong>Editar</strong>.</li>
+</ol>
+<p><img src="/api/ayuda/img/03-barra-solo-lectura.png" alt="Barra &quot;Solo lectura&quot; con el botón Editar" /></p>
+<p><strong>Qué debes ver:</strong> la barra cambia a <strong>Modo edición · Inglés</strong> con la etiqueta <strong>Borrador</strong>, y el
+visor muestra la etiqueta <strong>Borrador</strong> con el interruptor <strong>Ver lo publicado</strong>.</p>
+<p><img src="/api/ayuda/img/03-barra-edicion.png" alt="Barra &quot;Modo edición · Inglés&quot; con Salir de edición y Descartar borrador" /></p>
+<p><strong>Por qué importa este clic:</strong> al entrar, la app <strong>crea el borrador</strong> en tu SQLite y guarda la
+<strong>base</strong>: cómo está hoy en Masterdb cada campo editable del tipo, en todos sus idiomas. Esa base es
+la que después sirve para detectar conflictos y la que el script comprueba antes de escribir. Por
+eso el encabezado ya dice &quot;Guardado a las …&quot; aunque no hayas cambiado nada.</p>
+<blockquote>
+<p>El modo edición aplica al <strong>idioma de la pestaña activa</strong>. Para editar el español, cambia a la
+pestaña <strong>Español · Lang 1</strong>: el borrador es el mismo (uno por tipo).</p>
+</blockquote>
+<h2 id="paso-2--cambiar-el-asunto">Paso 2 · Cambiar el asunto</h2>
+<ol>
+<li>En <strong>Asunto y disclaimers</strong>, cambia el asunto a
+<code>%CustomerName% - Failed Audits Report (weekly summary)</code>.</li>
+</ol>
+<p><strong>Qué debes ver:</strong> el campo con borde de color y la marca <strong>modificado</strong> con el enlace <strong>Revertir</strong>,
+que lo regresa al valor de Masterdb. Bajo los botones del encabezado aparece <strong>Cambios sin
+guardar</strong>.</p>
+<p><img src="/api/ayuda/img/03-sin-guardar.png" alt="Encabezado con &quot;Guardado a las 10:01 · Cambios sin guardar&quot;" /></p>
+<h2 id="paso-3--elegir-otro-disclaimer">Paso 3 · Elegir otro disclaimer</h2>
+<ol>
+<li>Abre <strong>Disclaimer superior (IsTop = 1)</strong>.</li>
+</ol>
+<p><img src="/api/ayuda/img/03-disclaimer-opciones.png" alt="Lista de disclaimers superiores en inglés con su ID, inicio del texto y cuántas filas lo usan" /></p>
+<p>Cada opción muestra su ID, el inicio del texto y <strong>cuántas filas</strong> de <code>NotificationTemplateLang</code>
+lo usan. Solo aparecen los del idioma y la posición correctos. El que dice <strong>inactivo</strong> existe,
+pero el SP lo convertiría en vacío.</p>
+<ol start="2">
+<li>Elige <strong>10 · Note that this is an automated e-mail…</strong>.</li>
+</ol>
+<p><img src="/api/ayuda/img/03-asunto-disclaimer-editados.png" alt="Asunto y disclaimer superior marcados como modificados" /></p>
+<p><strong>Por qué elegir y no escribir:</strong> un disclaimer es un componente compartido. Aquí solo cambias
+<strong>cuál</strong> usa el tipo. Para cambiar el <strong>texto</strong> de un disclaimer (para todos o solo para este tipo)
+está <strong>Editar compartido</strong> (<a href="/api/ayuda/04-editar-seccion-compartida">caso 4</a>).</p>
+<h2 id="paso-4--editar-la-sección-propia">Paso 4 · Editar la sección propia</h2>
+<ol>
+<li>Baja a <strong>Secciones de la plantilla</strong>. La posición <code>%ContentBody_0%</code> tiene el chip <strong>Solo este
+tipo</strong> y, en modo edición, un editor de HTML: <strong>Contenido HTML de #35 (SectionContent.Content)</strong>.</li>
+<li>Cambia <code>have been recently submitted to your site</code> por <code>were submitted to your site this week</code>.</li>
+</ol>
+<p><img src="/api/ayuda/img/03-seccion-propia-editada.png" alt="Sección propia #35 en edición, marcada como modificada" /></p>
+<p>Las posiciones compartidas (<code>%ContentHeader_0%</code>, <code>%ContentBottom_0%</code>) no tienen editor: tienen el
+botón <strong>Editar compartido</strong>.</p>
+<p><strong>Cuidado con el HTML:</strong> respeta la convención <code>&lt;td class=&quot;notificacion-cuerpo&quot;&gt;…&lt;/td&gt;</code>. Si la
+quitas, la app lo advierte al guardar: la vista web necesita esa celda.</p>
+<h2 id="paso-5--guardar-el-borrador">Paso 5 · Guardar el borrador</h2>
+<ol>
+<li>Pulsa <strong>Guardar borrador</strong> (arriba a la derecha).</li>
+</ol>
+<p><img src="/api/ayuda/img/03-guardado.png" alt="Encabezado con &quot;Guardado a las 10:03&quot;" /></p>
+<p><strong>Qué debes ver:</strong> <strong>Guardado a las …</strong> y el visor se actualiza con tus cambios:</p>
+<p><img src="/api/ayuda/img/03-visor-borrador.png" alt="Visor con la etiqueta Borrador: asunto con &quot;(weekly summary)&quot;, disclaimer &quot;Español | Français&quot; y el texto nuevo del cuerpo" /></p>
+<p><strong>Por qué hay que guardar para ver el cambio:</strong> el visor le pide el render a la API, y la API solo
+conoce lo <strong>guardado</strong>. Mientras tengas cambios sin guardar, el visor muestra la última versión
+guardada y lo dice (&quot;Guarda el borrador para ver tus cambios pendientes&quot;).</p>
+<p><strong>Revisa Validaciones después de guardar, en los dos modos.</strong> El disclaimer 10 trae el botón
+<strong>Español | Français</strong>, pero 1223 no tiene francés. En <strong>Vista web</strong> la API lo marca como error:</p>
+<p><img src="/api/ayuda/img/03-validaciones-web-disclaimer-fr.png" alt="Validaciones de la vista web: error porque el enlace rm_url C2=FR apunta a francés, que no tiene fila" /></p>
+<p>Ese botón dejaría la página cargando sin fin. Es el tipo de cosa que la app atrapa y que a simple
+vista no se nota. (Para seguir el ejemplo lo dejamos así; en un caso real elegirías el disclaimer
+4 de vuelta con <strong>Revertir</strong>.)</p>
+<blockquote>
+<p><strong>Validaciones del borrador</strong> (arriba, en la columna izquierda) revisa lo que editaste al
+guardar: secciones sin <code>&lt;td class=&quot;notificacion-…&quot;&gt;</code>, disclaimers de otro idioma, <code>%X%</code> nuevos.
+Las validaciones del <strong>visor</strong> revisan el resultado completo en el modo e idioma elegidos.
+Revisa las dos.</p>
+</blockquote>
+<h2 id="paso-6--comparar-con-lo-publicado">Paso 6 · Comparar con lo publicado</h2>
+<ol>
+<li>En el visor, activa <strong>Ver lo publicado</strong>.</li>
+</ol>
+<p><img src="/api/ayuda/img/03-ver-publicado.png" alt="Visor con &quot;Publicado en Masterdb&quot; y el interruptor Ver lo publicado activo" /></p>
+<p><strong>Qué debes ver:</strong> la etiqueta cambia a <strong>Publicado en Masterdb</strong> y el visor muestra el tipo sin tus
+cambios. Desactívalo para volver al borrador.</p>
+<h2 id="paso-7--salir-y-retomar">Paso 7 · Salir y retomar</h2>
+<p>Puedes cerrar el navegador: el borrador está en el SQLite.</p>
+<ol>
+<li>Vuelve a abrir <code>/editor/1223</code>.</li>
+</ol>
+<p><img src="/api/ayuda/img/03-retomar-borrador.png" alt="Aviso &quot;Hay un borrador del 22/10/2026 10:03 · 3 cambios&quot; con Continuar y Descartar" /></p>
+<ol start="2">
+<li>Elige:
+<ul>
+<li><strong>Continuar</strong>: carga tus cambios en modo edición y el visor los muestra.</li>
+<li><strong>Descartar</strong>: borra el borrador del SQLite. El tipo queda como en Masterdb (que nunca cambió).</li>
+</ul>
+</li>
+</ol>
+<p>Mientras no elijas, el visor muestra lo publicado.</p>
+<p><strong>La lista de borradores:</strong> el botón <strong>Borradores</strong> del encabezado muestra todos tus borradores de
+tipos y de componentes compartidos, con su fecha, número de cambios y si tienen conflicto con
+Masterdb (se revisa al abrir la lista). <strong>Abrir</strong> te lleva al tipo.</p>
+<p><img src="/api/ayuda/img/03-lista-borradores.png" alt="Diálogo &quot;Borradores locales&quot; con el borrador de 1223, 3 cambios, sin conflictos" /></p>
+<blockquote>
+<p>Los borradores de <strong>tipos nuevos</strong> no salen en esta lista: están en la pantalla
+<strong>Notificación nueva</strong>, en <strong>Borradores de alta</strong> (<a href="/api/ayuda/06-notificacion-nueva">caso 6</a>).</p>
+</blockquote>
+<h2 id="otros-botones-de-la-barra-de-edición">Otros botones de la barra de edición</h2>
+<ul>
+<li><strong>Salir de edición</strong>: vuelve a solo lectura. Si hay cambios sin guardar, pregunta (<strong>Salir sin
+guardar</strong> / <strong>Seguir editando</strong>). El borrador guardado se conserva.</li>
+<li><strong>Descartar borrador</strong>: pide confirmación y borra el borrador con todos sus cambios, en todos los
+idiomas.</li>
+<li>Si cambias de tipo o de pantalla con cambios sin guardar, la app pregunta (<strong>Salir sin guardar</strong> /
+<strong>Quedarme</strong>).</li>
+</ul>
+<h2 id="errores-comunes">Errores comunes</h2>
+<ul>
+<li><strong>&quot;Cambié el texto y el visor no cambia.&quot;</strong> Falta <strong>Guardar borrador</strong>.</li>
+<li><strong>&quot;No puedo editar la sección del encabezado.&quot;</strong> Es compartida. Usa <strong>Editar compartido</strong> y lee el
+impacto antes (<a href="/api/ayuda/04-editar-seccion-compartida">caso 4</a>).</li>
+<li><strong>&quot;No encuentro el disclaimer que quiero.&quot;</strong> Solo se listan los del idioma y la posición del
+campo. Un disclaimer en español no se puede poner en la fila de inglés.</li>
+<li><strong>&quot;Edité el español y el inglés no cambió.&quot;</strong> Cada idioma es una fila distinta de
+<code>NotificationTemplateLang</code> y tiene sus propias secciones. Edita cada pestaña.</li>
+</ul>
+<p><a href="/api/ayuda/02-ver-una-notificacion">← Ver una notificación</a> · <a href="/api/ayuda/README">Índice</a> · Siguiente: <a href="/api/ayuda/04-editar-seccion-compartida">Editar una sección compartida →</a></p>
+</main>
+</body>
+</html>
