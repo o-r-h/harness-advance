@@ -105,6 +105,44 @@ class TestRecordHallazgos(Base):
         self.assertEqual(items[0]["estado"], "aprobado")
 
 
+class TestRecordHallazgosRondaDeCorreccion(Base):
+    def test_la_propuesta_no_puede_autoaprobarse(self):
+        self.preparar()
+        item = _hallazgo(1)
+        item.update({"estado": "aprobado", "origen": "humano", "id": "h7"})
+        ruta = self.root / "propuesta.json"
+        ruta.write_text(json.dumps({"fase_id": "fase_1", "hallazgos": [item]}),
+                        encoding="utf-8")
+        resultado = correr("record-hallazgos", *self.p, "--archivo", str(ruta))
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        h = self.guardados()["hallazgos"][0]
+        self.assertEqual((h["id"], h["origen"], h["estado"]), ("h1", "reflector", "propuesto"))
+        pendientes = correr("hallazgos-pendientes", *self.p)
+        self.assertIn("ISR-110722/fase_1/h1", pendientes.stdout)
+
+    def test_hallazgo_humano_previo_no_bloquea_la_reflexion(self):
+        self.preparar(cerrar=False)
+        correr("hallazgo", *self.p, "--texto", "Lección del humano")
+        state.aprobar_fase(self.root, TICKET, "fase_1")
+        resultado = self.proponer(2)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        items = self.guardados()["hallazgos"]
+        self.assertEqual([(h["id"], h["estado"]) for h in items],
+                         [("h1", "aprobado"), ("h2", "propuesto"), ("h3", "propuesto")])
+        self.assertEqual(items[0]["origen"], "humano")
+
+    def test_pendientes_salta_archivo_corrupto(self):
+        self.preparar()
+        self.proponer(1)
+        corrupto = harness.fase_dir(self.root, TICKET, "fase_2") / "hallazgos.json"
+        corrupto.parent.mkdir(parents=True, exist_ok=True)
+        corrupto.write_text("{no es json", encoding="utf-8")
+        resultado = correr("hallazgos-pendientes", *self.p)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn("ISR-110722/fase_1/h1", resultado.stdout)
+        self.assertIn("fase_2", resultado.stderr)
+
+
 class TestResolverHallazgo(Base):
     def test_ok_aprueba_y_escribe_entrada(self):
         self.preparar()

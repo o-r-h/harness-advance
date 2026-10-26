@@ -338,13 +338,19 @@ def cmd_record_hallazgos(args) -> int:
                       f"activa es '{fase['id']}'")
 
     previo = lib_hallazgos.leer(raiz, ticket_id, fase["id"])
-    if previo and any(h.get("estado") != "propuesto" for h in previo.get("hallazgos", [])):
+    existentes = (previo or {}).get("hallazgos", [])
+    if any(h.get("origen") != "humano" and h.get("estado") != "propuesto" for h in existentes):
         return _error(f"la fase '{fase['id']}' ya tiene hallazgos resueltos: no se "
                       f"reescriben para no pisar tus decisiones")
 
-    items = []
-    for numero, h in enumerate(propuesta["hallazgos"], start=1):
-        items.append({"id": f"h{numero}", "origen": "reflector", "estado": "propuesto", **h})
+    # Los del humano se conservan; los del reflector aún propuestos se reemplazan.
+    items = [h for h in existentes if h.get("origen") == "humano"]
+    siguiente = max((int(h["id"][1:]) for h in items), default=0) + 1
+    for numero, h in enumerate(propuesta["hallazgos"], start=siguiente):
+        item = {"id": f"h{numero}", "origen": "reflector", "estado": "propuesto"}
+        for campo in ("senal", "leccion", "evidencia", "confianza", "dimension", "componente"):
+            item[campo] = h[campo]
+        items.append(item)
     datos = {"ticket_id": ticket_id, "fase_id": fase["id"], "hallazgos": items}
     md = lib_hallazgos.guardar(raiz, datos)
     if not items:
@@ -428,7 +434,13 @@ def cmd_hallazgos_pendientes(args) -> int:
     raiz = resolver_proyecto(args.project)
     lineas = []
     for archivo in sorted(harness.tickets_dir(raiz).glob("*/fase_*/hallazgos.json")):
-        datos = harness.read_json(archivo)
+        try:
+            datos = harness.read_json(archivo)
+            if contracts.validate_hallazgos(datos):
+                raise ValueError("contrato inválido")
+        except (OSError, ValueError):
+            sys.stderr.write(f"HARNESS · se omite {archivo}: ilegible o inválido\n")
+            continue
         for h in datos.get("hallazgos", []):
             if h.get("estado") == "propuesto":
                 lineas.append(f"{archivo.parent.parent.name}/{archivo.parent.name}/"
