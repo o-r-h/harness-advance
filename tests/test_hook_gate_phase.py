@@ -64,6 +64,18 @@ class TestHookStop(unittest.TestCase):
         self.con_estado("aprobada")
         self.assertEqual(lanzar(self.payload()).returncode, 0)
 
+    def test_no_bloquea_con_hallazgos_pendientes(self):
+        self.con_estado("aprobada")
+        harness.write_json(
+            harness.fase_dir(self.root, "ISR-110722", "fase_1") / "hallazgos.json",
+            {"ticket_id": "ISR-110722", "fase_id": "fase_1",
+             "hallazgos": [{"id": "h1", "origen": "reflector", "estado": "propuesto",
+                            "senal": "s", "leccion": "l", "evidencia": "e",
+                            "confianza": "alta", "dimension": "proceso",
+                            "componente": "skill"}]})
+        resultado = lanzar(self.payload())
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+
     def test_NO_bloquea_en_la_reentrada_del_propio_hook(self):
         self.con_estado("en_ejecucion")
         self.assertEqual(lanzar(self.payload(reentrada=True)).returncode, 0)

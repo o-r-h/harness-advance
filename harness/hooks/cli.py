@@ -12,7 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import checks, contracts, gitdiff, harness, plugins, prueba_manual, state  # noqa: E402
+from lib import (biblioteca, checks, contracts, gitdiff, hallazgos as lib_hallazgos,  # noqa: E402
+                 harness, plugins, prueba_manual, state)
 
 VALIDADORES = {
     "ticket_context": contracts.validate_ticket_context,
@@ -20,6 +21,7 @@ VALIDADORES = {
     "checks": contracts.validate_checks_result,
     "veredicto": contracts.validate_veredicto,
     "fase_state": contracts.validate_fase_state,
+    "hallazgos": contracts.validate_hallazgos,
 }
 
 
@@ -307,6 +309,134 @@ def cmd_record_manual(args) -> int:
     return 0
 
 
+def _fase_objetivo(raiz: Path, ticket: str | None, fase: str | None) -> tuple[str, str] | None:
+    """(ticket_id, fase_id) pedidos, completando lo que falte desde current.json."""
+    actual = harness.read_current(raiz) or {}
+    ticket_id = ticket or actual.get("ticket_id")
+    fase_id = fase or actual.get("fase_id")
+    if not ticket_id or not fase_id:
+        return None
+    return ticket_id, fase_id
+
+
+def cmd_record_hallazgos(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa: corre 'open-fase'")
+    ticket_id, _, fase, estado = activa
+    if estado["estado"] not in ("aprobada", "escalado"):
+        return _error(f"la fase está en estado '{estado['estado']}': los hallazgos se "
+                      f"proponen cuando está 'aprobada' o 'escalado'")
+
+    propuesta = harness.read_json(Path(args.archivo))
+    errores = contracts.validate_propuesta_hallazgos(propuesta)
+    if errores:
+        return _error("propuesta de hallazgos inválida: " + "; ".join(errores))
+    if propuesta["fase_id"] != fase["id"]:
+        return _error(f"la propuesta dice fase '{propuesta['fase_id']}' pero la fase "
+                      f"activa es '{fase['id']}'")
+
+    previo = lib_hallazgos.leer(raiz, ticket_id, fase["id"])
+    if previo and any(h.get("estado") != "propuesto" for h in previo.get("hallazgos", [])):
+        return _error(f"la fase '{fase['id']}' ya tiene hallazgos resueltos: no se "
+                      f"reescriben para no pisar tus decisiones")
+
+    items = []
+    for numero, h in enumerate(propuesta["hallazgos"], start=1):
+        items.append({"id": f"h{numero}", "origen": "reflector", "estado": "propuesto", **h})
+    datos = {"ticket_id": ticket_id, "fase_id": fase["id"], "hallazgos": items}
+    md = lib_hallazgos.guardar(raiz, datos)
+    if not items:
+        print("Sin hallazgos en esta fase.")
+    else:
+        print(f"{len(items)} hallazgo(s) propuesto(s) en {md}")
+    return 0
+
+
+def cmd_resolver_hallazgo(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    objetivo = _fase_objetivo(raiz, args.ticket, args.fase)
+    if objetivo is None:
+        return _error("no se sabe qué fase resolver: indica --ticket y --fase o abre una fase")
+    ticket_id, fase_id = objetivo
+
+    if args.decision == "no" and not args.motivo:
+        return _error("rechazar un hallazgo exige --motivo: el reflector lo lee para no "
+                      "volver a proponerlo")
+    if args.decision == "editar" and not args.texto:
+        return _error("editar un hallazgo exige --texto con la lección corregida")
+
+    datos = lib_hallazgos.leer(raiz, ticket_id, fase_id)
+    if datos is None:
+        return _error(f"la fase '{fase_id}' del ticket '{ticket_id}' no tiene hallazgos")
+    hallazgo = next((h for h in datos["hallazgos"] if h["id"] == args.id), None)
+    if hallazgo is None:
+        validos = ", ".join(h["id"] for h in datos["hallazgos"]) or "ninguno"
+        return _error(f"el hallazgo '{args.id}' no existe; ids válidos: {validos}")
+    if hallazgo["estado"] != "propuesto":
+        return _error(f"el hallazgo {args.id} ya está '{hallazgo['estado']}'")
+
+    if args.decision == "no":
+        hallazgo["estado"] = "rechazado"
+        hallazgo["motivo"] = args.motivo
+    else:
+        if args.decision == "editar":
+            hallazgo["leccion_original"] = hallazgo.get("leccion", "")
+            hallazgo["leccion"] = args.texto
+        hallazgo["estado"] = "aprobado"
+
+    lib_hallazgos.guardar(raiz, datos)
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo)
+    print(f"Hallazgo {args.id} {hallazgo['estado']}: {entrada}")
+    return 0
+
+
+def cmd_hallazgo(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa: corre 'open-fase'")
+    ticket_id, _, fase, _ = activa
+    if not args.texto.strip():
+        return _error("--texto no puede estar vacío")
+
+    datos = lib_hallazgos.leer(raiz, ticket_id, fase["id"]) or {
+        "ticket_id": ticket_id, "fase_id": fase["id"], "hallazgos": []}
+    numeros = [int(h["id"][1:]) for h in datos["hallazgos"]]
+    nuevo = {"id": f"h{max(numeros, default=0) + 1}", "origen": "humano",
+             "estado": "aprobado", "leccion": args.texto}
+    if args.dimension:
+        nuevo["dimension"] = args.dimension
+    if args.componente:
+        nuevo["componente"] = args.componente
+    datos["hallazgos"].append(nuevo)
+
+    lib_hallazgos.guardar(raiz, datos)
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo)
+    print(f"Hallazgo {nuevo['id']} aprobado: {entrada}")
+    return 0
+
+
+def cmd_reconstruir_biblioteca(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    print(f"Índice reconstruido en {biblioteca.reconstruir_indice(raiz)}")
+    return 0
+
+
+def cmd_hallazgos_pendientes(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    lineas = []
+    for archivo in sorted(harness.tickets_dir(raiz).glob("*/fase_*/hallazgos.json")):
+        datos = harness.read_json(archivo)
+        for h in datos.get("hallazgos", []):
+            if h.get("estado") == "propuesto":
+                lineas.append(f"{archivo.parent.parent.name}/{archivo.parent.name}/"
+                              f"{h['id']} — {h.get('senal', h.get('leccion', ''))}")
+    print("\n".join(lineas) if lineas else "Sin hallazgos pendientes.")
+    return 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness-cli", description=__doc__)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -351,6 +481,36 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--paso", type=int)
     p.add_argument("--observacion")
     p.set_defaults(func=cmd_record_manual)
+
+    p = sub.add_parser("record-hallazgos", help="Registra los hallazgos del reflector")
+    p.add_argument("--project")
+    p.add_argument("--archivo", required=True)
+    p.set_defaults(func=cmd_record_hallazgos)
+
+    p = sub.add_parser("resolver-hallazgo", help="Aprueba, edita o rechaza un hallazgo")
+    p.add_argument("--project")
+    p.add_argument("--id", required=True)
+    p.add_argument("--decision", required=True, choices=["ok", "no", "editar"])
+    p.add_argument("--texto")
+    p.add_argument("--motivo")
+    p.add_argument("--ticket")
+    p.add_argument("--fase")
+    p.set_defaults(func=cmd_resolver_hallazgo)
+
+    p = sub.add_parser("hallazgo", help="El humano propone un hallazgo, que entra aprobado")
+    p.add_argument("--project")
+    p.add_argument("--texto", required=True)
+    p.add_argument("--dimension", choices=sorted(contracts.DIMENSIONES))
+    p.add_argument("--componente", choices=sorted(contracts.COMPONENTES))
+    p.set_defaults(func=cmd_hallazgo)
+
+    p = sub.add_parser("reconstruir-biblioteca", help="Regenera INDEX.md desde las entradas")
+    p.add_argument("--project")
+    p.set_defaults(func=cmd_reconstruir_biblioteca)
+
+    p = sub.add_parser("hallazgos-pendientes", help="Lista los hallazgos sin resolver")
+    p.add_argument("--project")
+    p.set_defaults(func=cmd_hallazgos_pendientes)
 
     return parser
 
