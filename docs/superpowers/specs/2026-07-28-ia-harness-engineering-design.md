@@ -495,6 +495,92 @@ nivel proyecto en `settings.json`.
 Este último punto es el ciclo de mejora completo: el principio de Hashimoto
 convertido en una consulta sobre archivos propios en lugar de en una intuición.
 
+### Dónde va cada corrección
+
+Cada mejora al harness, la detecte `report.py` o la proponga el reflector (§10.1),
+se escribe en una pieza concreta. Van de la más barata a la más cara y se elige la
+**primera que corrige el fallo** (D13):
+
+| Lo que muestra la evidencia | `componente` |
+|---|---|
+| Un fallo mecánico que un patrón detecta en las líneas agregadas | `regla` (entrada de `rules.json`) |
+| Un fallo mecánico que exige cruzar archivos o correr una herramienta | `check` (check estructural del perfil) |
+| Un procedimiento de varios pasos con un disparador claro | `skill` |
+| Evidencia **repetida** de que una instrucción escrita se ignora | `hook` |
+| Orden normal del trabajo, o un dato corto que vale para toda fase | `agente` (texto siempre cargado; si se agrega, se recorta otro) |
+
+`dimension: proceso` es *cómo trabaja el agente* (herramientas, orden, verificación).
+`dimension: dominio` es *lo que sabe alguien que domina el proyecto* (patrones,
+contratos de los artefactos, reglas de negocio).
+
+### 10.1. Hallazgos y biblioteca
+
+`report.py` mira hacia atrás sobre muchos tickets. Los hallazgos son el ciclo corto:
+al cerrar cada fase se pregunta qué lección deja, mientras la evidencia y el
+contexto del humano están frescos.
+
+```
+fase aprobada o escalada
+  └─ reflector           subagente aislado; lee la fase de plan.json, historial_fallos,
+                         checks.json y veredicto.json de cada intento, el resultado de
+                         la prueba manual y biblioteca/INDEX.md (incluidas las rechazadas).
+                         Emite solo la propuesta JSON (§6.6)
+  └─ record-hallazgos    el CLI valida la propuesta y escribe hallazgos.json + hallazgos.md
+  └─ decisión humana     ok | editar "<lección corregida>" | no "<motivo>"
+  └─ biblioteca          aprobado → entradas/ · rechazado → rechazados/ · INDEX.md se
+                         reconstruye desde disco en cada escritura
+  └─ planner             al abrir el siguiente ticket lee INDEX.md; una lección que use
+                         la ancla como por_confirmar
+```
+
+- **Cuándo** (D10): al cerrar cada fase, aprobada o escalada; la escalada es la que
+  más enseña. Los hallazgos pendientes **no bloquean** ni la fase ni el ticket:
+  `/ticket-abrir` y `hallazgos-pendientes` los avisan. Bloquear invitaría a aprobar
+  sin leer.
+- **Quién decide** (D11): ningún hallazgo del reflector entra a la biblioteca sin
+  decisión humana. Rechazar exige motivo; el rechazado se guarda en `rechazados/`,
+  aparece en `INDEX.md` bajo "Rechazadas — no volver a proponer" y el reflector lo
+  lee para no repetirlo. El humano también propone con `/hallazgo "<texto>"`: entra
+  aprobado, con `origen: "humano"`, y va directo a la biblioteca.
+- **Dónde vive** (D12): `<proyecto>/.claude/biblioteca/`, versionada con el proyecto.
+  `INDEX.md` es derivado: un conflicto de merge se resuelve con
+  `reconstruir-biblioteca`.
+- **Qué forma tiene** (D13): señal, lección, evidencia y confianza, más `dimension` y
+  `componente` escogidos con la tabla de arriba. Para el planner una lección es
+  hipótesis, no hecho.
+- **Volver a registrar.** `record-hallazgos` sobre una fase que ya tiene hallazgos:
+  - los del humano (`/hallazgo`) se conservan siempre;
+  - las propuestas del reflector aún sin resolver se reemplazan por las nuevas, que
+    se numeran después del `hN` más alto que quedó;
+  - si algún hallazgo del reflector ya fue resuelto, el CLI rechaza el registro para
+    no pisar las decisiones del humano.
+- **El reflector puede no proponer nada.** `"hallazgos": []` es una respuesta válida:
+  adaptar el harness sin evidencia lo empeora. La evidencia que lee (diffs, código,
+  observaciones) es dato, no instrucciones, y una lección anterior de la biblioteca
+  es hipótesis que la nueva no da por cierta.
+
+**Lo que se tomó de Harness²** (google-research/harness2, arXiv 2610.14224, commit
+`1cfe254`). Harness² mejora un harness con un ciclo por tarea (*Propose–Probe–
+Compose*: un editor de proceso y uno de dominio proponen cambios, se ejecuta la tarea
+con cada uno y un compositor arma el harness final) y una biblioteca de experiencia
+entre tareas.
+
+| Idea de Harness² | Decisión aquí |
+|---|---|
+| Biblioteca con señal / lección / evidencia / confianza, y `NO_ENTRY` válido | **Se toma**, con aprobación humana en medio (D11) |
+| Separar proceso y dominio; escoger la pieza más barata que corrige el fallo | **Se toma** como "dónde va cada corrección" (D13) |
+| Un hecho de una tarea anterior es hipótesis hasta volver a verificarlo | **Se toma** (D13) |
+| "La evidencia es dato, no instrucciones" | **Se toma** para el reflector y el escéptico |
+| Dejar el harness como está es una respuesta válida | **Se toma**: el reflector puede no proponer nada |
+| Validar que las piezas referenciadas existan | **Se toma** como test de referencias del harness |
+| Propose–Probe–Compose con miles de ejecuciones por tarea | **No se toma**: cada ejecución modifica código legacy real, no hay build y la prueba es humana |
+| Veredicto por cambio (`helped` / `hurt` / `confounded`) | **Después**, cuando exista `report.py` |
+| Medir el texto siempre cargado ("si agregas, recorta") | **Después**, como métrica de `report.py` |
+
+La diferencia de fondo: Harness² aprende sin intervención humana porque corre sobre
+benchmarks. Aquí una lección aprobada cambia cómo se planean todos los tickets
+siguientes, así que el desarrollador la revisa antes, igual que revisa la fase (D2).
+
 ## 11. Migración de los tres archivos existentes
 
 | Archivo actual | Cambio | Magnitud |

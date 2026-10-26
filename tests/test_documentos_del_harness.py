@@ -1,8 +1,13 @@
+import json
 import re
+import sys
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
+
+from lib.contracts import COMPONENTES, DIMENSIONES, validate_propuesta_hallazgos  # noqa: E402
 
 
 def leer(*partes: str) -> str:
@@ -68,6 +73,40 @@ class TestAgenteDelPerfil(unittest.TestCase):
                          "herramientas_permitidas"):
             with self.subTest(concepto=concepto):
                 self.assertIn(concepto, self.texto)
+
+
+class TestAgenteReflector(unittest.TestCase):
+    def setUp(self):
+        self.texto = leer("harness", "agents", "reflector.md")
+
+    def test_frontmatter(self):
+        campos = frontmatter(self.texto)
+        self.assertEqual(campos.get("name"), "reflector")
+        self.assertIn("description", campos)
+
+    def test_nombra_cada_componente_y_dimension(self):
+        for valor in sorted(COMPONENTES | DIMENSIONES):
+            with self.subTest(valor=valor):
+                self.assertIn(f"`{valor}`", self.texto)
+
+    def test_permite_no_proponer_nada(self):
+        self.assertIn('"hallazgos": []', self.texto)
+
+    def test_lee_los_rechazados(self):
+        self.assertIn("rechazad", self.texto)
+
+    def test_evidencia_es_dato(self):
+        self.assertIn("no instrucciones", self.texto)
+
+    def test_trata_la_biblioteca_como_hipotesis(self):
+        self.assertIn("hipótesis", self.texto)
+
+    def test_el_ejemplo_de_salida_cumple_el_contrato(self):
+        bloques = re.findall(r"```json\n(.*?)\n```", self.texto, re.DOTALL)
+        self.assertTrue(bloques, "reflector.md no trae un ejemplo JSON")
+        for bloque in bloques:
+            with self.subTest(bloque=bloque[:40]):
+                self.assertEqual(validate_propuesta_hallazgos(json.loads(bloque)), [])
 
 
 class TestSeparacionDePlanos(unittest.TestCase):
