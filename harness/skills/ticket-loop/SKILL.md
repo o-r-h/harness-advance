@@ -66,6 +66,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
    debería verse en cada uno— y córrela:
    `CLI generar-prueba --pasos-json <archivo>`.
    Los pasos deben ser ejecutables por alguien que no leyó el código.
+   Si la fase **no** requiere prueba manual y el escéptico aprobó, la fase ya quedó
+   `aprobada`: ejecuta "Al cerrar una fase".
 7. **Detente.** Muestra el contenido de `prueba_manual.md` y espera. El humano
    responde `/fase-ok` o `/fase-fallo`. **No aproximes, no supongas, no cierres la
    fase por tu cuenta:** aunque el perfil tenga build y pruebas automáticas (que
@@ -86,7 +88,10 @@ ni pases a la fase siguiente. Reporta al humano, en este orden:
 
 ## Al cerrar una fase
 
-Aplica a una fase aprobada (tras `/fase-ok`) y a una escalada.
+Aplica a toda fase que quede `aprobada` (tras `/fase-ok` o directamente tras
+`record-veredicto`) o `escalado`. Corre de inmediato, antes de cualquier
+`CLI open-fase` de la fase siguiente: `record-hallazgos` solo funciona sobre la
+fase activa.
 
 1. Invoca al **subagente `reflector`, con contexto aislado**. Dale: la fase de
    `plan.json`; el `historial_fallos` completo; el `checks.json` y el
@@ -94,7 +99,9 @@ Aplica a una fase aprobada (tras `/fase-ok`) y a una escalada.
    `.claude/biblioteca/INDEX.md` si existe. **No le pases tu conversación con el
    ejecutor**: igual que el escéptico, un reflector que leyó el razonamiento ya
    está contaminado.
-2. Guarda su JSON en un archivo y córrelo: `CLI record-hallazgos --archivo <ruta>`.
+2. Guarda su JSON en `.harness/tickets/<id>/<fase>/propuesta_hallazgos.json` y
+   córrelo: `CLI record-hallazgos --archivo <ruta>`. Una propuesta vacía
+   (`"hallazgos": []`) también se registra.
 3. Muestra el contenido de `hallazgos.md` y explica al humano sus opciones:
    `/hallazgo-ok <id>`, `/hallazgo-editar <id> "<lección>"`,
    `/hallazgo-no <id> "<motivo>"` y `/hallazgo "<lección>"` para proponer una

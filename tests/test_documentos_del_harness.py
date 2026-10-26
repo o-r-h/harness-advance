@@ -49,6 +49,19 @@ class TestSkillOrquestadora(unittest.TestCase):
     def test_deja_claro_que_los_hallazgos_no_bloquean(self):
         self.assertIn("no bloquean", self.texto)
 
+    def _seccion_cierre(self):
+        return self.texto.split("## Al cerrar una fase", 1)[1]
+
+    def test_cierra_tambien_la_fase_aprobada_por_record_veredicto(self):
+        alcance = self._seccion_cierre().split("\n\n", 2)[1]
+        self.assertIn("record-veredicto", alcance)
+        self.assertIn("escalad", alcance)
+
+    def test_cierra_la_fase_antes_de_abrir_la_siguiente(self):
+        seccion = self._seccion_cierre()
+        self.assertIn("antes de", seccion)
+        self.assertIn("open-fase", seccion)
+
     def test_explica_como_elegir_el_agente_ejecutor_de_cada_fase(self):
         self.assertIn("agente_ejecutor", self.texto)
 
