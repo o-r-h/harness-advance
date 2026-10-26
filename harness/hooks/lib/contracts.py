@@ -23,6 +23,14 @@ RE_FASE_ID = re.compile(r"^fase_\d+$")
 # Nombre de un agente de <proyecto>/.claude/agents/<nombre>.md: nunca una ruta.
 RE_AGENTE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
+# Hallazgos: lo que el reflector propone y el humano decide.
+DIMENSIONES = frozenset({"proceso", "dominio"})
+COMPONENTES = frozenset({"regla", "check", "skill", "hook", "agente"})
+CONFIANZAS_HALLAZGO = frozenset({"alta", "media", "baja"})
+ESTADOS_HALLAZGO = frozenset({"propuesto", "aprobado", "rechazado"})
+ORIGENES_HALLAZGO = frozenset({"reflector", "humano"})
+RE_HALLAZGO_ID = re.compile(r"^h\d+$")
+
 
 def _texto(data: dict, campo: str, errores: list[str], prefijo: str = "") -> None:
     valor = data.get(campo)
@@ -260,4 +268,79 @@ def validate_fase_state(data: dict) -> list[str]:
         if fallo.get("origen") not in ORIGENES:
             errores.append(f"{prefijo}origen: esperado uno de {sorted(ORIGENES)}")
         _texto(fallo, "razon", errores, prefijo)
+    return errores
+
+
+def _validar_item_reflector(item: dict, errores: list[str], prefijo: str) -> None:
+    """Campos que comparten la propuesta del reflector y el hallazgo guardado."""
+    for campo in ("senal", "leccion", "evidencia"):
+        _texto(item, campo, errores, prefijo)
+    for campo, valores in (("confianza", CONFIANZAS_HALLAZGO),
+                           ("dimension", DIMENSIONES),
+                           ("componente", COMPONENTES)):
+        if item.get(campo) not in valores:
+            errores.append(f"{prefijo}{campo}: esperado uno de {sorted(valores)}")
+
+
+def validate_propuesta_hallazgos(data: dict) -> list[str]:
+    if not isinstance(data, dict):
+        return ["hallazgos: requerido, objeto JSON"]
+    errores: list[str] = []
+    _texto(data, "fase_id", errores)
+    fase_id = data.get("fase_id")
+    if isinstance(fase_id, str) and fase_id.strip() and not RE_FASE_ID.match(fase_id):
+        errores.append("fase_id: formato esperado fase_N")
+    hallazgos = data.get("hallazgos")
+    if not isinstance(hallazgos, list):
+        errores.append("hallazgos: requerido, lista (puede venir vacía)")
+        return errores
+    for indice, item in enumerate(hallazgos):
+        prefijo = f"hallazgos[{indice}]."
+        if not isinstance(item, dict):
+            errores.append(f"hallazgos[{indice}]: debe ser objeto")
+            continue
+        _validar_item_reflector(item, errores, prefijo)
+    return errores
+
+
+def validate_hallazgos(data: dict) -> list[str]:
+    if not isinstance(data, dict):
+        return ["hallazgos: requerido, objeto JSON"]
+    errores: list[str] = []
+    for campo in ("ticket_id", "fase_id"):
+        _texto(data, campo, errores)
+    hallazgos = data.get("hallazgos")
+    if not isinstance(hallazgos, list):
+        errores.append("hallazgos: requerido, lista")
+        return errores
+
+    vistos: set[str] = set()
+    for indice, item in enumerate(hallazgos):
+        prefijo = f"hallazgos[{indice}]."
+        if not isinstance(item, dict):
+            errores.append(f"hallazgos[{indice}]: debe ser objeto")
+            continue
+        identificador = item.get("id")
+        if not isinstance(identificador, str) or not RE_HALLAZGO_ID.match(identificador):
+            errores.append(f"{prefijo}id: requerido, formato esperado hN")
+        elif identificador in vistos:
+            errores.append(f"{prefijo}id: '{identificador}' duplicado")
+        else:
+            vistos.add(identificador)
+        if item.get("origen") not in ORIGENES_HALLAZGO:
+            errores.append(f"{prefijo}origen: esperado uno de {sorted(ORIGENES_HALLAZGO)}")
+        if item.get("estado") not in ESTADOS_HALLAZGO:
+            errores.append(f"{prefijo}estado: esperado uno de {sorted(ESTADOS_HALLAZGO)}")
+
+        if item.get("origen") == "humano":
+            _texto(item, "leccion", errores, prefijo)
+            if "dimension" in item and item["dimension"] not in DIMENSIONES:
+                errores.append(f"{prefijo}dimension: esperado uno de {sorted(DIMENSIONES)}")
+            if "componente" in item and item["componente"] not in COMPONENTES:
+                errores.append(f"{prefijo}componente: esperado uno de {sorted(COMPONENTES)}")
+        elif item.get("origen") == "reflector":
+            _validar_item_reflector(item, errores, prefijo)
+
+        if item.get("estado") == "rechazado":
+            _texto(item, "motivo", errores, prefijo)
     return errores

@@ -14,5 +14,10 @@ python "$HOME/.claude/hooks/cli.py" record-manual --resultado fallo --paso <N> -
 Si falta el número de paso o la observación, pídeselos antes de correr nada: sin
 esos dos datos el intento siguiente no sabe qué corregir.
 
-Después de registrarlo, lee el `historial_fallos` de la fase y arranca el intento
-siguiente teniendo presente **todos** los fallos anteriores, no solo el último.
+Después de registrarlo, mira el estado que imprimió el CLI:
+
+- Si la fase quedó en `escalado`, se agotaron los reintentos: **no arranques otro
+  intento.** Sigue con "Cuando una fase escala" y después con "Al cerrar una fase"
+  de la skill `ticket-loop`.
+- Si no, lee el `historial_fallos` de la fase y arranca el intento siguiente
+  teniendo presente **todos** los fallos anteriores, no solo el último.

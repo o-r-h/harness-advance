@@ -2,7 +2,7 @@
 
 > Fecha: 2026-07-28 · Autor: Omar Rodriguez · Estado: aprobado para planificación
 > Repo fuente: `C:\AZZULE\IA harness` · Primer proyecto objetivo: ReviewSystemGFS
-> Antecedente: `conversacion.txt` (conceptos y esquemas iniciales)
+> Antecedente: `historico/conversacion-inicial.txt` (conceptos y esquemas iniciales)
 
 ## 1. Resumen
 
@@ -29,8 +29,8 @@ Estas restricciones determinan el diseño y no son negociables:
 | Restricción | Origen | Implicación de diseño |
 |---|---|---|
 | ReviewSystemGFS solo compila con **VS2008**, fuertemente enlazado | Constatado por el usuario | **No existe verificación funcional automatizable.** La prueba real es hacer los pasos en la web |
-| Stack legacy: VB.NET, ASP.NET Web Forms, .NET FW 3.5, jQuery 1.7.2, IE11 parcial | `agente-rsfgfs.md` §2, §12 | Las reglas prohibidas son estáticas y verificables por regex |
-| Regla de negocio: comentarios de auditoría `[B]`/`[E]` obligatorios | `agente-rsfgfs.md` §4 | Verificable al 100% por script; `error` desde el día uno |
+| Stack legacy: VB.NET, ASP.NET Web Forms, .NET FW 3.5, jQuery 1.7.2, IE11 parcial | `historico/agente-rsfgfs-modelo-inicial.md` §2, §12 | Las reglas prohibidas son estáticas y verificables por regex |
+| Regla de negocio: comentarios de auditoría `[B]`/`[E]` obligatorios | `historico/agente-rsfgfs-modelo-inicial.md` §4 | Verificable al 100% por script; `error` desde el día uno |
 | Los tickets llegan pegados a mano (no hay integración de origen) | Decisión del usuario | `nroticket` se pregunta una vez y se persiste |
 | Runtimes disponibles: Python 3.12, Node 16, Git 2.54, Windows PowerShell 5.1 | Verificado en el entorno | Hooks y checks en **Python 3.12**; deploy en PowerShell |
 | MCPs de Postman y DB no garantizados en sesión | Solo Plane conectado al diseñar | El diseño no depende de ellos; son opcionales y aditivos |
@@ -42,12 +42,16 @@ Estas restricciones determinan el diseño y no son negociables:
 | D1 | **Runtime: Claude Code nativo** | Orquestador externo Python/Node; híbrido | Ya instalado; los tres `.md` migran casi tal cual; portable a cualquier repo sin construir infra |
 | D2 | **Autonomía: automática dentro de la fase, gate humano al cerrarla** | Todo manual; automático entre fases | El ojo humano queda donde más vale (el límite de fase) sin quemar tokens en un plan mal anclado |
 | D3 | **Skill orquestadora + hooks** (no una sola de las dos) | Solo skill; solo hooks | La skill conduce el flujo (juicio); los hooks hacen cumplir lo insaltable (hechos). Cada capa hace lo que sabe hacer |
-| D4 | **El agente escribe los JSON; un script los valida y rechaza** | Wrapper de código que los genera (propuesto en `conversacion.txt`) | En Claude Code nativo no hay proceso wrapper. Se conserva el determinismo moviéndolo de la generación a la validación |
+| D4 | **El agente escribe los JSON; un script los valida y rechaza** | Wrapper de código que los genera (propuesto en `historico/conversacion-inicial.txt`) | En Claude Code nativo no hay proceso wrapper. Se conserva el determinismo moviéndolo de la generación a la validación |
 | D5 | **Los contadores los escribe solo el script**, nunca el modelo | Que el agente lleve la cuenta | `intento_actual` y `max_reintentos` son aritmética, no juicio |
 | D6 | **El gate humano se estructura, no se elimina** | Automatizar con Playwright; verificar solo por MCPs de capa | Sin build ni tests, la prueba en navegador es la única verdad funcional. Playwright contra Web Forms con Windows Auth es frágil y caro |
 | D7 | **Escalamiento de costo: checks → escéptico → humano** | Invocar al escéptico primero | Cada nivel filtra al siguiente. Los checks cuestan milisegundos; el humano es el recurso más caro |
 | D8 | **El escéptico corre como subagente con contexto aislado** | Escéptico en el hilo principal | Un escéptico que leyó el razonamiento del executor ya está contaminado por él |
 | D9 | **Los checks nuevos entran como `warning` y se promueven a `error`** | Todo `error` desde el inicio | Un repo legacy de 15 años dispara falsos positivos; un harness que grita por todo se aprende a ignorar |
+| D10 | **El reflector corre al cerrar cada fase, aprobada o escalada, y sus hallazgos pendientes no bloquean** ni la fase ni el ticket; `/ticket-abrir` y `hallazgos-pendientes` los avisan | Una sola reflexión al cerrar el ticket; bloquear hasta resolverlos | La evidencia y el contexto del humano están frescos y una fase escalada es la que más enseña. Una cosa es juzgar el código y otra juzgar el harness: bloquear invita a aprobar sin leer |
+| D11 | **Ningún hallazgo del reflector entra a la biblioteca sin decisión humana** (`ok`, `editar` o `no`); los rechazados se guardan con su motivo y el reflector los lee; el humano también propone con `/hallazgo "<texto>"`, que entra aprobado con `origen: "humano"` | Entrada automática; descartar los rechazados; solo el reflector propone | Una lección falsa afecta a todos los tickets siguientes y el humano sabe cosas que no están en el código. Guardar los rechazados evita que se repitan y mide cuánto acierta el reflector; el humano ve en la prueba manual lo que ningún agente ve |
+| D12 | **La biblioteca vive en `<proyecto>/.claude/biblioteca/`** y se versiona con el proyecto | `<proyecto>/.harness/biblioteca/`, junto al estado | Lo aprendido es conocimiento del proyecto y lo comparte el equipo desde el primer día; `.harness/` está en `.gitignore` y la dejaría local a cada desarrollador. Ningún perfil del repo fuente trae `biblioteca/`, así que `deploy.ps1` (que copia sin borrar) nunca la pisa, y lo vigila un test; `INDEX.md` es derivado, así que un conflicto de merge se resuelve reconstruyéndolo |
+| D13 | **Cada hallazgo declara `dimension` (`proceso` / `dominio`) y `componente` (`regla`, `check`, `skill`, `hook`, `agente`)**, y para el planner una lección de la biblioteca es hipótesis: si la usa, la ancla como `por_confirmar` | Lección en texto libre; tratarla como hecho | Convierte la lección en una tarea concreta sobre el harness, con destino explícito (se elige la corrección más barata que arregla el fallo). Lo verificado en otro ticket puede no valer en este |
 
 ## 5. Arquitectura — tres planos
 
@@ -107,6 +111,8 @@ trabajo. Así el mismo perfil funciona en la copia de cualquier miembro del equi
 ├── ticket_state.json        fase actual, progreso global
 └── fase_1/
     ├── fase_state.json      intento_actual, max_reintentos, historial_fallos
+    ├── hallazgos.json       propuestas del reflector y decisiones del humano (§6.6)
+    ├── hallazgos.md         lo que lee el humano
     └── intento_1/
         ├── resultado.md     documentación de lo hecho (hoy se pide a mano)
         ├── checks.json      veredicto de los scripts (hechos)
@@ -116,6 +122,16 @@ trabajo. Así el mismo perfil funciona en la copia de cualquier miembro del equi
 
 `.harness/` arranca en `.gitignore`. Al versionarlo (cuando el harness se proponga
 al equipo) el formato no cambia: solo se quita esa línea.
+
+La biblioteca de lecciones aprobadas no vive en `.harness/`: es conocimiento del
+proyecto y se **versiona con él** (D12), junto al perfil desplegado.
+
+```
+<proyecto>/.claude/biblioteca/        versionada con el proyecto
+├── INDEX.md                          derivado: se reconstruye desde disco en cada escritura
+├── entradas/ISR-110722-fase_1-h1.md
+└── rechazados/ISR-110722-fase_1-h2.md
+```
 
 ## 6. Contratos
 
@@ -247,6 +263,72 @@ El campo **`origen`** (`check` | `esceptico` | `humano`) es la pieza que habilit
 el ciclo de mejora del harness: un mismo tipo de fallo repetido con
 `origen: "esceptico"` es un check determinista esperando a ser escrito.
 
+### 6.6. `hallazgos.json` — propuesto por el reflector, decidido por el humano
+
+El reflector (subagente aislado, D8; solo lectura: `Read`, `Grep`, `Glob`) emite solo la **propuesta**; el CLI la valida y
+escribe `hallazgos.json` con la forma **guardada**. Los dos validadores están en
+`lib/contracts.py`.
+
+```json
+// Propuesta: lo que emite el reflector
+{
+  "fase_id": "fase_1",
+  "hallazgos": [
+    {
+      "senal": "...",
+      "leccion": "...",
+      "evidencia": "...",
+      "confianza": "media",
+      "dimension": "proceso",
+      "componente": "check"
+    }
+  ]
+}
+
+// Guardado: hallazgos.json, escrito solo por el CLI
+{
+  "ticket_id": "ISR-110722",
+  "fase_id": "fase_1",
+  "hallazgos": [
+    {
+      "id": "h1",
+      "origen": "reflector",
+      "estado": "rechazado",
+      "senal": "...",
+      "leccion": "...",
+      "evidencia": "...",
+      "confianza": "media",
+      "dimension": "proceso",
+      "componente": "check",
+      "motivo": "..."
+    }
+  ]
+}
+```
+
+Valores: `confianza` `alta` · `media` · `baja`; `dimension` `proceso` · `dominio`;
+`componente` `regla` · `check` · `skill` · `hook` · `agente`; `origen` `reflector` ·
+`humano`; `estado` `propuesto` · `aprobado` · `rechazado`.
+
+Reglas de la **propuesta**:
+
+- `fase_id` cumple `fase_N`.
+- `hallazgos` es una lista y puede venir vacía: dejar el harness como está es una
+  respuesta válida.
+- Cada ítem trae `senal`, `leccion` y `evidencia` como string no vacío, y `confianza`,
+  `dimension` y `componente` dentro de sus valores.
+
+Reglas del **guardado**:
+
+- `ticket_id` y `fase_id` son requeridos.
+- Cada ítem tiene un `id` con formato `hN`, sin repetirse, y `origen` y `estado`
+  dentro de sus valores.
+- Con `origen: "reflector"` aplican todas las reglas de la propuesta.
+- Con `origen: "humano"` solo `leccion` es requerida; si trae `dimension` o
+  `componente`, tienen que ser valores válidos.
+- Con `estado: "rechazado"` el `motivo` es obligatorio y no vacío (D11).
+- `leccion_original` es opcional y aparece solo cuando el humano editó la lección.
+
 ## 7. El ciclo de fase
 
 ```
@@ -279,7 +361,7 @@ donde el executor se convenció de que su trabajo estaba bien.
 
 ### 8.1. Reglas declarativas — `rules.json` del perfil
 
-Lo que hoy son viñetas de "PROHIBIDO" en `agente-rsfgfs.md` §3.1 pasa a ser datos.
+Lo que hoy son viñetas de "PROHIBIDO" en `historico/agente-rsfgfs-modelo-inicial.md` §3.1 pasa a ser datos.
 Añadir una regla no requiere tocar código.
 
 ```json
@@ -413,13 +495,112 @@ nivel proyecto en `settings.json`.
 Este último punto es el ciclo de mejora completo: el principio de Hashimoto
 convertido en una consulta sobre archivos propios en lugar de en una intuición.
 
+### Dónde va cada corrección
+
+Cada mejora al harness, la detecte `report.py` o la proponga el reflector (§10.1),
+se escribe en una pieza concreta. Van de la más barata a la más cara y se elige la
+**primera que corrige el fallo** (D13):
+
+| Lo que muestra la evidencia | `componente` |
+|---|---|
+| Un fallo mecánico que un patrón detecta en las líneas agregadas | `regla` (entrada de `rules.json`) |
+| Un fallo mecánico que exige cruzar archivos o correr una herramienta | `check` (check estructural del perfil) |
+| Un procedimiento de varios pasos con un disparador claro | `skill` |
+| Evidencia **repetida** de que una instrucción escrita se ignora | `hook` |
+| Orden normal del trabajo, o un dato corto que vale para toda fase | `agente` (texto siempre cargado; si se agrega, se recorta otro) |
+
+`dimension: proceso` es *cómo trabaja el agente* (herramientas, orden, verificación).
+`dimension: dominio` es *lo que sabe alguien que domina el proyecto* (patrones,
+contratos de los artefactos, reglas de negocio).
+
+### 10.1. Hallazgos y biblioteca
+
+`report.py` mira hacia atrás sobre muchos tickets. Los hallazgos son el ciclo corto:
+al cerrar cada fase se pregunta qué lección deja, mientras la evidencia y el
+contexto del humano están frescos.
+
+```
+fase aprobada o escalada
+  └─ reflector           subagente aislado y de solo lectura; lee la fase de plan.json, historial_fallos,
+                         checks.json y veredicto.json de cada intento, el resultado de
+                         la prueba manual y biblioteca/INDEX.md (incluidas las rechazadas).
+                         Emite solo la propuesta JSON (§6.6)
+  └─ record-hallazgos    el CLI valida la propuesta y escribe hallazgos.json + hallazgos.md
+  └─ decisión humana     ok | editar "<lección corregida>" | no "<motivo>", sobre la
+                         referencia TICKET/fase_N/hN
+  └─ biblioteca          aprobado → entradas/ · rechazado → rechazados/ · INDEX.md se
+                         reconstruye desde disco en cada escritura
+  └─ planner             al abrir el siguiente ticket lee INDEX.md; una lección que use
+                         la ancla como por_confirmar
+```
+
+- **Cuándo** (D10): al cerrar cada fase, aprobada o escalada; la escalada es la que
+  más enseña. Los hallazgos pendientes **no bloquean** ni la fase ni el ticket:
+  `/ticket-abrir` y `hallazgos-pendientes` los avisan. Bloquear invitaría a aprobar
+  sin leer.
+- **Quién decide** (D11): ningún hallazgo del reflector entra a la biblioteca sin
+  decisión humana. Rechazar exige motivo; el rechazado se guarda en `rechazados/`,
+  aparece en `INDEX.md` bajo "Rechazadas — no volver a proponer" y el reflector lo
+  lee para no repetirlo. El humano también propone con `/hallazgo "<texto>"`: entra
+  aprobado, con `origen: "humano"`, y va directo a la biblioteca.
+- **Dónde vive** (D12): `<proyecto>/.claude/biblioteca/`, versionada con el proyecto.
+  `INDEX.md` es derivado: un conflicto de merge se resuelve con
+  `reconstruir-biblioteca`.
+- **Qué forma tiene** (D13): señal, lección, evidencia y confianza, más `dimension` y
+  `componente` escogidos con la tabla de arriba. Para el planner una lección es
+  hipótesis, no hecho.
+- **Volver a registrar.** `record-hallazgos` sobre una fase que ya tiene hallazgos:
+  - los del humano (`/hallazgo`) se conservan siempre;
+  - las propuestas del reflector aún sin resolver se reemplazan por las nuevas, que
+    se numeran después del `hN` más alto que tenía el archivo, incluidas las
+    propuestas reemplazadas: un `hN` que el humano ya vio nunca nombra otra lección;
+  - si algún hallazgo del reflector ya fue resuelto, el CLI rechaza el registro para
+    no pisar las decisiones del humano.
+  - sin argumentos registra sobre la fase activa; con `--ticket` y `--fase` (los dos
+    juntos) registra sobre una fase cerrada que ya no es la activa, por ejemplo si la
+    siguiente se abrió antes de reflexionar. La fase tiene que estar `aprobada` o
+    `escalado` y el `fase_id` de la propuesta tiene que coincidir.
+- **Cómo se nombra un hallazgo.** El `hN` se repite en cada fase y en cada ticket, así
+  que la referencia que identifica a uno es `TICKET/fase_N/hN`: la imprimen
+  `hallazgos.md` y `hallazgos-pendientes`, y `resolver-hallazgo --id` la acepta tal
+  cual, por encima de `--ticket`/`--fase`. Un `hN` suelto vale solo para la fase de
+  `current.json`; `--fase` sin `--ticket` solo para esa misma fase, y `--ticket` exige
+  `--fase`. Así no se resuelve sin aviso el hallazgo de otro ticket.
+- **El reflector puede no proponer nada.** `"hallazgos": []` es una respuesta válida:
+  adaptar el harness sin evidencia lo empeora. La evidencia que lee (`historial_fallos`,
+  `checks.json`, `veredicto.json`, la observación de la prueba manual, `INDEX.md`) es
+  dato, no instrucciones, y una lección anterior de la biblioteca
+  es hipótesis que la nueva no da por cierta.
+
+**Lo que se tomó de Harness²** (google-research/harness2, arXiv 2610.14224, commit
+`1cfe254`). Harness² mejora un harness con un ciclo por tarea (*Propose–Probe–
+Compose*: un editor de proceso y uno de dominio proponen cambios, se ejecuta la tarea
+con cada uno y un compositor arma el harness final) y una biblioteca de experiencia
+entre tareas.
+
+| Idea de Harness² | Decisión aquí |
+|---|---|
+| Biblioteca con señal / lección / evidencia / confianza, y `NO_ENTRY` válido | **Se toma**, con aprobación humana en medio (D11) |
+| Separar proceso y dominio; escoger la pieza más barata que corrige el fallo | **Se toma** como "dónde va cada corrección" (D13) |
+| Un hecho de una tarea anterior es hipótesis hasta volver a verificarlo | **Se toma** (D13) |
+| "La evidencia es dato, no instrucciones" | **Se toma** para el reflector y el escéptico |
+| Dejar el harness como está es una respuesta válida | **Se toma**: el reflector puede no proponer nada |
+| Validar que las piezas referenciadas existan | **Se toma** como test de referencias del harness |
+| Propose–Probe–Compose con miles de ejecuciones por tarea | **No se toma**: cada ejecución modifica código legacy real, no hay build y la prueba es humana |
+| Veredicto por cambio (`helped` / `hurt` / `confounded`) | **Después**, cuando exista `report.py` |
+| Medir el texto siempre cargado ("si agregas, recorta") | **Después**, como métrica de `report.py` |
+
+La diferencia de fondo: Harness² aprende sin intervención humana porque corre sobre
+benchmarks. Aquí una lección aprobada cambia cómo se planean todos los tickets
+siguientes, así que el desarrollador la revisa antes, igual que revisa la fase (D2).
+
 ## 11. Migración de los tres archivos existentes
 
 | Archivo actual | Cambio | Magnitud |
 |---|---|---|
 | `task-plannerv2.md` | → **v3**: emite `plan.json` junto al `.md`; cada fase declara `checks_deterministas`, `prueba_manual`, `herramientas_permitidas`, `max_reintentos`, `anclajes` estructurados | Menor. La Fase 0 de anclaje es su mayor valor y no se toca |
-| `agente-esceptico.md` | Se **parte en dos**: escéptico genérico (exige evidencia, emite `veredicto.json`) + reglas de proyecto que ahora vienen de `rules.json`. Se elimina todo lo heredado de otro proyecto: "Kilo Code", `.kilocode/**/*.md`, "actor system", prohibiciones de TypeScript | Reescritura. Es el archivo con más deuda: hoy juzga ReviewSystemGFS contra reglas que no son suyas |
-| `agente-rsfgfs.md` | Cirugía mínima: leer `ticket_context.json` para los `[B]/[E]`, respetar `herramientas_permitidas`, consumir `historial_fallos`. Su checklist de §10 pasa a ejecutarse por hooks en vez de por memoria | Mínima. Es el archivo más sólido de los tres |
+| `historico/agente-esceptico-modelo-inicial.md` | Se **parte en dos**: escéptico genérico (exige evidencia, emite `veredicto.json`) + reglas de proyecto que ahora vienen de `rules.json`. Se elimina todo lo heredado de otro proyecto: "Kilo Code", `.kilocode/**/*.md`, "actor system", prohibiciones de TypeScript | Reescritura. Es el archivo con más deuda: hoy juzga ReviewSystemGFS contra reglas que no son suyas |
+| `historico/agente-rsfgfs-modelo-inicial.md` | Cirugía mínima: leer `ticket_context.json` para los `[B]/[E]`, respetar `herramientas_permitidas`, consumir `historial_fallos`. Su checklist de §10 pasa a ejecutarse por hooks en vez de por memoria | Mínima. Es el archivo más sólido de los tres |
 
 ## 12. Manejo de errores
 

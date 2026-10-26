@@ -262,5 +262,88 @@ class TestGuardasPayloadNoDict(unittest.TestCase):
         self.assertEqual(desconocidos, ["a"])
 
 
+ITEM_REFLECTOR = {
+    "senal": "Al editar un formulario con campos nuevos",
+    "leccion": "Agregar un check que cruce el designer con el código",
+    "evidencia": "Fallo del intento 1: campo no declarado en el designer",
+    "confianza": "media",
+    "dimension": "proceso",
+    "componente": "check",
+}
+
+PROPUESTA_OK = {"fase_id": "fase_1", "hallazgos": [ITEM_REFLECTOR]}
+
+
+def _guardado(**cambios):
+    item = {"id": "h1", "origen": "reflector", "estado": "aprobado", **ITEM_REFLECTOR}
+    item.update(cambios)
+    return {"ticket_id": "ISR-110722", "fase_id": "fase_1", "hallazgos": [item]}
+
+
+class TestHallazgos(unittest.TestCase):
+    def test_propuesta_valida_no_tiene_errores(self):
+        self.assertEqual(contracts.validate_propuesta_hallazgos(copy.deepcopy(PROPUESTA_OK)), [])
+
+    def test_propuesta_vacia_es_valida(self):
+        self.assertEqual(
+            contracts.validate_propuesta_hallazgos({"fase_id": "fase_1", "hallazgos": []}), [])
+
+    def test_propuesta_sin_evidencia_falla(self):
+        datos = copy.deepcopy(PROPUESTA_OK)
+        del datos["hallazgos"][0]["evidencia"]
+        errores = contracts.validate_propuesta_hallazgos(datos)
+        self.assertTrue(any("evidencia" in e for e in errores), errores)
+
+    def test_componente_desconocido_falla(self):
+        datos = copy.deepcopy(PROPUESTA_OK)
+        datos["hallazgos"][0]["componente"] = "plugin"
+        errores = contracts.validate_propuesta_hallazgos(datos)
+        self.assertTrue(any("componente" in e for e in errores), errores)
+
+    def test_dimension_y_confianza_fuera_de_rango_fallan(self):
+        datos = copy.deepcopy(PROPUESTA_OK)
+        datos["hallazgos"][0]["dimension"] = "otra"
+        datos["hallazgos"][0]["confianza"] = "total"
+        errores = contracts.validate_propuesta_hallazgos(datos)
+        self.assertTrue(any("dimension" in e for e in errores), errores)
+        self.assertTrue(any("confianza" in e for e in errores), errores)
+
+    def test_guardado_valido_no_tiene_errores(self):
+        self.assertEqual(contracts.validate_hallazgos(_guardado()), [])
+
+    def test_guardado_rechazado_sin_motivo_falla(self):
+        errores = contracts.validate_hallazgos(_guardado(estado="rechazado"))
+        self.assertTrue(any("motivo" in e for e in errores), errores)
+        self.assertEqual(
+            contracts.validate_hallazgos(_guardado(estado="rechazado", motivo="ya existe")), [])
+
+    def test_guardado_ids_duplicados_falla(self):
+        datos = _guardado()
+        datos["hallazgos"].append(copy.deepcopy(datos["hallazgos"][0]))
+        errores = contracts.validate_hallazgos(datos)
+        self.assertTrue(any("duplicado" in e for e in errores), errores)
+
+    def test_guardado_humano_solo_con_leccion_es_valido(self):
+        datos = {"ticket_id": "ISR-110722", "fase_id": "fase_1", "hallazgos": [
+            {"id": "h1", "origen": "humano", "estado": "aprobado", "leccion": "Revisar X"}]}
+        self.assertEqual(contracts.validate_hallazgos(datos), [])
+
+    def test_guardado_humano_con_componente_invalido_falla(self):
+        datos = {"ticket_id": "ISR-110722", "fase_id": "fase_1", "hallazgos": [
+            {"id": "h1", "origen": "humano", "estado": "aprobado", "leccion": "Revisar X",
+             "componente": "plugin"}]}
+        errores = contracts.validate_hallazgos(datos)
+        self.assertTrue(any("componente" in e for e in errores), errores)
+
+    def test_guardado_id_con_formato_invalido_falla(self):
+        errores = contracts.validate_hallazgos(_guardado(id="uno"))
+        self.assertTrue(any("id" in e for e in errores), errores)
+
+    def test_no_dict_falla(self):
+        self.assertEqual(contracts.validate_hallazgos([]), ["hallazgos: requerido, objeto JSON"])
+        self.assertEqual(
+            contracts.validate_propuesta_hallazgos("x"), ["hallazgos: requerido, objeto JSON"])
+
+
 if __name__ == "__main__":
     unittest.main()
