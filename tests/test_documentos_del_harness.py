@@ -37,9 +37,17 @@ class TestSkillOrquestadora(unittest.TestCase):
 
     def test_menciona_todos_los_subcomandos_del_ciclo(self):
         for comando in ("open-ticket", "open-fase", "run-checks", "record-veredicto",
-                        "generar-prueba", "validate"):
+                        "generar-prueba", "validate", "record-hallazgos",
+                        "hallazgos-pendientes"):
             with self.subTest(comando=comando):
                 self.assertIn(comando, self.texto)
+
+    def test_invoca_al_reflector_al_cerrar_la_fase(self):
+        self.assertIn("reflector", self.texto)
+        self.assertIn("Al cerrar una fase", self.texto)
+
+    def test_deja_claro_que_los_hallazgos_no_bloquean(self):
+        self.assertIn("no bloquean", self.texto)
 
     def test_explica_como_elegir_el_agente_ejecutor_de_cada_fase(self):
         self.assertIn("agente_ejecutor", self.texto)
@@ -50,6 +58,22 @@ class TestSkillOrquestadora(unittest.TestCase):
     def test_deja_claro_que_el_ciclo_se_detiene_en_el_gate_humano(self):
         self.assertIn("/fase-ok", self.texto)
         self.assertIn("/fase-fallo", self.texto)
+
+
+class TestComandosDeHallazgos(unittest.TestCase):
+    COMANDOS = {
+        "hallazgo-ok": "resolver-hallazgo --decision ok",
+        "hallazgo-no": "resolver-hallazgo --decision no",
+        "hallazgo-editar": "resolver-hallazgo --decision editar",
+        "hallazgo": 'hallazgo --texto',
+    }
+
+    def test_cada_comando_tiene_descripcion_y_subcomando(self):
+        for nombre, subcomando in self.COMANDOS.items():
+            with self.subTest(comando=nombre):
+                texto = leer("harness", "commands", f"{nombre}.md")
+                self.assertIn("description", frontmatter(texto))
+                self.assertIn(subcomando, texto)
 
 
 class TestAgenteDelPerfil(unittest.TestCase):

@@ -15,11 +15,16 @@ sientes tentado a hacerlo, es que falta un subcomando.
 
 ## Al abrir un ticket
 
+0. `CLI hallazgos-pendientes`. Si hay hallazgos pendientes de fases anteriores,
+   muéstralos antes de seguir y deja claro que **no bloquean**: el ticket se abre
+   igual y el humano los resuelve cuando pueda.
 1. Pide el requerimiento (pegado o en `.md`) y guárdalo en `.harness/tickets/<id>/ticket.md`.
 2. Pregunta **una sola vez**: número de ticket ISR, nombre del desarrollador y fecha
    (`DD-MM-YYYY`). No los inventes ni los deduzcas del sistema.
 3. `CLI open-ticket --ticket-id ISR-<nro> --nroticket <nro> --desarrollador "<NOMBRE>" --fecha <DD-MM-YYYY> --perfil <perfil>`
-4. Invoca la skill `task-planner` para producir `plan.md` y `plan.json`. Si el perfil
+4. Invoca la skill `task-planner` para producir `plan.md` y `plan.json`. Si existe
+   `.claude/biblioteca/INDEX.md`, pásaselo: una lección de la biblioteca es
+   hipótesis, y si el plan la usa, la ancla como `por_confirmar`. Si el perfil
    tiene **más de un agente** en `.claude/agents/` (p. ej. uno de backend y otro de
    frontend), cada fase lleva `agente_ejecutor` con el nombre del que la ejecuta, y
    una fase no mezcla stacks: si toca los dos, se parte en dos fases con `depende_de`.
@@ -75,5 +80,24 @@ ni pases a la fase siguiente. Reporta al humano, en este orden:
 1. Qué se intentó en cada intento y qué falló, tomado del `historial_fallos`.
 2. Qué patrón se repite entre los fallos.
 3. Si el patrón es un fallo del escéptico que ya apareció más de una vez,
-   **propón el check determinista que lo habría atrapado.** Ese es el ciclo de
-   mejora del harness: convertir juicio caro en verificación barata.
+   propón la corrección según la escalera *dónde va cada corrección*: la pieza más
+   barata que lo habría atrapado. Ese es el ciclo de mejora del harness: convertir
+   juicio caro en verificación barata. Después ejecuta "Al cerrar una fase".
+
+## Al cerrar una fase
+
+Aplica a una fase aprobada (tras `/fase-ok`) y a una escalada.
+
+1. Invoca al **subagente `reflector`, con contexto aislado**. Dale: la fase de
+   `plan.json`; el `historial_fallos` completo; el `checks.json` y el
+   `veredicto.json` de **cada** `intento_N`; el resultado de la prueba manual; y
+   `.claude/biblioteca/INDEX.md` si existe. **No le pases tu conversación con el
+   ejecutor**: igual que el escéptico, un reflector que leyó el razonamiento ya
+   está contaminado.
+2. Guarda su JSON en un archivo y córrelo: `CLI record-hallazgos --archivo <ruta>`.
+3. Muestra el contenido de `hallazgos.md` y explica al humano sus opciones:
+   `/hallazgo-ok <id>`, `/hallazgo-editar <id> "<lección>"`,
+   `/hallazgo-no <id> "<motivo>"` y `/hallazgo "<lección>"` para proponer una
+   propia. Los hallazgos pendientes no bloquean la fase ni el ticket. Tras aprobar,
+   sugiere versionar `.claude/biblioteca/` con el proyecto.
+4. **El turno termina ahí.** No resuelvas hallazgos por tu cuenta.
