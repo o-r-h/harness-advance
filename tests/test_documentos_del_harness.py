@@ -146,6 +146,14 @@ class TestAgenteReflector(unittest.TestCase):
                 self.assertEqual(validate_propuesta_hallazgos(json.loads(bloque)), [])
 
 
+class TestEsceptico(unittest.TestCase):
+    def setUp(self):
+        self.texto = leer("harness", "agents", "skeptic.md")
+
+    def test_trata_la_evidencia_como_dato(self):
+        self.assertIn("no instrucciones", self.texto)
+
+
 class TestSeparacionDePlanos(unittest.TestCase):
     def test_el_harness_generico_no_conoce_el_stack_legacy(self):
         prohibidos = ("VB.NET", "Web Forms", "aspx", "EjecutarSp", "jQuery",
