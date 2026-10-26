@@ -2810,13 +2810,13 @@ git commit -m "feat(cli): run-checks con agregación a checks.json y plugins del
 
 ### Task 11: `agents/skeptic.md` y `cli.py record-veredicto`
 
-El escéptico actual (`agente-esceptico.md`) juzga ReviewSystemGFS contra reglas de otro proyecto. Aquí se reescribe: exige evidencia, no conoce ningún stack, y emite JSON.
+El escéptico actual (`historico/agente-esceptico-modelo-inicial.md`) juzga ReviewSystemGFS contra reglas de otro proyecto. Aquí se reescribe: exige evidencia, no conoce ningún stack, y emite JSON.
 
 **Files:**
 - Create: `harness/agents/skeptic.md`
 - Modify: `harness/hooks/cli.py`
 - Test: `tests/test_cli_veredicto.py`
-- Reference: `agente-esceptico.md` (el original, para conservar su tono e intención)
+- Reference: `historico/agente-esceptico-modelo-inicial.md` (el original, para conservar su tono e intención)
 
 **Interfaces:**
 - Consumes: `contracts.validate_veredicto` (Task 3), `state` (Task 7).
@@ -3653,7 +3653,7 @@ git commit -m "feat(hooks): Stop que bloquea el cierre con el ciclo a mitad de v
 **Files:**
 - Create: `harness/skills/ticket-loop/SKILL.md`
 - Create: `harness/commands/ticket-abrir.md`, `harness/commands/fase.md`
-- Create: `profiles/reviewsystemgfs/agents/agent-rsgfs.md` (desde `agente-rsfgfs.md`)
+- Create: `profiles/reviewsystemgfs/agents/agent-rsgfs.md` (desde `historico/agente-rsfgfs-modelo-inicial.md`)
 - Test: `tests/test_documentos_del_harness.py`
 
 **Interfaces:**
@@ -3772,7 +3772,7 @@ guion de prueba manual, no aprobando la fase.
 
 - [ ] **Step 3: Migrar el agente del perfil**
 
-Copiar `agente-rsfgfs.md` a `profiles/reviewsystemgfs/agents/agent-rsgfs.md`, añadir el frontmatter y una sección nueva. El frontmatter al inicio del archivo:
+Copiar `historico/agente-rsfgfs-modelo-inicial.md` a `profiles/reviewsystemgfs/agents/agent-rsgfs.md`, añadir el frontmatter y una sección nueva. El frontmatter al inicio del archivo:
 
 ```markdown
 ---

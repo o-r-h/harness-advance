@@ -2,7 +2,7 @@
 
 > Fecha: 2026-07-28 · Autor: Omar Rodriguez · Estado: aprobado para planificación
 > Repo fuente: `C:\AZZULE\IA harness` · Primer proyecto objetivo: ReviewSystemGFS
-> Antecedente: `conversacion.txt` (conceptos y esquemas iniciales)
+> Antecedente: `historico/conversacion-inicial.txt` (conceptos y esquemas iniciales)
 
 ## 1. Resumen
 
@@ -29,8 +29,8 @@ Estas restricciones determinan el diseño y no son negociables:
 | Restricción | Origen | Implicación de diseño |
 |---|---|---|
 | ReviewSystemGFS solo compila con **VS2008**, fuertemente enlazado | Constatado por el usuario | **No existe verificación funcional automatizable.** La prueba real es hacer los pasos en la web |
-| Stack legacy: VB.NET, ASP.NET Web Forms, .NET FW 3.5, jQuery 1.7.2, IE11 parcial | `agente-rsfgfs.md` §2, §12 | Las reglas prohibidas son estáticas y verificables por regex |
-| Regla de negocio: comentarios de auditoría `[B]`/`[E]` obligatorios | `agente-rsfgfs.md` §4 | Verificable al 100% por script; `error` desde el día uno |
+| Stack legacy: VB.NET, ASP.NET Web Forms, .NET FW 3.5, jQuery 1.7.2, IE11 parcial | `historico/agente-rsfgfs-modelo-inicial.md` §2, §12 | Las reglas prohibidas son estáticas y verificables por regex |
+| Regla de negocio: comentarios de auditoría `[B]`/`[E]` obligatorios | `historico/agente-rsfgfs-modelo-inicial.md` §4 | Verificable al 100% por script; `error` desde el día uno |
 | Los tickets llegan pegados a mano (no hay integración de origen) | Decisión del usuario | `nroticket` se pregunta una vez y se persiste |
 | Runtimes disponibles: Python 3.12, Node 16, Git 2.54, Windows PowerShell 5.1 | Verificado en el entorno | Hooks y checks en **Python 3.12**; deploy en PowerShell |
 | MCPs de Postman y DB no garantizados en sesión | Solo Plane conectado al diseñar | El diseño no depende de ellos; son opcionales y aditivos |
@@ -42,7 +42,7 @@ Estas restricciones determinan el diseño y no son negociables:
 | D1 | **Runtime: Claude Code nativo** | Orquestador externo Python/Node; híbrido | Ya instalado; los tres `.md` migran casi tal cual; portable a cualquier repo sin construir infra |
 | D2 | **Autonomía: automática dentro de la fase, gate humano al cerrarla** | Todo manual; automático entre fases | El ojo humano queda donde más vale (el límite de fase) sin quemar tokens en un plan mal anclado |
 | D3 | **Skill orquestadora + hooks** (no una sola de las dos) | Solo skill; solo hooks | La skill conduce el flujo (juicio); los hooks hacen cumplir lo insaltable (hechos). Cada capa hace lo que sabe hacer |
-| D4 | **El agente escribe los JSON; un script los valida y rechaza** | Wrapper de código que los genera (propuesto en `conversacion.txt`) | En Claude Code nativo no hay proceso wrapper. Se conserva el determinismo moviéndolo de la generación a la validación |
+| D4 | **El agente escribe los JSON; un script los valida y rechaza** | Wrapper de código que los genera (propuesto en `historico/conversacion-inicial.txt`) | En Claude Code nativo no hay proceso wrapper. Se conserva el determinismo moviéndolo de la generación a la validación |
 | D5 | **Los contadores los escribe solo el script**, nunca el modelo | Que el agente lleve la cuenta | `intento_actual` y `max_reintentos` son aritmética, no juicio |
 | D6 | **El gate humano se estructura, no se elimina** | Automatizar con Playwright; verificar solo por MCPs de capa | Sin build ni tests, la prueba en navegador es la única verdad funcional. Playwright contra Web Forms con Windows Auth es frágil y caro |
 | D7 | **Escalamiento de costo: checks → escéptico → humano** | Invocar al escéptico primero | Cada nivel filtra al siguiente. Los checks cuestan milisegundos; el humano es el recurso más caro |
@@ -279,7 +279,7 @@ donde el executor se convenció de que su trabajo estaba bien.
 
 ### 8.1. Reglas declarativas — `rules.json` del perfil
 
-Lo que hoy son viñetas de "PROHIBIDO" en `agente-rsfgfs.md` §3.1 pasa a ser datos.
+Lo que hoy son viñetas de "PROHIBIDO" en `historico/agente-rsfgfs-modelo-inicial.md` §3.1 pasa a ser datos.
 Añadir una regla no requiere tocar código.
 
 ```json
@@ -418,8 +418,8 @@ convertido en una consulta sobre archivos propios en lugar de en una intuición.
 | Archivo actual | Cambio | Magnitud |
 |---|---|---|
 | `task-plannerv2.md` | → **v3**: emite `plan.json` junto al `.md`; cada fase declara `checks_deterministas`, `prueba_manual`, `herramientas_permitidas`, `max_reintentos`, `anclajes` estructurados | Menor. La Fase 0 de anclaje es su mayor valor y no se toca |
-| `agente-esceptico.md` | Se **parte en dos**: escéptico genérico (exige evidencia, emite `veredicto.json`) + reglas de proyecto que ahora vienen de `rules.json`. Se elimina todo lo heredado de otro proyecto: "Kilo Code", `.kilocode/**/*.md`, "actor system", prohibiciones de TypeScript | Reescritura. Es el archivo con más deuda: hoy juzga ReviewSystemGFS contra reglas que no son suyas |
-| `agente-rsfgfs.md` | Cirugía mínima: leer `ticket_context.json` para los `[B]/[E]`, respetar `herramientas_permitidas`, consumir `historial_fallos`. Su checklist de §10 pasa a ejecutarse por hooks en vez de por memoria | Mínima. Es el archivo más sólido de los tres |
+| `historico/agente-esceptico-modelo-inicial.md` | Se **parte en dos**: escéptico genérico (exige evidencia, emite `veredicto.json`) + reglas de proyecto que ahora vienen de `rules.json`. Se elimina todo lo heredado de otro proyecto: "Kilo Code", `.kilocode/**/*.md`, "actor system", prohibiciones de TypeScript | Reescritura. Es el archivo con más deuda: hoy juzga ReviewSystemGFS contra reglas que no son suyas |
+| `historico/agente-rsfgfs-modelo-inicial.md` | Cirugía mínima: leer `ticket_context.json` para los `[B]/[E]`, respetar `herramientas_permitidas`, consumir `historial_fallos`. Su checklist de §10 pasa a ejecutarse por hooks en vez de por memoria | Mínima. Es el archivo más sólido de los tres |
 
 ## 12. Manejo de errores
 
