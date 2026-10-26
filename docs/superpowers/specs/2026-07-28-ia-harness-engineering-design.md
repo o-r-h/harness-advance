@@ -48,6 +48,10 @@ Estas restricciones determinan el diseño y no son negociables:
 | D7 | **Escalamiento de costo: checks → escéptico → humano** | Invocar al escéptico primero | Cada nivel filtra al siguiente. Los checks cuestan milisegundos; el humano es el recurso más caro |
 | D8 | **El escéptico corre como subagente con contexto aislado** | Escéptico en el hilo principal | Un escéptico que leyó el razonamiento del executor ya está contaminado por él |
 | D9 | **Los checks nuevos entran como `warning` y se promueven a `error`** | Todo `error` desde el inicio | Un repo legacy de 15 años dispara falsos positivos; un harness que grita por todo se aprende a ignorar |
+| D10 | **El reflector corre al cerrar cada fase, aprobada o escalada, y sus hallazgos pendientes no bloquean** ni la fase ni el ticket; `/ticket-abrir` y `hallazgos-pendientes` los avisan | Una sola reflexión al cerrar el ticket; bloquear hasta resolverlos | La evidencia y el contexto del humano están frescos y una fase escalada es la que más enseña. Una cosa es juzgar el código y otra juzgar el harness: bloquear invita a aprobar sin leer |
+| D11 | **Ningún hallazgo del reflector entra a la biblioteca sin decisión humana** (`ok`, `editar` o `no`); los rechazados se guardan con su motivo y el reflector los lee; el humano también propone con `/hallazgo "<texto>"`, que entra aprobado con `origen: "humano"` | Entrada automática; descartar los rechazados; solo el reflector propone | Una lección falsa afecta a todos los tickets siguientes y el humano sabe cosas que no están en el código. Guardar los rechazados evita que se repitan y mide cuánto acierta el reflector; el humano ve en la prueba manual lo que ningún agente ve |
+| D12 | **La biblioteca vive en `<proyecto>/.claude/biblioteca/`** y se versiona con el proyecto | `<proyecto>/.harness/biblioteca/`, junto al estado | Lo aprendido es conocimiento del proyecto y lo comparte el equipo desde el primer día; `.harness/` está en `.gitignore` y la dejaría local a cada desarrollador. Ningún perfil del repo fuente trae `biblioteca/`, así que `deploy.ps1` (que copia sin borrar) nunca la pisa, y lo vigila un test; `INDEX.md` es derivado, así que un conflicto de merge se resuelve reconstruyéndolo |
+| D13 | **Cada hallazgo declara `dimension` (`proceso` / `dominio`) y `componente` (`regla`, `check`, `skill`, `hook`, `agente`)**, y para el planner una lección de la biblioteca es hipótesis: si la usa, la ancla como `por_confirmar` | Lección en texto libre; tratarla como hecho | Convierte la lección en una tarea concreta sobre el harness, con destino explícito (se elige la corrección más barata que arregla el fallo). Lo verificado en otro ticket puede no valer en este |
 
 ## 5. Arquitectura — tres planos
 
@@ -107,6 +111,8 @@ trabajo. Así el mismo perfil funciona en la copia de cualquier miembro del equi
 ├── ticket_state.json        fase actual, progreso global
 └── fase_1/
     ├── fase_state.json      intento_actual, max_reintentos, historial_fallos
+    ├── hallazgos.json       propuestas del reflector y decisiones del humano (§6.6)
+    ├── hallazgos.md         lo que lee el humano
     └── intento_1/
         ├── resultado.md     documentación de lo hecho (hoy se pide a mano)
         ├── checks.json      veredicto de los scripts (hechos)
@@ -116,6 +122,16 @@ trabajo. Así el mismo perfil funciona en la copia de cualquier miembro del equi
 
 `.harness/` arranca en `.gitignore`. Al versionarlo (cuando el harness se proponga
 al equipo) el formato no cambia: solo se quita esa línea.
+
+La biblioteca de lecciones aprobadas no vive en `.harness/`: es conocimiento del
+proyecto y se **versiona con él** (D12), junto al perfil desplegado.
+
+```
+<proyecto>/.claude/biblioteca/        versionada con el proyecto
+├── INDEX.md                          derivado: se reconstruye desde disco en cada escritura
+├── entradas/ISR-110722-fase_1-h1.md
+└── rechazados/ISR-110722-fase_1-h2.md
+```
 
 ## 6. Contratos
 
@@ -246,6 +262,72 @@ Valores de `estado`: `pendiente` · `en_ejecucion` · `en_verificacion` ·
 El campo **`origen`** (`check` | `esceptico` | `humano`) es la pieza que habilita
 el ciclo de mejora del harness: un mismo tipo de fallo repetido con
 `origen: "esceptico"` es un check determinista esperando a ser escrito.
+
+### 6.6. `hallazgos.json` — propuesto por el reflector, decidido por el humano
+
+El reflector (subagente aislado, D5) emite solo la **propuesta**; el CLI la valida y
+escribe `hallazgos.json` con la forma **guardada**. Los dos validadores están en
+`lib/contracts.py`.
+
+```json
+// Propuesta: lo que emite el reflector
+{
+  "fase_id": "fase_1",
+  "hallazgos": [
+    {
+      "senal": "...",
+      "leccion": "...",
+      "evidencia": "...",
+      "confianza": "media",
+      "dimension": "proceso",
+      "componente": "check"
+    }
+  ]
+}
+
+// Guardado: hallazgos.json, escrito solo por el CLI
+{
+  "ticket_id": "ISR-110722",
+  "fase_id": "fase_1",
+  "hallazgos": [
+    {
+      "id": "h1",
+      "origen": "reflector",
+      "estado": "rechazado",
+      "senal": "...",
+      "leccion": "...",
+      "evidencia": "...",
+      "confianza": "media",
+      "dimension": "proceso",
+      "componente": "check",
+      "motivo": "..."
+    }
+  ]
+}
+```
+
+Valores: `confianza` `alta` · `media` · `baja`; `dimension` `proceso` · `dominio`;
+`componente` `regla` · `check` · `skill` · `hook` · `agente`; `origen` `reflector` ·
+`humano`; `estado` `propuesto` · `aprobado` · `rechazado`.
+
+Reglas de la **propuesta**:
+
+- `fase_id` cumple `fase_N`.
+- `hallazgos` es una lista y puede venir vacía: dejar el harness como está es una
+  respuesta válida.
+- Cada ítem trae `senal`, `leccion` y `evidencia` como string no vacío, y `confianza`,
+  `dimension` y `componente` dentro de sus valores.
+
+Reglas del **guardado**:
+
+- `ticket_id` y `fase_id` son requeridos.
+- Cada ítem tiene un `id` con formato `hN`, sin repetirse, y `origen` y `estado`
+  dentro de sus valores.
+- Con `origen: "reflector"` aplican todas las reglas de la propuesta.
+- Con `origen: "humano"` solo `leccion` es requerida; si trae `dimension` o
+  `componente`, tienen que ser valores válidos.
+- Con `estado: "rechazado"` el `motivo` es obligatorio y no vacío (D11).
+- `leccion_original` es opcional y aparece solo cuando el humano editó la lección.
 
 ## 7. El ciclo de fase
 
