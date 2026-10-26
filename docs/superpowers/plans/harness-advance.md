@@ -108,8 +108,10 @@ desarrollador. Cada una tiene su test en la tarea indicada:
 2. **Resolver dos veces el mismo hallazgo** (`ok` y luego `no`). Se espera un error
    que diga en qué estado quedó. → Tarea 5, `test_resolver_dos_veces_falla`.
 3. **Resolver un hallazgo de una fase anterior** cuando `current.json` ya apunta a la
-   siguiente. Se espera que funcione con `--fase`. → Tarea 5,
-   `test_resuelve_fase_anterior_con_flag_fase`.
+   siguiente. Se espera que funcione con la referencia completa `TICKET/fase_N/hN` o con
+   `--ticket` y `--fase`. → Tarea 5,
+   `test_resuelve_fase_anterior_con_referencia_completa` y
+   `test_resuelve_fase_anterior_con_ticket_y_fase`.
 4. **Acentos y eñes en la lección.** Se espera que se lean bien en `hallazgos.md`, en
    la entrada y en `INDEX.md`. → Tarea 4, `test_acentos_sobreviven_ida_y_vuelta`.
 5. **Hook `Stop` con hallazgos pendientes y la fase aprobada.** Se espera que no
@@ -417,8 +419,8 @@ Cada sección vacía muestra `_(vacía)_`. Para sacar los campos se leen las lí
 
   | Subcomando | Argumentos | Efecto |
   |---|---|---|
-  | `record-hallazgos` | `--archivo` | Fase activa en `aprobada` o `escalado`, si no da error. Valida la propuesta y asigna `h1..hN`, `origen: "reflector"`, `estado: "propuesto"`. Si ya existe `hallazgos.json` con algún hallazgo no `propuesto`, da error y no escribe nada. Llama a `hallazgos.guardar` e imprime la ruta del `.md` y la cantidad, o `Sin hallazgos en esta fase.` |
-  | `resolver-hallazgo` | `--id`, `--decision {ok,no,editar}`, `--texto`, `--motivo`, `--ticket`, `--fase` | `--ticket` y `--fase` toman su valor de `current.json` si no vienen. `no` exige `--motivo` y `editar` exige `--texto`. Solo se resuelve desde `propuesto`; si no, da error `el hallazgo h1 ya está '<estado>'`. Si el id no existe, el error lista los ids válidos. `editar` guarda `leccion_original` y deja `aprobado`. Después llama a `guardar` y a `biblioteca.escribir_entrada` |
+  | `record-hallazgos` | `--archivo`, `--ticket` y `--fase` (opcionales, los dos o ninguno) | Sin `--ticket/--fase`, la fase activa; con ellos, esa fase aunque no sea la activa. La fase tiene que estar en `aprobada` o `escalado`, si no da error, y el `fase_id` de la propuesta tiene que coincidir. Valida la propuesta y asigna ids desde el `hN` más alto que tenía el archivo, incluidos los propuestos que reemplaza, con `origen: "reflector"`, `estado: "propuesto"`. Si ya existe `hallazgos.json` con algún hallazgo del reflector no `propuesto`, da error y no escribe nada. Llama a `hallazgos.guardar` e imprime la ruta del `.md` y la cantidad de propuestos nuevos, o `Sin hallazgos nuevos del reflector en esta fase.` |
+  | `resolver-hallazgo` | `--id`, `--decision {ok,no,editar}`, `--texto`, `--motivo`, `--ticket`, `--fase` | `--id` acepta `hN` o la referencia completa `TICKET/fase_N/hN`, que manda sobre `--ticket/--fase`. Con un `hN` suelto: sin flags se usa la fase de `current.json`; `--fase` sin `--ticket` solo vale si es esa misma fase; `--ticket` exige `--fase`; `--fase` cumple `fase_N`. `no` exige `--motivo` y `editar` exige `--texto`. Solo se resuelve desde `propuesto`; si no, da error `el hallazgo h1 ya está '<estado>'`. Si el id no existe, el error lista los ids válidos. `editar` guarda `leccion_original` y deja `aprobado`. Después llama a `guardar` y a `biblioteca.escribir_entrada` |
   | `hallazgo` | `--texto`, `--dimension`, `--componente` (opcionales los dos últimos) | Pide una fase activa en cualquier estado; sin ella, da error. Agrega el siguiente `hN` con `origen: "humano"` y `estado: "aprobado"`, guarda y escribe la entrada |
   | `reconstruir-biblioteca` | — | Llama a `biblioteca.reconstruir_indice` e imprime la ruta de `INDEX.md`. Sirve para resolver un conflicto de merge en el índice (DA6) |
   | `hallazgos-pendientes` | — | Recorre `.harness/tickets/*/fase_*/hallazgos.json`, imprime `ticket/fase/id — señal` por cada `propuesto`, o `Sin hallazgos pendientes.`, y siempre sale con 0 |
@@ -441,7 +443,7 @@ Cada sección vacía muestra `_(vacía)_`. Para sacar los campos se leen las lí
   - `test_editar_conserva_leccion_original` → `leccion` nueva y `leccion_original` igual a la anterior
   - `test_resolver_dos_veces_falla` → `ok` y luego `no` da exit 1, stderr contiene `"ya está 'aprobado'"` (Review Focus 2)
   - `test_id_inexistente_lista_validos` → `--id h9` da exit 1, stderr contiene `"h1"`
-  - `test_resuelve_fase_anterior_con_flag_fase` → con `fase_2` abierta, `resolver-hallazgo --fase fase_1 --id h1 --decision ok` da exit 0 (Review Focus 3)
+  - `test_resuelve_fase_anterior_con_ticket_y_fase` → con `fase_2` abierta, `resolver-hallazgo --ticket ISR-110722 --fase fase_1 --id h1 --decision ok` da exit 0 (Review Focus 3); `--fase fase_1` sin `--ticket` da exit 1
   - `test_hallazgo_humano_entra_aprobado` → `origen: "humano"`, `estado: "aprobado"` y entrada escrita
   - `test_hallazgo_humano_sin_fase_activa_falla` → sin `open-fase`, exit 1
   - `test_pendientes_lista_y_luego_vacio` → lista `ISR-110722/fase_1/h1`; después de resolverlo, `"Sin hallazgos pendientes."`
@@ -486,13 +488,13 @@ Cada sección vacía muestra `_(vacía)_`. Para sacar los campos se leen las lí
 - Produce: el subagente `reflector`, que la Tarea 7 invoca.
 
 El frontmatter sigue el de `skeptic.md`: `name: reflector`, `description`,
-`model: opus`. El cuerpo, en este orden:
+`model: opus` y `tools: Read, Grep, Glob`: el reflector solo lee. El cuerpo, en este orden:
 
 1. **Rol y salida:** solo emite el JSON de propuesta. No corrige código ni aprueba fases.
 2. **Lo que recibe:** la fase de `plan.json`; el `historial_fallos`; `checks.json` y
    `veredicto.json` de **cada** intento; el resultado de la prueba manual; y
    `.claude/biblioteca/INDEX.md`, incluidas las **rechazadas**, que no debe volver a
-   proponer. No recibe la conversación del ejecutor.
+   proponer. No recibe la conversación del ejecutor, ni el diff, ni `resultado.md`.
 3. **Qué es un hallazgo:** señal, lección y evidencia, con el ejemplo de grano de
    Harness² adaptado: ni "sé cuidadoso" (demasiado genérico) ni un dato que solo vale
    para este ticket (demasiado específico).
@@ -560,9 +562,9 @@ Comandos (formato de `fase-fallo.md`: frontmatter con `description` y
 
 | Archivo | `argument-hint` | Subcomando |
 |---|---|---|
-| `hallazgo-ok.md` | `<id> [fase_N]` | `resolver-hallazgo --decision ok --id <id> [--fase <fase>]` |
-| `hallazgo-no.md` | `<id> "<motivo>" [fase_N]` | `resolver-hallazgo --decision no --id <id> --motivo "<motivo>"` — sin motivo, lo pide antes de correr nada |
-| `hallazgo-editar.md` | `<id> "<lección corregida>" [fase_N]` | `resolver-hallazgo --decision editar --id <id> --texto "<texto>"` |
+| `hallazgo-ok.md` | `<id \| TICKET/fase_N/hN>` | `resolver-hallazgo --decision ok --id <id o referencia>` — la referencia pasa tal cual |
+| `hallazgo-no.md` | `<id \| TICKET/fase_N/hN> "<motivo>"` | `resolver-hallazgo --decision no --id <id o referencia> --motivo "<motivo>"` — sin motivo, lo pide antes de correr nada |
+| `hallazgo-editar.md` | `<id \| TICKET/fase_N/hN> "<lección corregida>"` | `resolver-hallazgo --decision editar --id <id o referencia> --texto "<texto>"` |
 | `hallazgo.md` | `"<lección>"` | `hallazgo --texto "<lección>"` |
 
 Los cuatro terminan igual que `fase-ok.md`: se muestra la salida tal cual y nunca se

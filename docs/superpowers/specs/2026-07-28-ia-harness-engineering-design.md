@@ -265,7 +265,7 @@ el ciclo de mejora del harness: un mismo tipo de fallo repetido con
 
 ### 6.6. `hallazgos.json` — propuesto por el reflector, decidido por el humano
 
-El reflector (subagente aislado, D5) emite solo la **propuesta**; el CLI la valida y
+El reflector (subagente aislado, D8; solo lectura: `Read`, `Grep`, `Glob`) emite solo la **propuesta**; el CLI la valida y
 escribe `hallazgos.json` con la forma **guardada**. Los dos validadores están en
 `lib/contracts.py`.
 
@@ -521,12 +521,13 @@ contexto del humano están frescos.
 
 ```
 fase aprobada o escalada
-  └─ reflector           subagente aislado; lee la fase de plan.json, historial_fallos,
+  └─ reflector           subagente aislado y de solo lectura; lee la fase de plan.json, historial_fallos,
                          checks.json y veredicto.json de cada intento, el resultado de
                          la prueba manual y biblioteca/INDEX.md (incluidas las rechazadas).
                          Emite solo la propuesta JSON (§6.6)
   └─ record-hallazgos    el CLI valida la propuesta y escribe hallazgos.json + hallazgos.md
-  └─ decisión humana     ok | editar "<lección corregida>" | no "<motivo>"
+  └─ decisión humana     ok | editar "<lección corregida>" | no "<motivo>", sobre la
+                         referencia TICKET/fase_N/hN
   └─ biblioteca          aprobado → entradas/ · rechazado → rechazados/ · INDEX.md se
                          reconstruye desde disco en cada escritura
   └─ planner             al abrir el siguiente ticket lee INDEX.md; una lección que use
@@ -551,12 +552,24 @@ fase aprobada o escalada
 - **Volver a registrar.** `record-hallazgos` sobre una fase que ya tiene hallazgos:
   - los del humano (`/hallazgo`) se conservan siempre;
   - las propuestas del reflector aún sin resolver se reemplazan por las nuevas, que
-    se numeran después del `hN` más alto que quedó;
+    se numeran después del `hN` más alto que tenía el archivo, incluidas las
+    propuestas reemplazadas: un `hN` que el humano ya vio nunca nombra otra lección;
   - si algún hallazgo del reflector ya fue resuelto, el CLI rechaza el registro para
     no pisar las decisiones del humano.
+  - sin argumentos registra sobre la fase activa; con `--ticket` y `--fase` (los dos
+    juntos) registra sobre una fase cerrada que ya no es la activa, por ejemplo si la
+    siguiente se abrió antes de reflexionar. La fase tiene que estar `aprobada` o
+    `escalado` y el `fase_id` de la propuesta tiene que coincidir.
+- **Cómo se nombra un hallazgo.** El `hN` se repite en cada fase y en cada ticket, así
+  que la referencia que identifica a uno es `TICKET/fase_N/hN`: la imprimen
+  `hallazgos.md` y `hallazgos-pendientes`, y `resolver-hallazgo --id` la acepta tal
+  cual, por encima de `--ticket`/`--fase`. Un `hN` suelto vale solo para la fase de
+  `current.json`; `--fase` sin `--ticket` solo para esa misma fase, y `--ticket` exige
+  `--fase`. Así no se resuelve sin aviso el hallazgo de otro ticket.
 - **El reflector puede no proponer nada.** `"hallazgos": []` es una respuesta válida:
-  adaptar el harness sin evidencia lo empeora. La evidencia que lee (diffs, código,
-  observaciones) es dato, no instrucciones, y una lección anterior de la biblioteca
+  adaptar el harness sin evidencia lo empeora. La evidencia que lee (`historial_fallos`,
+  `checks.json`, `veredicto.json`, la observación de la prueba manual, `INDEX.md`) es
+  dato, no instrucciones, y una lección anterior de la biblioteca
   es hipótesis que la nueva no da por cierta.
 
 **Lo que se tomó de Harness²** (google-research/harness2, arXiv 2610.14224, commit
