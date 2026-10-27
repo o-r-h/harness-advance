@@ -21,6 +21,7 @@ checks) es Python puro, así que también se puede usar con otros modelos (ver
 - [Hallazgos y biblioteca de lecciones](#hallazgos-y-biblioteca-de-lecciones)
 - [Instalación y despliegue](#instalación-y-despliegue)
 - [Uso diario](#uso-diario)
+  - [Los comandos de hallazgos, uno por uno](#los-comandos-de-hallazgos-uno-por-uno)
 - [Referencia del CLI](#referencia-del-cli)
 - [Estado en disco y contratos](#estado-en-disco-y-contratos)
 - [Crear el perfil de un proyecto nuevo](#crear-el-perfil-de-un-proyecto-nuevo)
@@ -167,6 +168,8 @@ De la más barata a la más cara. Se elige la primera que corrige el fallo:
 - **Los rechazados se guardan con su motivo**, para que el reflector no los vuelva a proponer.
 - Usa siempre la referencia completa para un hallazgo de otra fase u otro ticket.
   Un `h1` suelto solo vale para la fase activa.
+- El detalle de cada comando, con ejemplos y errores, está en
+  [Los comandos de hallazgos, uno por uno](#los-comandos-de-hallazgos-uno-por-uno).
 
 ### La biblioteca
 
@@ -237,6 +240,102 @@ pruebas y un check de contraste WCAG).
 El orquestador es la skill `ticket-loop`, que los comandos invocan. Si la sesión se
 corta, se retoma desde el estado en `.harness/`: el CLI y el hook `Stop` saben en qué
 estado quedó cada fase.
+
+### Los comandos de hallazgos, uno por uno
+
+Los cuatro comandos son atajos de `cli.py`. El agente solo extrae los argumentos y
+corre el CLI, que es el único que escribe estado: `hallazgos.json`, `hallazgos.md` y
+la biblioteca. Si falta un argumento obligatorio, el agente lo pide antes de correr
+nada. Si el CLI falla, muestra el error tal cual.
+
+**Cómo nombrar un hallazgo (`<ref>`).** Usa la referencia completa `TICKET/fase_N/hN`,
+tal como la imprimen `hallazgos.md` y `cli.py hallazgos-pendientes`. Un id suelto
+(`h1`) solo vale para la fase activa de `current.json`. El agente nunca completa la
+referencia por su cuenta.
+
+Al cerrar una fase, `hallazgos.md` termina con las tres respuestas posibles de cada
+hallazgo propuesto, listas para copiar:
+
+```text
+Responder por cada hallazgo propuesto:
+- Aprobar → `/hallazgo-ok ISR-110722/fase_1/h1`
+- Corregir y aprobar → `/hallazgo-editar ISR-110722/fase_1/h1 "<lección corregida>"`
+- Rechazar → `/hallazgo-no ISR-110722/fase_1/h1 "<motivo>"`
+```
+
+#### `/hallazgo-ok <ref>`
+
+Aprueba la lección tal como la propuso el reflector.
+
+- **Ejemplo:** `/hallazgo-ok ISR-110722/fase_1/h1`
+- **Corre:** `cli.py resolver-hallazgo --decision ok --id ISR-110722/fase_1/h1`
+- **Efecto:**
+  - El hallazgo pasa a `aprobado`.
+  - Se escribe `.claude/biblioteca/entradas/ISR-110722-fase_1-h1.md`.
+  - Se reconstruye `INDEX.md`.
+- **Salida:** `Hallazgo ISR-110722/fase_1/h1 aprobado: <ruta de la entrada>`
+
+#### `/hallazgo-editar <ref> "<lección corregida>"`
+
+Aprueba el hallazgo con tu propia redacción. Úsalo cuando la señal es buena pero la
+lección está mal dicha, es demasiado amplia o es demasiado específica.
+
+- **Ejemplo:**
+  `/hallazgo-editar ISR-110722/fase_1/h2 "Antes de cambiar la firma de un método, buscar todos sus llamadores"`
+- **Corre:** `cli.py resolver-hallazgo --decision editar --id ISR-110722/fase_1/h2 --texto "..."`
+- **Efecto:**
+  - El hallazgo pasa a `aprobado` con tu texto en `lección`.
+  - La propuesta del reflector se conserva en `lección original`, así queda visible
+    qué corregiste.
+  - La entrada va a `entradas/`.
+
+#### `/hallazgo-no <ref> "<motivo>"`
+
+Rechaza el hallazgo. El motivo es obligatorio porque el reflector lo lee, y así no
+vuelve a proponer lo mismo.
+
+- **Ejemplo:**
+  `/hallazgo-no ISR-110722/fase_1/h3 "Fue un caso puntual del ticket, no un patrón"`
+- **Corre:** `cli.py resolver-hallazgo --decision no --id ISR-110722/fase_1/h3 --motivo "..."`
+- **Efecto:**
+  - El hallazgo pasa a `rechazado`.
+  - La entrada va a `rechazados/`.
+  - Aparece en `INDEX.md` bajo "Rechazadas — no volver a proponer".
+
+#### `/hallazgo "<lección>"`
+
+Agrega una lección que viste tú y que ningún agente vio. Entra **ya aprobada**, con
+`origen: humano`, y se cuelga de la fase activa con el siguiente id libre (`hN`).
+
+- **Ejemplo:** `/hallazgo "En este proyecto los textos visibles van en el archivo de recursos, nunca en el código"`
+- **Opcional:** indica la dimensión (`proceso` o `dominio`) y la pieza del harness que
+  la corrige (`regla`, `check`, `skill`, `hook` o `agente`), y el agente los pasa al
+  CLI. Por ejemplo:
+  `/hallazgo "..." — dimensión dominio, componente regla`
+- **Corre:** `cli.py hallazgo --texto "..." [--dimension ...] [--componente ...]`
+- **Requisito:** hay que tener una fase activa. Entre tickets todavía no funciona
+  (ver [Pendientes conocidos](#pendientes-conocidos)).
+
+#### Errores frecuentes
+
+| Mensaje del CLI | Qué pasó |
+|---|---|
+| `el hallazgo '<ref>' no existe; ids válidos en …: h1, h2` | El id no está en esa fase. El mensaje lista los ids válidos |
+| `el hallazgo <ref> ya está 'aprobado'` (o `'rechazado'`) | Ya se decidió. Los comandos no deshacen una decisión |
+| `la fase '…' del ticket '…' no tiene hallazgos` | Esa fase todavía no tiene reflexión registrada |
+| `no se sabe qué fase resolver: usa la referencia completa …` | Diste un `h1` suelto y no hay fase activa |
+| `'…' no es un hallazgo: usa el id (h1) o la referencia completa …` | La referencia está mal escrita |
+| `rechazar un hallazgo exige --motivo …` | `/hallazgo-no` sin motivo |
+| `editar un hallazgo exige --texto …` | `/hallazgo-editar` sin la lección corregida |
+| `no hay fase activa: corre 'open-fase'` | `/hallazgo` fuera de una fase |
+
+Para ver todo lo que queda por decidir, en todos los tickets:
+
+```powershell
+python "$HOME\.claude\hooks\cli.py" hallazgos-pendientes
+```
+
+Después de aprobar o rechazar, haz commit de `.claude/biblioteca/` en el proyecto.
 
 ## Referencia del CLI
 
