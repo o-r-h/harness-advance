@@ -179,7 +179,23 @@ decide si importa. Un check nuevo conviene que entre como `warning` y se promuev
 `run(project_root, archivos_modificados, ctx) -> list[dict]`. Cada resultado es
 `{"id", "resultado": "ok"|"fallo", "severidad": "error"|"warning", "detalle"}`. Si el
 check revienta, se registra como `error_check` y no bloquea la fase: un bug del
-harness no debe parecer un bug del código. Ejemplos: `profiles/editornotificaciones/checks/`.
+harness no debe parecer un bug del código. Un check que `rules.json` declara pero cuyo
+`.py` no existe también es `error_check`: pasar en silencio haría creer que se verificó.
+
+Al escribir uno:
+
+- Se ejecuta dentro de `cli.py`, así que puede hacer `from lib import gitdiff, harness`.
+  Lee los archivos con `gitdiff.read_text` (respeta el BOM, UTF-8 → cp1252) y limita
+  lo que reporta a `gitdiff.added_lines`, igual que los checks declarativos.
+- El módulo se carga sin registrarse en `sys.modules`: `@dataclass` falla ahí; usa una
+  clase normal.
+- Su configuración va en `rules.json` bajo una clave propia, no en el código. Por
+  ejemplo, `sp_params` de `reviewsystemgfs` lee `sp_params.carpetas_sp`: dónde están
+  los SPs, en orden de prioridad, con rutas relativas a la raíz del proyecto, absolutas
+  o con `%VARIABLES%` de entorno.
+
+Ejemplos: `profiles/editornotificaciones/checks/` (build y contraste) y
+`profiles/reviewsystemgfs/checks/` (estructurales, sin compilador).
 
 **Agente ejecutor**: un `.md` con frontmatter `name` y `description` que conoce los
 patrones del stack. Si el perfil tiene varios, cada fase del plan dice cuál la
@@ -366,13 +382,13 @@ Menores abiertos:
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.
 
-Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; y el
+Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; el
 paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
-y el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`):
+el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`; y el paso 4, los
+checks estructurales de `reviewsystemgfs`, ajustados contra el repo real: el plan
+original ponía en `error` un caso que compila y buscaba los SPs en una carpeta
+congelada desde 2016):
 
-4. **Tareas 17 a 19 del plan original**: los checks estructurales de `reviewsystemgfs`
-   (`designer_sync`, `sp_params`, `xhtml_selfclose`). Hoy ese perfil no tiene carpeta
-   `checks/` y es el de verificación más débil.
 5. **Curación de la biblioteca**: caducidad, deduplicación y detección de
    contradicciones entre lecciones. Hoy solo crece.
 6. **Backlog**: escéptico con otro modelo (vía gateway) y tickets en paralelo (hoy hay

@@ -31,6 +31,17 @@ class TestRulesDelPerfil(unittest.TestCase):
                 _, desconocidos = contracts.resolve_check_names(miembros, self.rules)
                 self.assertEqual(desconocidos, [])
 
+    def test_cada_check_estructural_declarado_tiene_su_modulo(self):
+        # Declarado sin .py, run-checks lo reporta como error_check en cada fase.
+        for nombre in self.rules["checks_estructurales"]:
+            with self.subTest(check=nombre):
+                self.assertTrue((RULES_PATH.parent / "checks" / f"{nombre}.py").is_file())
+
+    def test_sp_params_declara_donde_buscar_los_sps(self):
+        carpetas = self.rules["sp_params"]["carpetas_sp"]
+        self.assertTrue(carpetas)
+        self.assertTrue(all(isinstance(c, str) and c for c in carpetas))
+
     def test_cada_regla_prohibida_tiene_mensaje_util(self):
         for regla in self.rules["prohibido"]:
             with self.subTest(regla=regla["id"]):

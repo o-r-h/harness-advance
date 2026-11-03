@@ -213,8 +213,14 @@ Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude 
    estaban abiertas no cargan los agentes ni los comandos nuevos.
 
 Perfiles incluidos en este repo: `reviewsystemgfs` (VB.NET, Web Forms, .NET 3.5,
-sin build desde línea de comandos) y `editornotificaciones` (.NET + Vue 2, con build,
-pruebas y un check de contraste WCAG).
+sin build desde línea de comandos; checks estructurales `designer_sync`, `sp_params` y
+`xhtml_selfclose` en lugar del compilador) y `editornotificaciones` (.NET + Vue 2, con
+build, pruebas y un check de contraste WCAG).
+
+`sp_params` necesita saber dónde están los SPs: `sp_params.carpetas_sp` en el
+`rules.json` del perfil. Viene con `../../ProjectSQL/MSSQL/PrimusGFS/Procedimiento`
+(relativa a la raíz del proyecto) y `ReviewSystem/Sps` de respaldo; si tus carpetas
+están en otro lado, cambia esa lista. Una carpeta que no existe se avisa y se omite.
 
 
 ## Uso diario
