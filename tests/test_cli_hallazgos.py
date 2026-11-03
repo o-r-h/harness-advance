@@ -469,6 +469,17 @@ class TestReincidencia(Base):
         md = hallazgos.ruta(self.root, TICKET, "fase_2").with_suffix(".md")
         self.assertIn(f"reincide en {self.ORIGINAL}", md.read_text(encoding="utf-8"))
 
+    def test_reincide_en_una_fusionada_dice_cual_usar(self):
+        otra = f"{TICKET}/fase_1/h8"
+        biblioteca.escribir_entrada(self.root, TICKET, "fase_1", {
+            "id": "h8", "estado": "aprobado", "leccion": "la que queda"})
+        biblioteca.fusionar(self.root, otra, [self.ORIGINAL], "fusionada", None, "03-11-2026")
+        resultado = self.proponer_reincide(self.ORIGINAL)
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn(f"se retiró de la biblioteca (fusionada en {otra}): usa {otra}",
+                      resultado.stderr)
+        self.assertIsNone(self.guardados("fase_2"))
+
     def test_reincide_hacia_rechazada_o_inexistente(self):
         rechazada = f"{TICKET}/fase_1/h9"
         biblioteca.escribir_entrada(self.root, TICKET, "fase_1",
@@ -566,6 +577,12 @@ class TestHallazgoHecho(Base):
                         .endswith("· commit abc123"))
         indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
         self.assertIn("(implementada ", indice)
+
+    def test_hallazgo_hecho_sobre_una_retirada_dice_por_que(self):
+        biblioteca.retirar(self.root, self.REF, "obsoleta desde ISR-9", "03-11-2026")
+        resultado = self.hecho("--id", self.REF, "--nota", "commit abc123")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("se retiró de la biblioteca (obsoleta desde ISR-9)", resultado.stderr)
 
     def test_reemplaza_y_avisa(self):
         self.hecho("--id", self.REF, "--nota", "commit abc123")

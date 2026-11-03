@@ -436,10 +436,6 @@ def _hoy() -> str:
     return date.today().strftime("%d-%m-%Y")
 
 
-def _no_es_aprobada(ref: str) -> str:
-    return f"'{ref}', que no es una lección aprobada de la biblioteca"
-
-
 def cmd_record_hallazgos(args) -> int:
     raiz = resolver_proyecto(args.project)
     if bool(args.ticket) != bool(args.fase):
@@ -473,8 +469,8 @@ def cmd_record_hallazgos(args) -> int:
     for i, h in enumerate(propuesta["hallazgos"]):
         ref = h.get("reincide")
         if ref and biblioteca.leer_entrada(raiz, ref) is None:
-            return _error(f"la propuesta dice que hallazgos[{i}] reincide en '{ref}', "
-                          f"que no es una lección aprobada de la biblioteca")
+            return _error(f"la propuesta dice que hallazgos[{i}] reincide en "
+                          f"{_fuera_de_entradas(raiz, ref)}")
 
     previo = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     existentes = (previo or {}).get("hallazgos", [])
@@ -540,7 +536,7 @@ def cmd_resolver_hallazgo(args) -> int:
     if args.decision != "no" and not args.nueva:
         ref_efectiva = args.reincide or hallazgo.get("reincide")
         if ref_efectiva and biblioteca.leer_entrada(raiz, ref_efectiva) is None:
-            return _error(f"el hallazgo {ref} reincide en {_no_es_aprobada(ref_efectiva)}: "
+            return _error(f"el hallazgo {ref} reincide en {_fuera_de_entradas(raiz, ref_efectiva)}: "
                           "usa --nueva si no es reincidencia, o --reincide <ref> con "
                           "otra lección")
 
@@ -605,7 +601,7 @@ def cmd_hallazgo_hecho(args) -> int:
     if not args.nota.strip():
         return _error("--nota no puede estar vacía: di qué pieza se hizo (commit, archivo)")
     if biblioteca.leer_entrada(raiz, args.id) is None:
-        return _error(f"no se puede marcar {_no_es_aprobada(args.id)}")
+        return _error(f"no se puede marcar {_fuera_de_entradas(raiz, args.id)}")
     fecha = _hoy()
     anterior = biblioteca.marcar_implementada(raiz, args.id, args.nota, fecha)
     print(f"Lección {args.id} implementada: {fecha} · {' '.join(args.nota.split())}")
