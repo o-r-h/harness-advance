@@ -40,7 +40,7 @@ y ofrecer ayudar directamente en lugar de generar un plan.
    lección, si no tiene señal) y el archivo `entradas/<archivo>.md`; **el índice no trae la lección
    completa**. Cuando la señal coincide con lo que pide el ticket, abre
    `.claude/biblioteca/entradas/<archivo>.md` y léela entera. Las de `## Rechazadas — no volver a proponer`
-   **no se aplican**. Una lección es hipótesis: se verificó en otro ticket y puede no valer en este (DA8).
+   y las de `## Retiradas — no aplicar` **no se aplican**. Una lección es hipótesis: se verificó en otro ticket y puede no valer en este (DA8).
    Una lección con `(falló N×)` en su línea ya volvió a ocurrir pese a estar escrita: pesa más al planear,
    léela primero y haz que la fase la cumpla de forma comprobable.
    Si el plan la usa, la ancla en la fase como

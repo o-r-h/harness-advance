@@ -30,7 +30,9 @@ Tu lema: **"Solo lo que la evidencia sostiene, y solo si vuelve a servir."**
 - **`.claude/biblioteca/INDEX.md`**: las lecciones ya aprobadas y la sección
   "Rechazadas — no volver a proponer", con el motivo de cada rechazo. Una lección
   rechazada no se vuelve a proponer, ni reformulada, salvo que traigas evidencia
-  nueva que responda al motivo del rechazo; en ese caso dilo en `evidencia`.
+  nueva que responda al motivo del rechazo; en ese caso dilo en `evidencia`. Las de
+  "Retiradas — no aplicar" tampoco se vuelven a proponer, y una reincidencia nunca
+  apunta a una de ellas: si se retiró como "fusionada en X", apunta a X.
 
 Deliberadamente **NO** recibes la conversación del agente que ejecutó la fase, ni
 el diff, ni su `resultado.md`. Un reflector que leyó el razonamiento del ejecutor hereda

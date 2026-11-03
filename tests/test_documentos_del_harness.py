@@ -257,3 +257,69 @@ class TestSeparacionDePlanos(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestComandosDeCuracion(unittest.TestCase):
+    COMANDOS = {
+        "curacion-ok": "resolver-curacion --decision ok",
+        "curacion-no": "resolver-curacion --decision no",
+        "curacion-editar": "resolver-curacion --decision editar",
+        "biblioteca-curar": "record-curacion --archivo",
+    }
+
+    def test_cada_comando_tiene_descripcion_y_subcomando(self):
+        for nombre, subcomando in self.COMANDOS.items():
+            with self.subTest(comando=nombre):
+                texto = leer("harness", "commands", f"{nombre}.md")
+                self.assertIn("description", frontmatter(texto))
+                self.assertIn(subcomando, texto)
+
+    def test_curar_corre_las_senales_y_al_curador_y_no_resuelve(self):
+        texto = leer("harness", "commands", "biblioteca-curar.md")
+        self.assertIn("senales-biblioteca --json", texto)
+        self.assertIn("`curador`", texto)
+        self.assertIn("una vez", texto)
+        self.assertIn("No resuelvas", texto)
+
+    def test_editar_documenta_sus_opciones(self):
+        texto = leer("harness", "commands", "curacion-editar.md")
+        for opcion in ("--texto", "--senal", "--quitar", "--motivo"):
+            with self.subTest(opcion=opcion):
+                self.assertIn(opcion, texto)
+
+
+class TestAgenteCurador(unittest.TestCase):
+    def setUp(self):
+        self.texto = leer("harness", "agents", "curador.md")
+
+    def test_frontmatter_y_solo_lectura(self):
+        campos = frontmatter(self.texto)
+        self.assertEqual(campos.get("name"), "curador")
+        self.assertIn("description", campos)
+        self.assertEqual({h.strip() for h in campos.get("tools", "").split(",")},
+                         {"Read", "Grep", "Glob"})
+
+    def test_nombra_las_dos_acciones(self):
+        for tipo in ('"fusionar"', '"retirar"'):
+            with self.subTest(tipo=tipo):
+                self.assertIn(tipo, self.texto)
+
+    def test_sin_uso_no_basta(self):
+        self.assertIn('"sin uso" no basta', self.texto)
+
+    def test_permite_no_proponer_nada(self):
+        self.assertIn('"acciones": []', self.texto)
+
+    def test_lee_los_rechazos_de_curacion(self):
+        self.assertIn("curacion-rechazada.md", self.texto)
+
+    def test_no_fusiona_implementadas_con_no_implementadas(self):
+        self.assertIn("implementadas con no implementadas", self.texto)
+
+
+class TestRetiradasEnPlannerYReflector(unittest.TestCase):
+    def test_ninguno_aplica_ni_repropone_las_retiradas(self):
+        for partes in (("harness", "agents", "reflector.md"),
+                       ("harness", "skills", "task-planner", "SKILL.md")):
+            with self.subTest(archivo="/".join(partes)):
+                self.assertIn("Retiradas — no aplicar", leer(*partes))
