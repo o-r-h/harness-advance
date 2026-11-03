@@ -51,10 +51,11 @@ sientes tentado a hacerlo, es que falta un subcomando.
 3. **Documentar:** el ejecutor escribe `intento_N/resultado.md` con lo que hizo y la
    evidencia (rutas, líneas, salidas de comando). Esto ya no se pide a mano.
 4. **Checks:** `CLI run-checks`.
-   - Exit 1 → hay errores bloqueantes. Registra el fallo y vuelve al paso 2 con el
-     historial actualizado. **No invoques al escéptico**: es más caro y estos fallos
-     son hechos, no opiniones.
-   - Exit 0 → sigue. Lee los `warning` de `checks.json` y pásaselos al escéptico.
+   - Exit 1 → hay errores bloqueantes. El CLI ya registró el fallo (origen `check`)
+     y sumó el intento: vuelve al paso 2 con el historial actualizado, o, si la fase
+     quedó `escalado`, ve a "Cuando una fase escala". **No invoques al escéptico**: es
+     más caro y estos fallos son hechos, no opiniones.
+   - Exit 0 → la fase pasa a `en_verificacion`. Lee los `warning` de `checks.json` y pásaselos al escéptico.
 5. **Escéptico:** `CLI` no lo invoca; lo invocas tú como **subagente `skeptic`, con
    contexto aislado**. Dale el diff, el `criterio_exito`, los `anclajes`,
    `checks.json` y el `historial_fallos`. **No le pases tu conversación con el

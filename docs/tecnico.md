@@ -60,7 +60,7 @@ se indica, se usa el proyecto del directorio actual.
 | `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json` |
 | `open-fase --fase fase_N` | Abre una fase. Rechaza la apertura si una fase de `depende_de` no está aprobada |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
-| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Sale con 1 si hay errores bloqueantes |
+| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
 | `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |
 | `generar-prueba --pasos-json` | Escribe `prueba_manual.md` |
 | `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |
@@ -303,6 +303,11 @@ Tests que protegen el diseño:
   documento cada subcomando de `cli.py`, y ningún encabezado `## ` se repite entre los dos.
 - `test_report`: el reporte, con datos sembrados por sección; no escribe nada en el
   proyecto y no revienta con archivos ilegibles.
+- `test_punta_a_punta`: dos tickets completos con un modelo falso (respuestas fijas del
+  planner, ejecutor, escéptico y reflector) sobre el CLI, los hooks, git y el reporte
+  reales. El primero falla checks, escéptico y prueba manual, escala y deja una lección
+  que se aprueba y se implementa; en el segundo el error vuelve y el reporte lo muestra
+  como "falló estando implementada". Atrapa lo que se rompe entre piezas.
 
 Documentos de diseño:
 
@@ -350,10 +355,9 @@ Menores abiertos:
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.
 
-Orden acordado de lo que sigue (el paso 1, el reporte y las reincidencias, está hecho):
+Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; y el
+paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos):
 
-2. **Test de punta a punta con un modelo falso**: el ciclo completo (fallo, reintento,
-   escalado, hallazgo) sin modelo real. Hoy no hay ningún test que lo recorra entero.
 3. **`deploy.ps1` registra los hooks en `settings.json` por sí solo**, y una variable de
    entorno para saltar el hook `Stop` (hoy los hooks se registran a mano y no hay
    bypass explícito si `Stop` bloquea por un bug).
