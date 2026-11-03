@@ -30,6 +30,9 @@ CONFIANZAS_HALLAZGO = frozenset({"alta", "media", "baja"})
 ESTADOS_HALLAZGO = frozenset({"propuesto", "aprobado", "rechazado"})
 ORIGENES_HALLAZGO = frozenset({"reflector", "humano"})
 RE_HALLAZGO_ID = re.compile(r"^h\d+$")
+# Referencia a otro hallazgo: TICKET/fase_N/hN.
+# El ticket no puede traer "\", "." ni "..": la referencia se convierte en una ruta.
+RE_REFERENCIA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/fase_\d+/h\d+$")
 
 
 def _texto(data: dict, campo: str, errores: list[str], prefijo: str = "") -> None:
@@ -271,6 +274,15 @@ def validate_fase_state(data: dict) -> list[str]:
     return errores
 
 
+def _validar_reincide(item: dict, errores: list[str], prefijo: str) -> None:
+    """Campo opcional: referencia al hallazgo anterior del que éste es reincidencia."""
+    if "reincide" not in item:
+        return
+    valor = item["reincide"]
+    if not isinstance(valor, str) or not RE_REFERENCIA.fullmatch(valor):
+        errores.append(f"{prefijo}reincide: formato esperado TICKET/fase_N/hN")
+
+
 def _validar_item_reflector(item: dict, errores: list[str], prefijo: str) -> None:
     """Campos que comparten la propuesta del reflector y el hallazgo guardado."""
     for campo in ("senal", "leccion", "evidencia"):
@@ -280,6 +292,7 @@ def _validar_item_reflector(item: dict, errores: list[str], prefijo: str) -> Non
                            ("componente", COMPONENTES)):
         if item.get(campo) not in valores:
             errores.append(f"{prefijo}{campo}: esperado uno de {sorted(valores)}")
+    _validar_reincide(item, errores, prefijo)
 
 
 def validate_propuesta_hallazgos(data: dict) -> list[str]:
@@ -338,6 +351,7 @@ def validate_hallazgos(data: dict) -> list[str]:
                 errores.append(f"{prefijo}dimension: esperado uno de {sorted(DIMENSIONES)}")
             if "componente" in item and item["componente"] not in COMPONENTES:
                 errores.append(f"{prefijo}componente: esperado uno de {sorted(COMPONENTES)}")
+            _validar_reincide(item, errores, prefijo)
         elif item.get("origen") == "reflector":
             _validar_item_reflector(item, errores, prefijo)
 

@@ -102,6 +102,7 @@ class TestComandosDeHallazgos(unittest.TestCase):
         "hallazgo-no": "resolver-hallazgo --decision no",
         "hallazgo-editar": "resolver-hallazgo --decision editar",
         "hallazgo": 'hallazgo --texto',
+        "hallazgo-hecho": "hallazgo-hecho --id",
     }
 
     def test_cada_comando_tiene_descripcion_y_subcomando(self):
@@ -112,13 +113,20 @@ class TestComandosDeHallazgos(unittest.TestCase):
                 self.assertIn(subcomando, texto)
 
     def test_los_que_resuelven_aceptan_la_referencia_completa(self):
-        for nombre in ("hallazgo-ok", "hallazgo-no", "hallazgo-editar"):
+        for nombre in ("hallazgo-ok", "hallazgo-no", "hallazgo-editar", "hallazgo-hecho"):
             with self.subTest(comando=nombre):
                 texto = leer("harness", "commands", f"{nombre}.md")
                 pista = re.search(r"^argument-hint:(.*)$", texto, re.MULTILINE)
                 self.assertIsNotNone(pista)
                 self.assertIn("/fase_N/hN", pista.group(1))
                 self.assertNotIn("--fase", texto, "la referencia se pasa tal cual en --id")
+
+    def test_ok_y_editar_documentan_nueva_y_reincide(self):
+        for nombre in ("hallazgo-ok", "hallazgo-editar"):
+            with self.subTest(comando=nombre):
+                texto = leer("harness", "commands", f"{nombre}.md")
+                self.assertIn("--nueva", texto)
+                self.assertIn("--reincide", texto)
 
 
 class TestComandoFaseFallo(unittest.TestCase):
@@ -196,6 +204,30 @@ class TestAgenteReflector(unittest.TestCase):
         for bloque in bloques:
             with self.subTest(bloque=bloque[:40]):
                 self.assertEqual(validate_propuesta_hallazgos(json.loads(bloque)), [])
+
+    def test_explica_reincide(self):
+        for termino in ("reincide", "TICKET/fase_N/hN", "debió hacer"):
+            with self.subTest(termino=termino):
+                self.assertIn(termino, self.texto)
+
+    def test_reincide_aunque_este_implementada(self):
+        self.assertIn("aunque esa lección figure como implementada", self.texto)
+
+    def test_confirmar_una_leccion_ya_no_es_siempre_silencio(self):
+        self.assertNotIn("eso no es un hallazgo nuevo", self.texto)
+        self.assertIn('reincidencia (ver "Reincidencias")', self.texto)
+        self.assertIn("volvió a ocurrir el error que esa lección debía evitar",
+                      " ".join(self.texto.split()))
+
+    def test_reincidencia_falsa_no_se_marca(self):
+        self.assertIn("**después** de planear o ejecutar", self.texto)
+        self.assertIn("solo se **parecen**", self.texto)
+
+
+class TestPlannerPesaLasQueFallaron(unittest.TestCase):
+    def test_una_leccion_que_fallo_pesa_mas(self):
+        texto = leer("harness", "skills", "task-planner", "SKILL.md")
+        self.assertIn("(falló N×)", texto)
 
 
 class TestEsceptico(unittest.TestCase):

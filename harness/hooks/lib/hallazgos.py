@@ -49,6 +49,8 @@ def _encabezado(h: dict) -> str:
         partes.append(f"{h['dimension']} → {h['componente']}")
     if h.get("confianza"):
         partes.append(f"confianza {h['confianza']}")
+    if h.get("reincide"):
+        partes.append(f"reincide en {h['reincide']}")
     partes.append(h.get("estado", "propuesto"))
     return "## " + " · ".join(partes)
 

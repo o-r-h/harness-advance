@@ -1,6 +1,6 @@
 ---
 description: Aprueba un hallazgo del reflector para que entre a la biblioteca
-argument-hint: <id | TICKET/fase_N/hN>
+argument-hint: <id | TICKET/fase_N/hN> [--nueva | --reincide <ref>]
 ---
 
 El usuario aprueba un hallazgo propuesto por el reflector. Sus argumentos: `$ARGUMENTS`
@@ -16,6 +16,9 @@ python "$HOME/.claude/hooks/cli.py" resolver-hallazgo --decision ok --id <id o r
 Si falta, pídeselo antes de correr nada. Un id suelto solo vale para la fase activa
 de `current.json`; para un hallazgo de otra fase u otro ticket hace falta la
 referencia completa. No completes la referencia por tu cuenta.
+Si el usuario agrega `--nueva` (no es reincidencia: ignora la marca del reflector) o
+`--reincide <ref>` (es reincidencia de esta otra lección), pásalos tal cual al CLI.
+Ejemplo: `... --id <id o referencia> --reincide ISR-123/fase_1/h1`.
 
 Reporta la salida del comando tal cual, sin agregar interpretación. Si falla,
 muestra el error tal cual. No edites `hallazgos.json` ni la biblioteca a mano: el

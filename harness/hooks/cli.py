@@ -7,7 +7,9 @@ aquí. El modelo invoca estos subcomandos; no escribe el estado a mano.
 from __future__ import annotations
 
 import argparse
+import json
 import re
+from datetime import date
 import sys
 from pathlib import Path
 
@@ -15,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import (biblioteca, checks, contracts, gitdiff, hallazgos as lib_hallazgos,  # noqa: E402
                  harness, plugins, prueba_manual, state)
+import report  # noqa: E402
 
 VALIDADORES = {
     "ticket_context": contracts.validate_ticket_context,
@@ -358,6 +361,14 @@ def _fase_objetivo(raiz: Path, ref: str, ticket: str | None,
     return ticket_activo, fase_activa, ref
 
 
+def _hoy() -> str:
+    return date.today().strftime("%d-%m-%Y")
+
+
+def _no_es_aprobada(ref: str) -> str:
+    return f"'{ref}', que no es una lección aprobada de la biblioteca"
+
+
 def cmd_record_hallazgos(args) -> int:
     raiz = resolver_proyecto(args.project)
     if bool(args.ticket) != bool(args.fase):
@@ -388,6 +399,12 @@ def cmd_record_hallazgos(args) -> int:
         return _error(f"la propuesta dice fase '{propuesta['fase_id']}' pero se registra "
                       f"en '{fase_id}'")
 
+    for i, h in enumerate(propuesta["hallazgos"]):
+        ref = h.get("reincide")
+        if ref and biblioteca.leer_entrada(raiz, ref) is None:
+            return _error(f"la propuesta dice que hallazgos[{i}] reincide en '{ref}', "
+                          f"que no es una lección aprobada de la biblioteca")
+
     previo = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     existentes = (previo or {}).get("hallazgos", [])
     if any(h.get("origen") != "humano" and h.get("estado") != "propuesto" for h in existentes):
@@ -404,6 +421,8 @@ def cmd_record_hallazgos(args) -> int:
         item = {"id": f"h{numero}", "origen": "reflector", "estado": "propuesto"}
         for campo in ("senal", "leccion", "evidencia", "confianza", "dimension", "componente"):
             item[campo] = h[campo]
+        if h.get("reincide"):
+            item["reincide"] = h["reincide"]
         items.append(item)
     datos = {"ticket_id": ticket_id, "fase_id": fase_id, "hallazgos": items}
     md = lib_hallazgos.guardar(raiz, datos)
@@ -425,8 +444,15 @@ def cmd_resolver_hallazgo(args) -> int:
     if args.decision == "no" and not args.motivo:
         return _error("rechazar un hallazgo exige --motivo: el reflector lo lee para no "
                       "volver a proponerlo")
-    if args.decision == "editar" and not args.texto:
+    if args.decision == "editar" and not (args.texto or "").strip():
         return _error("editar un hallazgo exige --texto con la lección corregida")
+
+    if args.decision == "no" and (args.nueva or args.reincide):
+        return _error("--nueva y --reincide solo valen al aprobar (--decision ok|editar)")
+    if args.nueva and args.reincide:
+        return _error("--nueva y --reincide se excluyen: elige una")
+    if args.reincide and not contracts.RE_REFERENCIA.fullmatch(args.reincide):
+        return _error(f"--reincide '{args.reincide}' no tiene la forma TICKET/fase_N/hN")
 
     datos = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     if datos is None:
@@ -439,6 +465,14 @@ def cmd_resolver_hallazgo(args) -> int:
     if hallazgo["estado"] != "propuesto":
         return _error(f"el hallazgo {ref} ya está '{hallazgo['estado']}'")
 
+    ref_efectiva = None
+    if args.decision != "no" and not args.nueva:
+        ref_efectiva = args.reincide or hallazgo.get("reincide")
+        if ref_efectiva and biblioteca.leer_entrada(raiz, ref_efectiva) is None:
+            return _error(f"el hallazgo {ref} reincide en {_no_es_aprobada(ref_efectiva)}: "
+                          "usa --nueva si no es reincidencia, o --reincide <ref> con "
+                          "otra lección")
+
     if args.decision == "no":
         hallazgo["estado"] = "rechazado"
         hallazgo["motivo"] = args.motivo
@@ -447,9 +481,21 @@ def cmd_resolver_hallazgo(args) -> int:
             hallazgo["leccion_original"] = hallazgo.get("leccion", "")
             hallazgo["leccion"] = args.texto
         hallazgo["estado"] = "aprobado"
+        if ref_efectiva:
+            hallazgo["reincide"] = ref_efectiva
+        else:
+            hallazgo.pop("reincide", None)
 
+    # La biblioteca se escribe antes que el hallazgo: si falla, el hallazgo sigue
+    # 'propuesto' y se puede reintentar, en vez de quedar aprobado sin su entrada.
+    if ref_efectiva:
+        entrada = biblioteca.registrar_falla(raiz, ref_efectiva, ref,
+                                             hallazgo.get("leccion", ""), _hoy())
+        lib_hallazgos.guardar(raiz, datos)
+        print(f"Hallazgo {ref} aprobado como reincidencia de {ref_efectiva}: {entrada}")
+        return 0
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo, fecha=_hoy())
     lib_hallazgos.guardar(raiz, datos)
-    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo)
     print(f"Hallazgo {ref} {hallazgo['estado']}: {entrada}")
     return 0
 
@@ -474,9 +520,26 @@ def cmd_hallazgo(args) -> int:
         nuevo["componente"] = args.componente
     datos["hallazgos"].append(nuevo)
 
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo, fecha=_hoy())
     lib_hallazgos.guardar(raiz, datos)
-    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo)
     print(f"Hallazgo {nuevo['id']} aprobado: {entrada}")
+    return 0
+
+
+def cmd_hallazgo_hecho(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    if not contracts.RE_REFERENCIA.fullmatch(args.id):
+        return _error(f"--id '{args.id}' no tiene la forma TICKET/fase_N/hN: "
+                      "este comando solo acepta la referencia completa")
+    if not args.nota.strip():
+        return _error("--nota no puede estar vacía: di qué pieza se hizo (commit, archivo)")
+    if biblioteca.leer_entrada(raiz, args.id) is None:
+        return _error(f"no se puede marcar {_no_es_aprobada(args.id)}")
+    fecha = _hoy()
+    anterior = biblioteca.marcar_implementada(raiz, args.id, args.nota, fecha)
+    print(f"Lección {args.id} implementada: {fecha} · {' '.join(args.nota.split())}")
+    if anterior:
+        print(f"Reemplaza la marca anterior: {anterior}")
     return 0
 
 
@@ -502,6 +565,16 @@ def cmd_hallazgos_pendientes(args) -> int:
                 lineas.append(f"{archivo.parent.parent.name}/{archivo.parent.name}/"
                               f"{h['id']} — {h.get('senal', h.get('leccion', ''))}")
     print("\n".join(lineas) if lineas else "Sin hallazgos pendientes.")
+    return 0
+
+
+def cmd_report(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    datos = report.agregar(raiz)
+    if args.json:
+        print(json.dumps(datos, ensure_ascii=False, indent=2))
+    else:
+        sys.stdout.write(report.render(datos))
     return 0
 
 
@@ -564,6 +637,10 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--decision", required=True, choices=["ok", "no", "editar"])
     p.add_argument("--texto")
     p.add_argument("--motivo")
+    p.add_argument("--nueva", action="store_true",
+                   help="No es reincidencia: ignora el reincide del hallazgo")
+    p.add_argument("--reincide", metavar="REF",
+                   help="Es reincidencia de esta lección aprobada (TICKET/fase_N/hN)")
     p.add_argument("--ticket")
     p.add_argument("--fase")
     p.set_defaults(func=cmd_resolver_hallazgo)
@@ -575,6 +652,12 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--componente", choices=sorted(contracts.COMPONENTES))
     p.set_defaults(func=cmd_hallazgo)
 
+    p = sub.add_parser("hallazgo-hecho", help="Marca una lección como implementada")
+    p.add_argument("--project")
+    p.add_argument("--id", required=True, help="Referencia completa TICKET/fase_N/hN")
+    p.add_argument("--nota", required=True, help="Qué pieza se hizo (commit, archivo)")
+    p.set_defaults(func=cmd_hallazgo_hecho)
+
     p = sub.add_parser("reconstruir-biblioteca", help="Regenera INDEX.md desde las entradas")
     p.add_argument("--project")
     p.set_defaults(func=cmd_reconstruir_biblioteca)
@@ -582,6 +665,11 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("hallazgos-pendientes", help="Lista los hallazgos sin resolver")
     p.add_argument("--project")
     p.set_defaults(func=cmd_hallazgos_pendientes)
+
+    p = sub.add_parser("report", help="Reporte de solo lectura de lecciones, hallazgos y fases")
+    p.add_argument("--project")
+    p.add_argument("--json", action="store_true", help="Imprime los datos en JSON")
+    p.set_defaults(func=cmd_report)
 
     return parser
 
