@@ -67,6 +67,9 @@ def registrar_fallo(project_root: Path, ticket_id: str, fase_id: str, origen: st
     estado = leer_fase(project_root, ticket_id, fase_id)
     if estado is None:
         raise TransicionInvalida(f"la fase {fase_id} no está abierta")
+    if estado["estado"] == "pausada":
+        raise TransicionInvalida(
+            f"la fase {fase_id} está pausada: reanúdala antes de registrar un fallo")
     if estado["estado"] in TERMINALES:
         raise TransicionInvalida(
             f"la fase {fase_id} ya está en estado terminal '{estado['estado']}'")
@@ -89,8 +92,43 @@ def aprobar_fase(project_root: Path, ticket_id: str, fase_id: str) -> dict:
     estado = leer_fase(project_root, ticket_id, fase_id)
     if estado is None:
         raise TransicionInvalida(f"la fase {fase_id} no está abierta")
+    if estado["estado"] == "pausada":
+        raise TransicionInvalida(
+            f"la fase {fase_id} está pausada: reanúdala antes de aprobarla")
     if estado["estado"] == "escalado":
         raise TransicionInvalida(
             f"la fase {fase_id} está escalada: requiere intervención humana explícita")
     estado["estado"] = "aprobada"
+    return _guardar(project_root, ticket_id, estado)
+
+
+def pausar_fase(project_root: Path, ticket_id: str, fase_id: str, motivo: str,
+                fecha: str) -> dict:
+    """Pausa la fase sin tocar intento_actual ni historial_fallos."""
+    estado = leer_fase(project_root, ticket_id, fase_id)
+    if estado is None:
+        raise TransicionInvalida(f"la fase {fase_id} no está abierta")
+    actual = estado["estado"]
+    if actual not in contracts.ESTADOS_EN_CICLO:
+        detalle = (" (esperando_humano ya no bloquea: la pausa no aplica)"
+                   if actual == "esperando_humano" else "")
+        raise TransicionInvalida(
+            f"la fase {fase_id} está en estado '{actual}': solo se pausa una fase "
+            f"en ciclo{detalle}")
+    estado.setdefault("pausas", []).append(
+        {"desde": actual, "fecha": fecha, "motivo": motivo})
+    estado["estado"] = "pausada"
+    return _guardar(project_root, ticket_id, estado)
+
+
+def reanudar_fase(project_root: Path, ticket_id: str, fase_id: str) -> dict:
+    """Devuelve la fase al estado desde el que se pausó por última vez."""
+    estado = leer_fase(project_root, ticket_id, fase_id)
+    if estado is None:
+        raise TransicionInvalida(f"la fase {fase_id} no está abierta")
+    if estado["estado"] != "pausada":
+        raise TransicionInvalida(
+            f"la fase {fase_id} está en estado '{estado['estado']}': solo se reanuda "
+            "una fase pausada")
+    estado["estado"] = estado["pausas"][-1]["desde"]
     return _guardar(project_root, ticket_id, estado)

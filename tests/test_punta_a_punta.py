@@ -7,6 +7,7 @@ cada uno como subproceso. Las pruebas de cada pieza viven en sus propios archivo
 esta atrapa lo que se rompe entre piezas.
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,7 +29,8 @@ LECCION = "Antes de entregar, buscar y resolver los TODO del cambio"
 
 def _python(script: Path, *args: str, entrada: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(script), *args], input=entrada,
-                          capture_output=True, text=True, encoding="utf-8")
+                          capture_output=True, text=True, encoding="utf-8",
+                          env={k: v for k, v in os.environ.items() if k != "HARNESS_STOP"})
 
 
 class CicloCompleto(unittest.TestCase):
@@ -138,6 +140,14 @@ class CicloCompleto(unittest.TestCase):
         self.assertEqual(self.ejecutor("modulo.txt", "leer entrada\n").returncode, 0)
         self.cli("run-checks")
         self.assertEqual(self.fase(t)["estado"], "en_verificacion")
+        self.cli("open-ticket", "--ticket-id", "ISR-9", "--nroticket", "9",
+                 "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "02-11-2026",
+                 "--perfil", PERFIL, codigo=1)
+        self.cli("pausar-fase", "--motivo", "almuerzo")
+        self.assertEqual(self.hook_stop().returncode, 0)
+        self.cli("open-fase", "--fase", "fase_1")
+        self.assertEqual((self.fase(t)["estado"], self.fase(t)["intento_actual"]),
+                         ("en_verificacion", 2))
         self.assertEqual(self.hook_stop().returncode, 2)
         self.cli("record-veredicto", "--archivo",
                  self.esceptico(2, False, ["no valida la entrada vacía"]))
@@ -222,6 +232,7 @@ class CicloCompleto(unittest.TestCase):
         self.assertEqual(datos["fases"]["origen_de_fallos"],
                          {"check": 2, "esceptico": 1, "humano": 1})
         self.assertEqual(datos["fases"]["reglas_mas_violadas"], {"no_todo": 2})
+        self.assertEqual(datos["fases"]["pausas_por_fase"], {"ISR-1/fase_1": 1})
         self.assertEqual((datos["hallazgos"]["aprobados_tal_cual"],
                           datos["hallazgos"]["reincidencias"]), (1, 1))
         self.assertIn(ref, self.cli("report").stdout)

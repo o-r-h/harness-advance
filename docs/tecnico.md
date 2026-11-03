@@ -57,8 +57,9 @@ se indica, se usa el proyecto del directorio actual.
 
 | Subcomando | Qué hace |
 |---|---|
-| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json` |
-| `open-fase --fase fase_N` | Abre una fase. Rechaza la apertura si una fase de `depende_de` no está aprobada |
+| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json`. Se rechaza si la fase activa está corriendo, incluso con el mismo id |
+| `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla) |
+| `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
 | `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
 | `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |
@@ -82,7 +83,7 @@ se indica, se usa el proyecto del directorio actual.
     ├── ticket_context.json            nroticket, desarrollador, fecha, perfil
     ├── plan.md / plan.json            el plan (humano / máquina)
     └── fase_1/
-        ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos
+        ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos, pausas
         ├── hallazgos.json / .md       propuestas del reflector y decisiones
         └── intento_1/
             ├── resultado.md           lo que hizo el ejecutor, con evidencia
@@ -133,8 +134,15 @@ git) se conservan intactas. `INDEX.md` marca cada lección con `(implementada <f
 
 Una fase pasa por: `pendiente` → `en_ejecucion` → `en_verificacion` →
 `esperando_humano` → `aprobada`, con `en_correccion` entre intentos y `escalado` al
-agotar los reintentos. Los contratos están en `harness/hooks/lib/contracts.py` y
+agotar los reintentos. Desde cualquier estado en ciclo (`en_ejecucion`,
+`en_correccion`, `en_verificacion`) se puede pasar a `pausada` y volver al estado
+de antes; `pausada` no bloquea el hook `Stop`. Los contratos están en `harness/hooks/lib/contracts.py` y
 documentados en la spec, §6.
+
+`fase_state.pausas` es una lista que nunca se borra, con un elemento por pausa:
+`{"desde": <estado en ciclo>, "fecha": "dd-mm-aaaa", "motivo": str}`. Reanudar vuelve
+al `desde` de la última. El interruptor `HARNESS_STOP=off` (solo ese valor, sin
+distinguir mayúsculas ni espacios) apaga el hook `Stop`.
 
 ## Crear el perfil de un proyecto nuevo
 
@@ -301,6 +309,8 @@ Tests que protegen el diseño:
   de un proyecto.
 - `test_documentacion`: el README menciona cada comando de `harness/commands/`, este
   documento cada subcomando de `cli.py`, y ningún encabezado `## ` se repite entre los dos.
+- `test_registrar_hooks`: nada ajeno de `settings.json` cambia (hooks de otros, otras
+  claves, orden, acentos) y un JSON roto no se escribe.
 - `test_report`: el reporte, con datos sembrados por sección; no escribe nada en el
   proyecto y no revienta con archivos ilegibles.
 - `test_punta_a_punta`: dos tickets completos con un modelo falso (respuestas fijas del
@@ -325,7 +335,7 @@ Documentos de diseño:
 ```
 ├── harness/                  harness genérico → ~/.claude/
 │   ├── agents/               skeptic.md, reflector.md
-│   ├── commands/             /ticket-abrir, /fase, /fase-ok, /fase-fallo, /hallazgo*, /hallazgo-hecho
+│   ├── commands/             /ticket-abrir, /fase, /fase-pausa, /fase-ok, /fase-fallo, /hallazgo*, /hallazgo-hecho
 │   ├── hooks/                check_rules.py (PostToolUse), gate_phase.py (Stop), cli.py, report.py, lib/
 │   └── skills/               ticket-loop, task-planner
 ├── profiles/                 un perfil por proyecto → <proyecto>/.claude/
@@ -335,6 +345,7 @@ Documentos de diseño:
 ├── docs/                     spec, planes y payloads de hooks
 ├── historico/                archivos de partida, ya migrados
 ├── task-plannerv2.md         fuente del planner v3
+├── registrar_hooks.py        fusiona los hooks en settings.json; lo llama deploy.ps1, no se despliega
 └── deploy.ps1                despliegue a ~/.claude y al proyecto
 ```
 
@@ -356,11 +367,9 @@ Menores abiertos:
   errores.
 
 Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; y el
-paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos):
+paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
+y el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`):
 
-3. **`deploy.ps1` registra los hooks en `settings.json` por sí solo**, y una variable de
-   entorno para saltar el hook `Stop` (hoy los hooks se registran a mano y no hay
-   bypass explícito si `Stop` bloquea por un bug).
 4. **Tareas 17 a 19 del plan original**: los checks estructurales de `reviewsystemgfs`
    (`designer_sync`, `sp_params`, `xhtml_selfclose`). Hoy ese perfil no tiene carpeta
    `checks/` y es el de verificación más débil.

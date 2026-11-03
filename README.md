@@ -198,23 +198,18 @@ Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude 
 
    Copia `harness/{hooks,agents,skills,commands}` a `~/.claude/` y
    `profiles/<perfil>/` a `<proyecto>/.claude/`. También agrega `.harness/` al
-   `.gitignore` del proyecto y respalda `~/.claude/settings.json` en `settings.json.bak`.
+   `.gitignore` del proyecto.
 
-2. **Registrar los hooks** (solo la primera vez). Fusiona esto dentro del objeto
-   `hooks` de `~/.claude/settings.json`; `deploy.ps1` imprime el bloque con tus rutas:
+   Además registra los dos hooks (`check_rules.py` y `gate_phase.py`) en
+   `~/.claude/settings.json` y dice qué hizo con cada uno. Solo agrega lo que falta: no
+   toca tus otros hooks ni el resto del archivo, y si lo modifica deja antes un respaldo
+   `settings.json.bak-dd-mm-aaaa-HHMMSS`. Si `settings.json` no es un JSON válido, no lo
+   toca y el despliegue falla.
 
-   ```json
-   "PostToolUse": [
-     { "matcher": "Edit|Write|MultiEdit",
-       "hooks": [{ "type": "command", "command": "python \"C:\\Users\\<usuario>\\.claude\\hooks\\check_rules.py\"" }] }
-   ],
-   "Stop": [
-     { "matcher": "",
-       "hooks": [{ "type": "command", "command": "python \"C:\\Users\\<usuario>\\.claude\\hooks\\gate_phase.py\"" }] }
-   ]
-   ```
+   Con `-SinHooks` no toca `settings.json`: imprime el bloque con tus rutas para que lo
+   fusiones a mano dentro del objeto `hooks`.
 
-3. **Abrir una sesión nueva** de Claude Code en el proyecto. Las sesiones que ya
+2. **Abrir una sesión nueva** de Claude Code en el proyecto. Las sesiones que ya
    estaban abiertas no cargan los agentes ni los comandos nuevos.
 
 Perfiles incluidos en este repo: `reviewsystemgfs` (VB.NET, Web Forms, .NET 3.5,
@@ -228,6 +223,7 @@ pruebas y un check de contraste WCAG).
 |---|---|
 | `/ticket-abrir <requerimiento o ruta .md>` | Empezar un ticket: pide número, desarrollador y fecha, y genera el plan |
 | `/fase fase_N` | Correr el ciclo completo de una fase; termina en el guion de prueba manual |
+| `/fase-pausa ["<motivo>"]` | Pausar la fase activa para conversar de otra cosa o cerrar el día. Se retoma con `/fase fase_N` sin gastar intento. Si entretanto abriste otro ticket, reábrelo primero con el mismo id y los datos de su `ticket_context.json`, sin replanificar |
 | `/fase-ok` | La prueba manual pasó. Cierra la fase y llama al reflector |
 | `/fase-fallo <paso> "<qué pasó>"` | La prueba manual falló en ese paso; arranca el intento siguiente |
 | `/hallazgo-ok <ref>` | Aprobar un hallazgo |
@@ -239,6 +235,10 @@ pruebas y un check de contraste WCAG).
 El orquestador es la skill `ticket-loop`, que los comandos invocan. Si la sesión se
 corta, se retoma desde el estado en `.harness/`: el CLI y el hook `Stop` saben en qué
 estado quedó cada fase.
+
+Para emergencias, si el hook `Stop` te atrapa y no hay otra salida, ábrelo apagado:
+`$env:HARNESS_STOP="off"; claude`. Solo se lee al abrir la sesión, y apaga el hook
+por completo mientras dure.
 
 ### Los comandos de hallazgos, uno por uno
 

@@ -172,6 +172,44 @@ class TestFaseState(unittest.TestCase):
         errores = contracts.validate_fase_state(estado)
         self.assertTrue(any("max_reintentos" in e for e in errores))
 
+    def _base(self, **cambios):
+        estado = {"fase_id": "fase_1", "estado": "en_ejecucion", "intento_actual": 1,
+                  "max_reintentos": 3, "historial_fallos": []}
+        estado.update(cambios)
+        return estado
+
+    def test_fase_state_acepta_pausada_con_pausas(self):
+        estado = self._base(estado="pausada", pausas=[
+            {"desde": "en_correccion", "fecha": "02-11-2026", "motivo": "sin motivo"}])
+        self.assertEqual(contracts.validate_fase_state(estado), [])
+
+    def test_fase_state_pausada_exige_pausas(self):
+        for estado in (self._base(estado="pausada"),
+                       self._base(estado="pausada", pausas=[])):
+            with self.subTest(estado=estado):
+                errores = contracts.validate_fase_state(estado)
+                self.assertTrue(any("pausas" in e for e in errores))
+
+    def test_fase_state_pausas_es_opcional_fuera_de_pausada(self):
+        self.assertEqual(contracts.validate_fase_state(self._base()), [])
+        pausas = [{"desde": "en_ejecucion", "fecha": "02-11-2026", "motivo": "a"},
+                  {"desde": "en_correccion", "fecha": "02-11-2026", "motivo": "b"}]
+        self.assertEqual(contracts.validate_fase_state(self._base(pausas=pausas)), [])
+
+    def test_fase_state_rechaza_pausas_mal_formadas(self):
+        bien = {"desde": "en_correccion", "fecha": "02-11-2026", "motivo": "x"}
+        casos = {
+            "no es lista": "algo",
+            "elemento no es objeto": ["algo"],
+            "falta motivo": [{"desde": "en_correccion", "fecha": "02-11-2026"}],
+            "fecha mal formada": [dict(bien, fecha="2026-11-02")],
+            "desde fuera del ciclo": [dict(bien, desde="aprobada")],
+        }
+        for nombre, pausas in casos.items():
+            with self.subTest(caso=nombre):
+                errores = contracts.validate_fase_state(self._base(pausas=pausas))
+                self.assertTrue(any("pausas" in e for e in errores), errores)
+
 
 class TestVeredicto(unittest.TestCase):
     def test_veredicto_valido(self):

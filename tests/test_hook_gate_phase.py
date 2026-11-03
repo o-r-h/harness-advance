@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,9 +12,11 @@ sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
 from lib import harness  # noqa: E402
 
 
-def lanzar(payload: dict) -> subprocess.CompletedProcess:
+def lanzar(payload: dict, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(HOOK)], input=json.dumps(payload),
-                          capture_output=True, text=True, encoding="utf-8")
+                          capture_output=True, text=True, encoding="utf-8",
+                          env={**{k: v for k, v in os.environ.items() if k != "HARNESS_STOP"},
+                              **(env or {})})
 
 
 class TestHookStop(unittest.TestCase):
@@ -28,10 +31,14 @@ class TestHookStop(unittest.TestCase):
         self.tmp.cleanup()
 
     def con_estado(self, estado: str, intento: int = 1, maximo: int = 3) -> None:
+        datos = {"fase_id": "fase_1", "estado": estado, "intento_actual": intento,
+                 "max_reintentos": maximo, "historial_fallos": []}
+        if estado == "pausada":
+            datos["pausas"] = [{"desde": "en_ejecucion", "fecha": "02-11-2026",
+                                "motivo": "almuerzo"}]
         harness.write_json(
             harness.fase_dir(self.root, "ISR-110722", "fase_1") / "fase_state.json",
-            {"fase_id": "fase_1", "estado": estado, "intento_actual": intento,
-             "max_reintentos": maximo, "historial_fallos": []})
+            datos)
 
     def payload(self, reentrada: bool = False) -> dict:
         return {"hook_event_name": "Stop", "cwd": str(self.root),
@@ -63,6 +70,29 @@ class TestHookStop(unittest.TestCase):
     def test_NO_bloquea_una_fase_aprobada(self):
         self.con_estado("aprobada")
         self.assertEqual(lanzar(self.payload()).returncode, 0)
+
+    def test_NO_bloquea_una_fase_pausada(self):
+        self.con_estado("pausada")
+        resultado = lanzar(self.payload())
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+
+    def test_HARNESS_STOP_off_apaga_el_hook(self):
+        self.con_estado("en_ejecucion")
+        for valor in ("off", "OFF", " off "):
+            with self.subTest(valor=valor):
+                resultado = lanzar(self.payload(), env={"HARNESS_STOP": valor})
+                self.assertEqual(resultado.returncode, 0, resultado.stderr)
+
+    def test_HARNESS_STOP_con_otro_valor_no_apaga(self):
+        self.con_estado("en_ejecucion")
+        for valor in ("0", "", "no"):
+            with self.subTest(valor=valor):
+                resultado = lanzar(self.payload(), env={"HARNESS_STOP": valor})
+                self.assertEqual(resultado.returncode, 2)
+
+    def test_el_bloqueo_ofrece_la_pausa(self):
+        self.con_estado("en_ejecucion")
+        self.assertIn("/fase-pausa", lanzar(self.payload()).stderr)
 
     def test_no_bloquea_con_hallazgos_pendientes(self):
         self.con_estado("aprobada")

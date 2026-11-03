@@ -115,6 +115,7 @@ def agregar(project_root: Path) -> dict:
     intentos_por_fase: dict[str, dict] = {}
     escaladas: list[str] = []
     origen_de_fallos: dict[str, int] = {}
+    pausas_por_fase: dict[str, int] = {}
     reglas: dict[str, int] = {}
     repetidos: list[dict] = []
     propuestos: list[dict] = []
@@ -136,6 +137,9 @@ def agregar(project_root: Path) -> dict:
                     intentos_por_fase[fase] = {"intentos": datos["intento_actual"],
                                                "max": datos["max_reintentos"],
                                                "estado": datos["estado"]}
+                    pausas = len(datos.get("pausas") or [])
+                    if pausas:
+                        pausas_por_fase[fase] = pausas
                     if datos["estado"] == "escalado":
                         escaladas.append(fase)
                     razones = []
@@ -194,7 +198,8 @@ def agregar(project_root: Path) -> dict:
         },
         "fases": {
             "intentos_por_fase": intentos_por_fase, "escaladas": escaladas,
-            "origen_de_fallos": origen_de_fallos, "reglas_mas_violadas": reglas,
+            "origen_de_fallos": origen_de_fallos, "pausas_por_fase": pausas_por_fase,
+            "reglas_mas_violadas": reglas,
             "rechazos_repetidos_del_esceptico": repetidos,
         },
         "ilegibles": sorted(ilegibles),
@@ -269,6 +274,9 @@ def _seccion_fases(datos: dict) -> list[str]:
     if f["origen_de_fallos"]:
         lineas.append("  Origen de los fallos: " + ", ".join(
             f"{k} {_veces(v)}" for k, v in sorted(f["origen_de_fallos"].items())))
+    if f["pausas_por_fase"]:
+        lineas.append("  Pausas: " + ", ".join(
+            f"{k} {_veces(v)}" for k, v in sorted(f["pausas_por_fase"].items())))
     if f["reglas_mas_violadas"]:
         lineas.append("  Reglas más violadas:")
         orden = sorted(f["reglas_mas_violadas"].items(), key=lambda kv: (-kv[1], kv[0]))

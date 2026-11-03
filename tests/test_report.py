@@ -129,6 +129,25 @@ class TestAgregar(Base):
         self.assertEqual((rep[0]["fase"], rep[0]["veces"]), ("ISR-2/fase_1", 2))
         self.assertEqual(rep[0]["razones"], ["falta evidencia", "anclaje roto"])
 
+    def test_pausas_por_fase(self):
+        estado = _fase_state("fase_1", "aprobada", 1, 3, [])
+        estado["pausas"] = [
+            {"desde": "en_ejecucion", "fecha": "01-11-2026", "motivo": "almuerzo"},
+            {"desde": "en_correccion", "fecha": "02-11-2026", "motivo": "reunión"}]
+        harness.write_json(harness.fase_dir(self.root, "T", "fase_1") / "fase_state.json",
+                           estado)
+        harness.write_json(harness.fase_dir(self.root, "T", "fase_2") / "fase_state.json",
+                           _fase_state("fase_2", "aprobada", 1, 3, []))
+        datos = report.agregar(self.root)
+        self.assertEqual(datos["fases"]["pausas_por_fase"], {"T/fase_1": 2})
+        texto = report.render(datos)
+        self.assertIn("Pausas:", texto)
+        self.assertIn(f"T/fase_1 {report._veces(2)}", texto)
+
+    def test_sin_pausas_no_hay_linea(self):
+        self.assertEqual(self.datos["fases"]["pausas_por_fase"], {})
+        self.assertNotIn("Pausas:", report.render(self.datos))
+
     def test_serializable_y_sin_ilegibles(self):
         json.dumps(self.datos)
         self.assertEqual(self.datos["ilegibles"], [])
