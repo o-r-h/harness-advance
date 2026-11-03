@@ -34,6 +34,10 @@
     "mensaje": "Ninguna Reference, DLL o paquete nuevo sin aprobación humana explícita"
   },
   "checks_estructurales": ["designer_sync", "sp_params", "xhtml_selfclose"],
+  "sp_params": {
+    "carpetas_sp": ["../../ProjectSQL/MSSQL/PrimusGFS/Procedimiento", "ReviewSystem/Sps"],
+    "vn_ignorados": ["V0"]
+  },
   "grupos": {
     "fw35_syntax": ["no_async", "no_orm", "no_raw_sql", "no_fw_moderno"],
     "ie11_syntax": ["no_fetch", "no_es6"]
