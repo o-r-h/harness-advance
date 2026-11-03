@@ -81,5 +81,84 @@ class TestRetirar(Base):
         self.assertEqual(biblioteca.ubicacion(self.raiz, "ISR-9/fase_1/h1"), ("ninguna", ""))
 
 
+class TestFusionar(Base):
+    def fusionar(self, absorbidas=(REF_B,), leccion="lección fusionada", senal=None):
+        return biblioteca.fusionar(self.raiz, REF_A, list(absorbidas), leccion, senal, FECHA)
+
+    def test_fusionar_reemplaza_la_leccion_y_guarda_la_original(self):
+        texto = self.texto(self.fusionar())
+        self.assertIn("- **lección**: lección fusionada", texto)
+        self.assertIn("- **lección original**: lección h1", texto)
+        self.assertEqual(texto.count("- **lección**: "), 1)
+        self.assertIn(f"- **fusionada**: {FECHA} · {REF_B}", texto)
+
+    def test_una_leccion_original_previa_no_se_pisa(self):
+        ruta = biblioteca.entrada_path(self.raiz, REF_A)
+        ruta.write_text(self.texto(ruta).replace(
+            "- **lección**: lección h1", "- **lección**: lección h1\n"
+            "- **lección original**: la del reflector"), encoding="utf-8")
+        texto = self.texto(self.fusionar())
+        self.assertIn("- **lección original**: la del reflector", texto)
+        self.assertEqual(texto.count("lección original"), 1)
+
+    def test_fusionar_copia_las_fallas_de_las_absorbidas(self):
+        biblioteca.registrar_falla(self.raiz, REF_B, "ISR-2/fase_1/h1", "volvió", "02-11-2026")
+        self.fusionar()
+        self.assertIn("- **falló**: 02-11-2026 · ISR-2/fase_1/h1 · sin pieza — volvió",
+                      self.texto(biblioteca.entrada_path(self.raiz, REF_A)))
+        self.assertEqual(len(biblioteca.leer_entrada(self.raiz, REF_A)["fallas"]), 1)
+
+    def test_las_absorbidas_quedan_retiradas_como_fusionadas(self):
+        self.fusionar(absorbidas=(REF_B, REF_C))
+        for ref in (REF_B, REF_C):
+            self.assertEqual(biblioteca.ubicacion(self.raiz, ref),
+                             ("retiradas", f"fusionada en {REF_A}"))
+
+    def test_fusionar_con_senal_la_reemplaza_y_sin_senal_la_conserva(self):
+        self.assertIn("- **señal**: señal h1", self.texto(self.fusionar()))
+        biblioteca.escribir_entrada(self.raiz, "ISR-1", "fase_1", _aprobado("h2"))
+        texto = self.texto(self.fusionar(senal="señal nueva"))
+        self.assertIn("- **señal**: señal nueva", texto)
+        self.assertEqual(texto.count("- **señal**: "), 1)
+
+    def test_fusionar_agrega_senal_a_una_entrada_que_no_la_tenia(self):
+        humano = {"id": "h1", "origen": "humano", "estado": "aprobado", "leccion": "mía"}
+        biblioteca.escribir_entrada(self.raiz, "ISR-1", "fase_1", humano)
+        texto = self.texto(self.fusionar(senal="señal nueva"))
+        self.assertIn("- **señal**: señal nueva", texto)
+        self.assertIn("- **lección**: lección fusionada", texto)
+
+    def test_fusionar_mezcla_de_implementadas_es_error_y_no_escribe(self):
+        biblioteca.marcar_implementada(self.raiz, REF_B, "check y", "02-11-2026")
+        antes = [self.texto(biblioteca.entrada_path(self.raiz, r)) for r in (REF_A, REF_B)]
+        with self.assertRaises(ValueError):
+            self.fusionar()
+        despues = [self.texto(biblioteca.entrada_path(self.raiz, r)) for r in (REF_A, REF_B)]
+        self.assertEqual(antes, despues)
+
+    def test_fusionar_una_ref_que_no_esta_o_el_destino_absorbido_es_error(self):
+        with self.assertRaises(ValueError):
+            self.fusionar(absorbidas=("ISR-9/fase_1/h1",))
+        with self.assertRaises(ValueError):
+            self.fusionar(absorbidas=(REF_A,))
+        self.assertTrue(biblioteca.entrada_path(self.raiz, REF_B).is_file())
+
+    def test_fusionar_todas_implementadas_conserva_la_marca_y_anota_las_otras(self):
+        biblioteca.marcar_implementada(self.raiz, REF_A, "check x", "02-11-2026")
+        biblioteca.marcar_implementada(self.raiz, REF_B, "check y", "02-11-2026")
+        texto = self.texto(self.fusionar())
+        self.assertIn("- **implementada**: 02-11-2026 · check x", texto)
+        self.assertIn(f"- **fusionada**: {FECHA} · {REF_B} · implementada 02-11-2026 · "
+                      f"check y", texto)
+
+    def test_fusionar_una_entrada_con_crlf(self):
+        ruta = biblioteca.entrada_path(self.raiz, REF_A)
+        ruta.write_bytes(self.texto(ruta).replace("\n", "\r\n").encode("utf-8"))
+        texto = self.fusionar().read_bytes().decode("utf-8")
+        self.assertIn("- **lección**: lección fusionada", texto)
+        self.assertEqual(texto.count("- **lección**: "), 1)
+        self.assertIn("- **lección original**: lección h1", texto)
+
+
 if __name__ == "__main__":
     unittest.main()

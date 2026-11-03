@@ -141,6 +141,69 @@ def retirar(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
     return destino
 
 
+def _indice_de(lineas: list[str], etiqueta: str) -> int | None:
+    prefijo = f"- **{etiqueta}**: "
+    for i, linea in enumerate(lineas):
+        if linea.rstrip("\r").startswith(prefijo):
+            return i
+    return None
+
+
+def _poner(lineas: list[str], indice: int, nueva: str) -> None:
+    """Reemplaza la línea conservando su CRLF si lo tenía."""
+    lineas[indice] = nueva + ("\r" if lineas[indice].endswith("\r") else "")
+
+
+def fusionar(project_root: Path, destino: str, absorbidas: list[str], leccion: str,
+             senal: str | None, fecha: str) -> Path:
+    """Fusiona las absorbidas en el destino: el destino toma la lección (y la señal)
+    nuevas y las líneas `falló` de las otras; las absorbidas se retiran como
+    `fusionada en <destino>`. Valida todo antes de escribir."""
+    if not absorbidas:
+        raise ValueError("una fusión necesita al menos una lección que absorber")
+    if destino in absorbidas or len(set(absorbidas)) != len(absorbidas):
+        raise ValueError("el destino no puede absorberse y las absorbidas no se repiten")
+    textos: dict[str, str] = {}
+    for ref in [destino, *absorbidas]:
+        ruta = entrada_path(project_root, ref)
+        if not ruta.is_file():
+            raise ValueError(f"no hay una entrada aprobada para '{ref}'")
+        textos[ref] = ruta.read_text(encoding="utf-8")
+    if len({bool(_campo(t, "implementada")) for t in textos.values()}) > 1:
+        raise ValueError("no se fusionan lecciones implementadas con no implementadas: "
+                         "sus fallas quedarían fuera de las dos secciones del reporte")
+
+    ruta, lineas = _editar_lineas(project_root, destino)
+    i_leccion = _indice_de(lineas, "lección")
+    nueva_leccion = f"- **lección**: {' '.join(leccion.split())}"
+    if i_leccion is None:
+        _agregar_al_final(lineas, nueva_leccion)
+    else:
+        anterior = _campo(textos[destino], "lección")
+        _poner(lineas, i_leccion, nueva_leccion)
+        if _indice_de(lineas, "lección original") is None and anterior:
+            lineas.insert(i_leccion + 1, f"- **lección original**: {anterior}")
+    if senal:
+        nueva_senal = f"- **señal**: {' '.join(senal.split())}"
+        i_senal = _indice_de(lineas, "señal")
+        if i_senal is None:
+            lineas.insert(_indice_de(lineas, "lección") or 1, nueva_senal)
+        else:
+            _poner(lineas, i_senal, nueva_senal)
+    for ref in absorbidas:
+        texto = textos[ref]
+        for linea in texto.split("\n"):
+            if linea.rstrip("\r").startswith("- **falló**: "):
+                _agregar_al_final(lineas, linea.rstrip("\r"))
+        implementada = _campo(texto, "implementada")
+        marca = f" · implementada {implementada}" if implementada else ""
+        _agregar_al_final(lineas, f"- **fusionada**: {fecha} · {ref}{marca}")
+    resultado = _guardar_lineas(project_root, ruta, lineas)
+    for ref in absorbidas:
+        retirar(project_root, ref, f"fusionada en {destino}", fecha)
+    return resultado
+
+
 def ubicacion(project_root: Path, ref: str) -> tuple[str, str]:
     """Dónde está una lección: ("entradas", ""), ("retiradas", motivo) o ("ninguna", "")."""
     if entrada_path(project_root, ref).is_file():
