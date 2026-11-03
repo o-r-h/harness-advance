@@ -309,6 +309,8 @@ Tests que protegen el diseño:
   de un proyecto.
 - `test_documentacion`: el README menciona cada comando de `harness/commands/`, este
   documento cada subcomando de `cli.py`, y ningún encabezado `## ` se repite entre los dos.
+- `test_registrar_hooks`: nada ajeno de `settings.json` cambia (hooks de otros, otras
+  claves, orden, acentos) y un JSON roto no se escribe.
 - `test_report`: el reporte, con datos sembrados por sección; no escribe nada en el
   proyecto y no revienta con archivos ilegibles.
 - `test_punta_a_punta`: dos tickets completos con un modelo falso (respuestas fijas del
@@ -343,6 +345,7 @@ Documentos de diseño:
 ├── docs/                     spec, planes y payloads de hooks
 ├── historico/                archivos de partida, ya migrados
 ├── task-plannerv2.md         fuente del planner v3
+├── registrar_hooks.py        fusiona los hooks en settings.json; lo llama deploy.ps1, no se despliega
 └── deploy.ps1                despliegue a ~/.claude y al proyecto
 ```
 
@@ -364,11 +367,9 @@ Menores abiertos:
   errores.
 
 Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; y el
-paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos):
+paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
+y el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`):
 
-3. **`deploy.ps1` registra los hooks en `settings.json` por sí solo**, y una variable de
-   entorno para saltar el hook `Stop` (hoy los hooks se registran a mano y no hay
-   bypass explícito si `Stop` bloquea por un bug).
 4. **Tareas 17 a 19 del plan original**: los checks estructurales de `reviewsystemgfs`
    (`designer_sync`, `sp_params`, `xhtml_selfclose`). Hoy ese perfil no tiene carpeta
    `checks/` y es el de verificación más débil.

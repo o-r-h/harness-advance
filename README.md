@@ -198,23 +198,18 @@ Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude 
 
    Copia `harness/{hooks,agents,skills,commands}` a `~/.claude/` y
    `profiles/<perfil>/` a `<proyecto>/.claude/`. También agrega `.harness/` al
-   `.gitignore` del proyecto y respalda `~/.claude/settings.json` en `settings.json.bak`.
+   `.gitignore` del proyecto.
 
-2. **Registrar los hooks** (solo la primera vez). Fusiona esto dentro del objeto
-   `hooks` de `~/.claude/settings.json`; `deploy.ps1` imprime el bloque con tus rutas:
+   Además registra los dos hooks (`check_rules.py` y `gate_phase.py`) en
+   `~/.claude/settings.json` y dice qué hizo con cada uno. Solo agrega lo que falta: no
+   toca tus otros hooks ni el resto del archivo, y si lo modifica deja antes un respaldo
+   `settings.json.bak-dd-mm-aaaa-HHMMSS`. Si `settings.json` no es un JSON válido, no lo
+   toca y el despliegue falla.
 
-   ```json
-   "PostToolUse": [
-     { "matcher": "Edit|Write|MultiEdit",
-       "hooks": [{ "type": "command", "command": "python \"C:\\Users\\<usuario>\\.claude\\hooks\\check_rules.py\"" }] }
-   ],
-   "Stop": [
-     { "matcher": "",
-       "hooks": [{ "type": "command", "command": "python \"C:\\Users\\<usuario>\\.claude\\hooks\\gate_phase.py\"" }] }
-   ]
-   ```
+   Con `-SinHooks` no toca `settings.json`: imprime el bloque con tus rutas para que lo
+   fusiones a mano dentro del objeto `hooks`.
 
-3. **Abrir una sesión nueva** de Claude Code en el proyecto. Las sesiones que ya
+2. **Abrir una sesión nueva** de Claude Code en el proyecto. Las sesiones que ya
    estaban abiertas no cargan los agentes ni los comandos nuevos.
 
 Perfiles incluidos en este repo: `reviewsystemgfs` (VB.NET, Web Forms, .NET 3.5,

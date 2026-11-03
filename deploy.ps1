@@ -3,10 +3,14 @@
   Despliega el harness genérico a ~/.claude y el perfil al proyecto destino.
 .EXAMPLE
   .\deploy.ps1 -Proyecto "C:\ruta\a\ReviewSystemGFS" -Perfil reviewsystemgfs
+.EXAMPLE
+  .\deploy.ps1 -Proyecto "C:\ruta\a\ReviewSystemGFS" -SinHooks
+  # no toca settings.json: imprime el bloque de hooks para pegarlo a mano
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Proyecto,
-  [string]$Perfil = "reviewsystemgfs"
+  [string]$Perfil = "reviewsystemgfs",
+  [switch]$SinHooks
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,22 +49,18 @@ if (-not (Select-String -Path $GitIgnore -SimpleMatch $Linea -Quiet)) {
   Write-Host "Agregado '$Linea' al .gitignore del proyecto"
 }
 
-# --- Respaldo de settings.json y recordatorio de los hooks ---
+# --- Hooks en settings.json ---
 $Settings = Join-Path $Global "settings.json"
-if (Test-Path $Settings) {
-  $Respaldo = "$Settings.bak"
-  Copy-Item $Settings $Respaldo -Force
-  Write-Host "Respaldo de settings.json en $Respaldo"
-}
 
-$HookCheck = (Join-Path $Global "hooks\check_rules.py") -replace '\\', '\\'
-$HookGate  = (Join-Path $Global "hooks\gate_phase.py")  -replace '\\', '\\'
+if ($SinHooks) {
+  $HookCheck = (Join-Path $Global "hooks\check_rules.py") -replace '\\', '\\'
+  $HookGate  = (Join-Path $Global "hooks\gate_phase.py")  -replace '\\', '\\'
 
-Write-Host ""
-Write-Host "Falta un paso manual: registrar los hooks en $Settings"
-Write-Host "Fusiona esto dentro del objeto 'hooks' existente (no reemplaces el archivo):"
-Write-Host ""
-Write-Host @"
+  Write-Host ""
+  Write-Host "Con -SinHooks no se toca $Settings. Registra los hooks a mano:"
+  Write-Host "Fusiona esto dentro del objeto 'hooks' existente (no reemplaces el archivo):"
+  Write-Host ""
+  Write-Host @"
 "PostToolUse": [
   { "matcher": "Edit|Write|MultiEdit",
     "hooks": [{ "type": "command", "command": "python \"$HookCheck\"" }] }
@@ -70,3 +70,12 @@ Write-Host @"
     "hooks": [{ "type": "command", "command": "python \"$HookGate\"" }] }
 ]
 "@
+}
+else {
+  # registrar_hooks.py avisa qué hizo y respalda settings.json con fecha y hora
+  # solo si lo escribe; con un JSON roto sale con 1 sin escribir nada.
+  & python (Join-Path $Fuente "registrar_hooks.py") --settings $Settings --hooks-dir (Join-Path $Global "hooks")
+  if ($LASTEXITCODE -ne 0) {
+    throw "No se pudieron registrar los hooks: settings.json no se tocó ($Settings). Corrígelo o usa -SinHooks."
+  }
+}
