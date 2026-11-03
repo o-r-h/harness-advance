@@ -21,8 +21,17 @@ def _rel(project_root: Path, ruta: Path) -> str:
     return Path(ruta).relative_to(project_root).as_posix()
 
 
-def _subdirs(carpeta: Path) -> list[Path]:
-    return sorted(p for p in carpeta.iterdir() if p.is_dir()) if carpeta.is_dir() else []
+def _listar(project_root: Path, carpeta: Path, ilegibles: list[str], patron: str = "*",
+            solo_dirs: bool = False) -> list[Path]:
+    """Contenido ordenado de la carpeta; si no se puede recorrer, la carpeta va a `ilegibles`."""
+    try:
+        if not carpeta.is_dir():
+            return []
+        hallados = carpeta.glob(patron)
+        return sorted(p for p in hallados if p.is_dir() or not solo_dirs)
+    except OSError:
+        ilegibles.append(_rel(project_root, carpeta))
+        return []
 
 
 def _senal(item: dict) -> str:
@@ -37,13 +46,16 @@ def _fallas(entrada: dict, tipo: str) -> list[dict]:
 def _leer_lecciones(project_root: Path, ilegibles: list[str]) -> list[dict]:
     carpeta = biblioteca.biblioteca_dir(project_root) / "entradas"
     lecciones = []
-    for archivo in sorted(carpeta.glob("*.md")) if carpeta.is_dir() else []:
+    for archivo in _listar(project_root, carpeta, ilegibles, "*.md"):
         try:
             # La ref sale de la primera línea (`# <ref>`), no del nombre del archivo.
             primera = archivo.read_text(encoding="utf-8").split("\n", 1)[0]
             ref = primera[2:].strip() if primera.startswith("# ") else ""
             if not contracts.RE_REFERENCIA.fullmatch(ref):
                 raise ValueError("primera línea sin referencia")
+            if biblioteca.entrada_path(project_root, ref) != archivo:
+                # Una copia o un archivo renombrado contaría la lección dos veces.
+                raise ValueError("el nombre del archivo no corresponde a su referencia")
             entrada = biblioteca.leer_entrada(project_root, ref)
             if entrada is None:
                 raise ValueError("entrada no encontrada por su referencia")
@@ -96,7 +108,8 @@ def agregar(project_root: Path) -> dict:
     lecciones = _leer_lecciones(project_root, ilegibles)
     implementadas, fallaron, deuda = _clasificar_lecciones(lecciones)
 
-    tickets = _subdirs(harness.tickets_dir(project_root))
+    tickets = _listar(project_root, harness.tickets_dir(project_root), ilegibles,
+                      solo_dirs=True)
     n_fases = 0
     intentos_por_fase: dict[str, dict] = {}
     escaladas: list[str] = []
@@ -108,7 +121,7 @@ def agregar(project_root: Path) -> dict:
     tal_cual = editados = reincidencias = del_humano = 0
 
     for ticket in tickets:
-        for carpeta in _subdirs(ticket):
+        for carpeta in _listar(project_root, ticket, ilegibles, solo_dirs=True):
             if not contracts.RE_FASE_ID.match(carpeta.name):
                 continue
             fase = f"{ticket.name}/{carpeta.name}"
@@ -134,7 +147,8 @@ def agregar(project_root: Path) -> dict:
                         repetidos.append({"fase": fase, "veces": len(razones),
                                           "razones": razones})
 
-            for archivo in sorted(carpeta.glob("intento_*/checks.json")):
+            for archivo in _listar(project_root, carpeta, ilegibles,
+                                "intento_*/checks.json"):
                 datos = _leer_json(project_root, archivo, _validar_checks, ilegibles)
                 for check in (datos["checks"] if datos else []):
                     if isinstance(check, dict) and check.get("resultado") == "fallo":

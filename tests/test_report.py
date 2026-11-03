@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -12,6 +13,7 @@ import report  # noqa: E402
 REF_A = "ISR-1/fase_1/h1"
 REF_B = "ISR-1/fase_1/h2"
 REF_C = "ISR-1/fase_1/h3"
+REF_H0 = "ISR-1/fase_1/h0"
 
 
 def _aprobado(id, **extra):
@@ -46,6 +48,9 @@ class Base(unittest.TestCase):
             "checks": [{"id": "designer_x", "resultado": "fallo", "severidad": "error",
                         "detalle": "d"},
                        {"id": "otro", "resultado": "ok"}]})
+        harness.write_json(harness.fase_dir(r, "ISR-1", "fase_2") / "fase_state.json",
+                           _fase_state("fase_2", "aprobada", 2, 3,
+                                       [("esceptico", "un solo rechazo")]))
         f2 = harness.fase_dir(r, "ISR-2", "fase_1")
         harness.write_json(f2 / "fase_state.json", _fase_state(
             "fase_1", "escalado", 3, 3,
@@ -59,9 +64,11 @@ class Base(unittest.TestCase):
                 _aprobado("h3", leccion_original="original"),
                 _aprobado("h4", reincide="ISR-0/fase_1/h1"),
                 _aprobado("h5", estado="rechazado", motivo="ya existe"),
+                _aprobado("h7", leccion_original="orig", reincide="ISR-0/fase_1/h1"),
                 {"id": "h6", "origen": "humano", "estado": "aprobado", "leccion": "mía"},
             ]})
 
+        biblioteca.escribir_entrada(r, "ISR-1", "fase_1", _aprobado("h0"), "01-11-2026")
         biblioteca.escribir_entrada(r, "ISR-1", "fase_1", _aprobado("h1"), "01-11-2026")
         biblioteca.escribir_entrada(r, "ISR-1", "fase_1", _aprobado("h2"), "01-11-2026")
         biblioteca.escribir_entrada(
@@ -82,7 +89,7 @@ class TestAgregar(Base):
 
     def test_resumen(self):
         self.assertEqual(self.datos["resumen"], {
-            "tickets": 2, "fases": 2, "fases_escaladas": 1, "lecciones_aprobadas": 3,
+            "tickets": 2, "fases": 3, "fases_escaladas": 1, "lecciones_aprobadas": 4,
             "implementadas": 1, "fallaron_implementadas": 1, "volvieron_sin_pieza": 1})
 
     def test_fallaron_implementadas(self):
@@ -95,6 +102,8 @@ class TestAgregar(Base):
         deuda = self.datos["deuda"]
         self.assertEqual(deuda["check"][0]["ref"], REF_B)
         self.assertEqual(len(deuda["check"][0]["fallas"]), 2)
+        # Más fallas primero; sin fallas, por ref (h0 sortea antes que h2).
+        self.assertEqual([e["ref"] for e in deuda["check"]], [REF_B, REF_H0])
         self.assertEqual([e["ref"] for e in deuda["sin pieza"]], [REF_C])
         self.assertEqual(deuda["sin pieza"][0]["senal"], "regla mía")
         self.assertNotIn(REF_A, [e["ref"] for g in deuda.values() for e in g])
@@ -102,19 +111,19 @@ class TestAgregar(Base):
     def test_salud_de_hallazgos(self):
         h = self.datos["hallazgos"]
         self.assertEqual((h["aprobados_tal_cual"], h["aprobados_editados"],
-                          h["reincidencias"], h["del_humano"]), (1, 1, 1, 1))
+                          h["reincidencias"], h["del_humano"]), (1, 1, 2, 1))
         self.assertEqual(h["rechazados"], [{"ref": "ISR-1/fase_1/h5", "motivo": "ya existe"}])
         self.assertEqual(len(h["propuestos"]), 1)
 
     def test_fases(self):
         f = self.datos["fases"]
         self.assertEqual(f["escaladas"], ["ISR-2/fase_1"])
-        self.assertEqual(f["origen_de_fallos"], {"check": 1, "esceptico": 2, "humano": 1})
+        self.assertEqual(f["origen_de_fallos"], {"check": 1, "esceptico": 3, "humano": 1})
         self.assertEqual(f["reglas_mas_violadas"], {"designer_x": 1})
         self.assertEqual(f["intentos_por_fase"]["ISR-1/fase_1"],
                          {"intentos": 2, "max": 3, "estado": "aprobada"})
         rep = f["rechazos_repetidos_del_esceptico"]
-        self.assertEqual(len(rep), 1)
+        self.assertEqual(len(rep), 1)  # ISR-1/fase_2 con un solo rechazo no entra
         self.assertEqual((rep[0]["fase"], rep[0]["veces"]), ("ISR-2/fase_1", 2))
         self.assertEqual(rep[0]["razones"], ["falta evidencia", "anclaje roto"])
 
@@ -161,9 +170,33 @@ class TestCasosLimite(Base):
             f"{base}/fase_1/fase_state.json", f"{base}/fase_2/fase_state.json",
             f"{base}/fase_3/fase_state.json", f"{base}/fase_1/hallazgos.json",
             f"{base}/fase_1/intento_1/checks.json"]))
-        self.assertEqual(datos["resumen"]["fases"], 2)
+        self.assertEqual(datos["resumen"]["fases"], 3)
         self.assertEqual(datos["resumen"]["tickets"], 3)
-        self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 3)
+        self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 4)
+
+    def test_copia_de_entrada_no_cuenta_dos_veces(self):
+        self._sembrar()
+        origen = biblioteca.entrada_path(self.root, REF_A)
+        copia = origen.parent / "copia.md"
+        copia.write_bytes(origen.read_bytes())
+        datos = report.agregar(self.root)
+        self.assertEqual(datos["ilegibles"], [".claude/biblioteca/entradas/copia.md"])
+        self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 4)
+
+    def test_carpeta_que_no_se_puede_recorrer(self):
+        self._sembrar()
+        tickets = harness.tickets_dir(self.root)
+        original = Path.glob
+
+        def glob(self_, patron):
+            if self_ == tickets:
+                raise PermissionError("denegado")
+            return original(self_, patron)
+
+        with mock.patch.object(Path, "glob", glob):
+            datos = report.agregar(self.root)
+        self.assertEqual(datos["ilegibles"], [".harness/tickets"])
+        self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 4)
 
     def test_entrada_ilegible_se_nombra(self):
         self._sembrar()
@@ -175,7 +208,7 @@ class TestCasosLimite(Base):
         self.assertEqual(datos["ilegibles"], [
             ".claude/biblioteca/entradas/ISR-9-fase_1-h1.md",
             ".claude/biblioteca/entradas/suelta.md"])
-        self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 3)
+        self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 4)
 
 
 if __name__ == "__main__":
