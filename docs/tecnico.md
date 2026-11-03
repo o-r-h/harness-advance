@@ -401,10 +401,10 @@ Menores abiertos:
 
 Límites conocidos de los checks y del diff (revisión del paso 4, 03-11-2026):
 
-- `sp_params` no ve las llamadas que llevan el SP en la cadena (`|VN=Sp|V0=n|...`),
-  que se despachan con `LlenaCombos`/`LlenaGrid` → `EjecutarSp(Sp, Validar, ...)`: son
-  cerca de la mitad de las llamadas reales (unas 23 en `Scripts/*.js` y 2 en VB). Un
-  `|V27=` que el SP no parsea ahí pasa sin aviso.
+- `sp_params` revisa la convención `"VN=<SP>|V0=<n>|..."` (que despachan
+  `LlenaCombos`/`LlenaGrid`) en `.vb` y `.js`, pero en JS por línea física: una cadena
+  que se arma en varias líneas o con `p += ...` más abajo solo aporta los Vn de la línea
+  del `VN=`. En el repo, las 23 están en una sola línea.
 - `sp_params` da `error` para `IF @Validar = 1 ... ELSE ...` llamado con otro valor; en
   el corpus actual solo aparece en SPs sin `@Parametros`.
 
