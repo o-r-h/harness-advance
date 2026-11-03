@@ -1,13 +1,17 @@
+import contextlib
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RAIZ = Path(__file__).resolve().parents[1]
 CLI = RAIZ / "harness" / "hooks" / "cli.py"
 sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
+import cli  # noqa: E402
 from lib import biblioteca, contracts, hallazgos, harness, state  # noqa: E402
 
 REGLAS = {"perfil": "p", "audit_comments": {"requerido": True, "severidad": "error"}}
@@ -518,6 +522,7 @@ class TestReincidencia(Base):
                                   "--reincide", "ISR-9/fase_1/h1")
         self.assertEqual(resultado.returncode, 1)
         self.assertIn("no es una lección aprobada", resultado.stderr)
+        self.assertIn("usa --nueva", resultado.stderr)
         self.assertEqual(self.guardados("fase_2")["hallazgos"][0]["estado"], "propuesto")
 
     def test_opciones_incompatibles(self):
@@ -540,10 +545,6 @@ class TestReincidencia(Base):
         correr("hallazgo", *self.p, "--texto", "t")
         humano = biblioteca.leer_entrada(self.root, f"{TICKET}/fase_2/h2")
         self.assertRegex(humano["aprobada"], contracts.RE_FECHA)
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestHallazgoHecho(Base):
@@ -587,3 +588,77 @@ class TestHallazgoHecho(Base):
                 resultado = self.hecho("--id", ref, "--nota", "commit abc123")
                 self.assertEqual(resultado.returncode, 1)
         self.assertEqual(ruta.read_bytes(), antes)
+
+
+class TestOrdenYErroresDeEscritura(Base):
+    REF = f"{TICKET}/fase_1/h1"
+
+    def en_proceso(self, *args: str) -> tuple[int, str]:
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            codigo = cli.main([*args, *self.p])
+        return codigo, err.getvalue()
+
+    def reincidencia_pendiente(self):
+        self.preparar()
+        self.proponer(1)
+        self.resolver("--id", "h1", "--decision", "ok")
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        state.aprobar_fase(self.root, TICKET, "fase_2")
+        ruta = self.root / "propuesta2.json"
+        item = _hallazgo(1)
+        item["reincide"] = self.REF
+        ruta.write_text(json.dumps({"fase_id": "fase_2", "hallazgos": [item]}),
+                        encoding="utf-8")
+        correr("record-hallazgos", *self.p, "--archivo", str(ruta))
+
+    def test_falla_la_biblioteca_y_el_hallazgo_sigue_propuesto(self):
+        self.reincidencia_pendiente()
+        with mock.patch.object(biblioteca, "registrar_falla", side_effect=OSError("disco")):
+            codigo, err = self.en_proceso("resolver-hallazgo", "--id", f"{TICKET}/fase_2/h1",
+                                          "--decision", "ok")
+        self.assertEqual(codigo, 1)
+        self.assertIn("HARNESS · OSError", err)
+        self.assertEqual(self.guardados("fase_2")["hallazgos"][0]["estado"], "propuesto")
+
+    def test_falla_la_entrada_nueva_y_el_hallazgo_sigue_propuesto(self):
+        self.preparar()
+        self.proponer(1)
+        with mock.patch.object(biblioteca, "escribir_entrada", side_effect=OSError("disco")):
+            codigo, _ = self.en_proceso("resolver-hallazgo", "--id", "h1", "--decision", "ok")
+        self.assertEqual(codigo, 1)
+        self.assertEqual(self.guardados()["hallazgos"][0]["estado"], "propuesto")
+
+    def test_entrada_en_cp1252_da_error_del_harness(self):
+        self.reincidencia_pendiente()
+        biblioteca.entrada_path(self.root, self.REF).write_bytes(b"# x\n- **se\xf1al**: x\n")
+        propuesta = self.root / "propuesta3.json"
+        propuesta.write_text(json.dumps({"fase_id": "fase_2", "hallazgos": []}),
+                             encoding="utf-8")
+        casos = (("hallazgo-hecho", "--id", self.REF, "--nota", "n"),
+                 ("resolver-hallazgo", "--id", f"{TICKET}/fase_2/h1", "--decision", "ok"),
+                 ("record-hallazgos", "--archivo", str(propuesta)))
+        # record-hallazgos solo lee la biblioteca si la propuesta trae reincidencias.
+        datos = json.loads(propuesta.read_text(encoding="utf-8"))
+        datos["hallazgos"] = [dict(_hallazgo(1), reincide=self.REF)]
+        propuesta.write_text(json.dumps(datos), encoding="utf-8")
+        for caso in casos:
+            with self.subTest(caso=caso):
+                codigo, err = self.en_proceso(*caso)
+                self.assertEqual(codigo, 1)
+                self.assertIn("HARNESS · UnicodeDecodeError", err)
+
+    def test_editar_con_texto_vacio_es_error(self):
+        self.preparar()
+        self.proponer(1)
+        for texto in ("", "   "):
+            with self.subTest(texto=texto):
+                codigo, err = self.en_proceso("resolver-hallazgo", "--id", "h1",
+                                              "--decision", "editar", "--texto", texto)
+                self.assertEqual(codigo, 1)
+                self.assertIn("exige --texto", err)
+                self.assertEqual(self.guardados()["hallazgos"][0]["estado"], "propuesto")
+
+
+if __name__ == "__main__":
+    unittest.main()

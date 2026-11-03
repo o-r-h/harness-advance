@@ -1,6 +1,6 @@
 ---
 description: Aprueba un hallazgo del reflector con la lección corregida por el humano
-argument-hint: <id | TICKET/fase_N/hN> "<lección corregida>"
+argument-hint: <id | TICKET/fase_N/hN> "<lección corregida>" [--nueva | --reincide <ref>]
 ---
 
 El usuario aprueba un hallazgo, pero con la lección corregida. Sus argumentos: `$ARGUMENTS`

@@ -133,10 +133,6 @@ class TestBiblioteca(Base):
             self.assertIn(senal, archivo.read_text(encoding="utf-8"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestMarcasDeLaEntrada(Base):
     REF = "ISR-1/fase_1/h1"
 
@@ -207,3 +203,7 @@ class TestMarcasDeLaEntrada(Base):
         indice = (self.root / ".claude" / "biblioteca" / "INDEX.md").read_text(encoding="utf-8")
         linea = next(l for l in indice.splitlines() if "entradas/ISR-1-fase_1-h1.md" in l)
         self.assertTrue(linea.endswith("(implementada 04-11-2026) (falló 2×)"), linea)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,6 +1,6 @@
 ---
 description: Aprueba un hallazgo del reflector para que entre a la biblioteca
-argument-hint: <id | TICKET/fase_N/hN>
+argument-hint: <id | TICKET/fase_N/hN> [--nueva | --reincide <ref>]
 ---
 
 El usuario aprueba un hallazgo propuesto por el reflector. Sus argumentos: `$ARGUMENTS`

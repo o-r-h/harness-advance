@@ -444,7 +444,7 @@ def cmd_resolver_hallazgo(args) -> int:
     if args.decision == "no" and not args.motivo:
         return _error("rechazar un hallazgo exige --motivo: el reflector lo lee para no "
                       "volver a proponerlo")
-    if args.decision == "editar" and not args.texto:
+    if args.decision == "editar" and not (args.texto or "").strip():
         return _error("editar un hallazgo exige --texto con la lección corregida")
 
     if args.decision == "no" and (args.nueva or args.reincide):
@@ -469,7 +469,9 @@ def cmd_resolver_hallazgo(args) -> int:
     if args.decision != "no" and not args.nueva:
         ref_efectiva = args.reincide or hallazgo.get("reincide")
         if ref_efectiva and biblioteca.leer_entrada(raiz, ref_efectiva) is None:
-            return _error(f"el hallazgo {ref} reincide en {_no_es_aprobada(ref_efectiva)}")
+            return _error(f"el hallazgo {ref} reincide en {_no_es_aprobada(ref_efectiva)}: "
+                          "usa --nueva si no es reincidencia, o --reincide <ref> con "
+                          "otra lección")
 
     if args.decision == "no":
         hallazgo["estado"] = "rechazado"
@@ -484,13 +486,16 @@ def cmd_resolver_hallazgo(args) -> int:
         else:
             hallazgo.pop("reincide", None)
 
-    lib_hallazgos.guardar(raiz, datos)
+    # La biblioteca se escribe antes que el hallazgo: si falla, el hallazgo sigue
+    # 'propuesto' y se puede reintentar, en vez de quedar aprobado sin su entrada.
     if ref_efectiva:
         entrada = biblioteca.registrar_falla(raiz, ref_efectiva, ref,
                                              hallazgo.get("leccion", ""), _hoy())
+        lib_hallazgos.guardar(raiz, datos)
         print(f"Hallazgo {ref} aprobado como reincidencia de {ref_efectiva}: {entrada}")
         return 0
     entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo, fecha=_hoy())
+    lib_hallazgos.guardar(raiz, datos)
     print(f"Hallazgo {ref} {hallazgo['estado']}: {entrada}")
     return 0
 
@@ -515,8 +520,8 @@ def cmd_hallazgo(args) -> int:
         nuevo["componente"] = args.componente
     datos["hallazgos"].append(nuevo)
 
-    lib_hallazgos.guardar(raiz, datos)
     entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo, fecha=_hoy())
+    lib_hallazgos.guardar(raiz, datos)
     print(f"Hallazgo {nuevo['id']} aprobado: {entrada}")
     return 0
 
