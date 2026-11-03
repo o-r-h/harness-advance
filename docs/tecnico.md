@@ -382,6 +382,18 @@ Menores abiertos:
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.
 
+Límites conocidos de los checks y del diff (revisión del paso 4, 03-11-2026):
+
+- `sp_params` no ve las llamadas que llevan el SP en la cadena (`|VN=Sp|V0=n|...`),
+  que se despachan con `LlenaCombos`/`LlenaGrid` → `EjecutarSp(Sp, Validar, ...)`: son
+  cerca de la mitad de las llamadas reales (unas 23 en `Scripts/*.js` y 2 en VB). Un
+  `|V27=` que el SP no parsea ahí pasa sin aviso.
+- `sp_params` da `error` para `IF @Validar = 1 ... ELSE ...` llamado con otro valor; en
+  el corpus actual solo aparece en SPs sin `@Parametros`.
+- `gitdiff`: un archivo renombrado con `git mv` cuenta todas sus líneas como agregadas,
+  y las rutas con acentos (que git cita en octal) no llegan a `archivos_modificados`:
+  ese archivo no se revisa.
+
 Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; el
 paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
 el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`; y el paso 4, los
