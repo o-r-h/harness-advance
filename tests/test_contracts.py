@@ -355,7 +355,7 @@ class TestReincide(unittest.TestCase):
         self.assertEqual(contracts.validate_propuesta_hallazgos(datos), [])
 
     def test_reincide_mal_formado(self):
-        for malo in ("ISR-1/fase_1", "ISR-1\fase_1\h1", "", 7):
+        for malo in ("ISR-1/fase_1", r"ISR-1\fase_1\h1", "T/fase_1/h1\n", "", 7):
             datos = copy.deepcopy(PROPUESTA_OK)
             datos["hallazgos"][0]["reincide"] = malo
             errores = contracts.validate_propuesta_hallazgos(datos)

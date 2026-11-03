@@ -278,7 +278,7 @@ def _validar_reincide(item: dict, errores: list[str], prefijo: str) -> None:
     if "reincide" not in item:
         return
     valor = item["reincide"]
-    if not isinstance(valor, str) or not RE_REFERENCIA.match(valor):
+    if not isinstance(valor, str) or not RE_REFERENCIA.fullmatch(valor):
         errores.append(f"{prefijo}reincide: formato esperado TICKET/fase_N/hN")
 
 
