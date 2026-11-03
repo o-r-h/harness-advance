@@ -345,5 +345,38 @@ class TestHallazgos(unittest.TestCase):
             contracts.validate_propuesta_hallazgos("x"), ["hallazgos: requerido, objeto JSON"])
 
 
+class TestReincide(unittest.TestCase):
+    def test_propuesta_sin_reincide_sigue_valida(self):
+        self.assertEqual(contracts.validate_propuesta_hallazgos(copy.deepcopy(PROPUESTA_OK)), [])
+
+    def test_propuesta_con_reincide_valido(self):
+        datos = copy.deepcopy(PROPUESTA_OK)
+        datos["hallazgos"][0]["reincide"] = "ISR-109204-P5/fase_1/h2"
+        self.assertEqual(contracts.validate_propuesta_hallazgos(datos), [])
+
+    def test_reincide_mal_formado(self):
+        for malo in ("ISR-1/fase_1", "ISR-1\fase_1\h1", "", 7):
+            datos = copy.deepcopy(PROPUESTA_OK)
+            datos["hallazgos"][0]["reincide"] = malo
+            errores = contracts.validate_propuesta_hallazgos(datos)
+            self.assertTrue(any(e.startswith("hallazgos[0].reincide:") for e in errores),
+                            (malo, errores))
+
+    def test_hallazgos_guardado_acepta_reincide(self):
+        self.assertEqual(
+            contracts.validate_hallazgos(_guardado(reincide="ISR-109204-P5/fase_1/h2")), [])
+        errores = contracts.validate_hallazgos(_guardado(reincide="x"))
+        self.assertTrue(any(e.startswith("hallazgos[0].reincide:") for e in errores), errores)
+
+    def test_hallazgos_humano_valida_reincide(self):
+        base = {"id": "h1", "origen": "humano", "estado": "aprobado", "leccion": "Revisar X"}
+        datos = {"ticket_id": "T", "fase_id": "fase_1",
+                 "hallazgos": [{**base, "reincide": "T-1/fase_2/h3"}]}
+        self.assertEqual(contracts.validate_hallazgos(datos), [])
+        datos["hallazgos"][0]["reincide"] = "x"
+        errores = contracts.validate_hallazgos(datos)
+        self.assertTrue(any(e.startswith("hallazgos[0].reincide:") for e in errores), errores)
+
+
 if __name__ == "__main__":
     unittest.main()
