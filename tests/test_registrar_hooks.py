@@ -76,7 +76,7 @@ class TestRegistrar(unittest.TestCase):
     def test_ruta_vieja_se_actualiza(self):
         datos = copy.deepcopy(REAL)
         datos["hooks"]["PostToolUse"].append(
-            _propio(MATCHER_CHECK, 'python "C:/viejo/check_rules.py"'))
+            _propio(MATCHER_CHECK, 'python "C:/viejo/hooks/check_rules.py"'))
         nuevo, lineas = registrar_hooks.registrar(datos, HOOKS)
         self.assertEqual(nuevo["hooks"]["PostToolUse"][-1]["hooks"][0]["command"],
                          CMD_CHECK)
@@ -94,7 +94,7 @@ class TestRegistrar(unittest.TestCase):
         ajeno = _ajeno("x")["hooks"][0]
         mixta = {"matcher": "Write", "hooks": [
             copy.deepcopy(ajeno),
-            {"type": "command", "command": 'python "C:/viejo/check_rules.py"'}]}
+            {"type": "command", "command": 'python "C:/viejo/hooks/check_rules.py"'}]}
         datos = copy.deepcopy(REAL)
         datos["hooks"]["PostToolUse"].append(mixta)
         nuevo, lineas = registrar_hooks.registrar(datos, HOOKS)
@@ -106,11 +106,42 @@ class TestRegistrar(unittest.TestCase):
 
     def test_duplicados_se_corrigen_y_se_avisa(self):
         datos = copy.deepcopy(REAL)
-        datos["hooks"]["Stop"] = [_propio("", 'python "C:/a/gate_phase.py"'),
-                                  _propio("", 'python "C:/b/gate_phase.py"')]
+        datos["hooks"]["Stop"] = [_propio("", 'python "C:/a/hooks/gate_phase.py"'),
+                                  _propio("", 'python "C:/b/hooks/gate_phase.py"')]
         nuevo, lineas = registrar_hooks.registrar(datos, HOOKS)
         self.assertEqual(nuevo["hooks"]["Stop"], [_propio("", CMD_GATE)] * 2)
         self.assertTrue(any("2 entradas del harness" in linea for linea in lineas))
+
+    def test_hook_ajeno_con_el_mismo_nombre_no_se_toca(self):
+        ajena = {"matcher": "", "hooks": [{
+            "type": "command",
+            "command": "node C:/otra/herramienta/gate_phase.py --x"}]}
+        datos = copy.deepcopy(REAL)
+        datos["hooks"]["Stop"] = [copy.deepcopy(ajena)]
+        nuevo, lineas = registrar_hooks.registrar(datos, HOOKS)
+        self.assertEqual(nuevo["hooks"]["Stop"], [ajena, _propio("", CMD_GATE)])
+        self.assertTrue(any("Stop" in linea and "registrado" in linea
+                            for linea in lineas))
+
+    def test_nombre_parecido_no_es_nuestro(self):
+        ajena = _propio("", 'python "C:/x/hooks/pre_check_rules.py"')
+        datos = copy.deepcopy(REAL)
+        datos["hooks"]["PostToolUse"].append(copy.deepcopy(ajena))
+        nuevo, _ = registrar_hooks.registrar(datos, HOOKS)
+        self.assertEqual(nuevo["hooks"]["PostToolUse"][-2], ajena)
+        self.assertEqual(nuevo["hooks"]["PostToolUse"][-1],
+                         _propio(MATCHER_CHECK, CMD_CHECK))
+
+    def test_comando_no_cadena_es_ajeno(self):
+        self.assertFalse(registrar_hooks._es_nuestro(
+            {"command": ["hooks/check_rules.py"]}, "check_rules.py"))
+
+    def test_rutas_del_harness_se_reconocen(self):
+        for comando in (r'python "C:\Users\x\.claude\hooks\check_rules.py"',
+                        'python "C:/viejo/hooks/check_rules.py"',
+                        'python "$HOME/.claude/hooks/check_rules.py"'):
+            self.assertTrue(registrar_hooks._es_nuestro(
+                {"command": comando}, "check_rules.py"), comando)
 
     def test_sin_clave_hooks(self):
         nuevo, _ = registrar_hooks.registrar({"model": "x"}, HOOKS)

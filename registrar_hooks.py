@@ -12,6 +12,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -36,7 +37,14 @@ def _forzar_utf8_en_salidas() -> None:
 
 
 def _es_nuestro(hook: dict, archivo: str) -> bool:
-    return isinstance(hook, dict) and archivo in str(hook.get("command", ""))
+    """Un hook es del harness solo si su comando (cadena) nombra el archivo
+    dentro de una carpeta llamada literalmente `hooks`, con frontera de
+    separador a ambos lados. Todo lo demás es ajeno y no se toca."""
+    if not isinstance(hook, dict) or not isinstance(hook.get("command"), str):
+        return False
+    patron = (r"""(^|[\s"'/\\])hooks[/\\]""" + re.escape(archivo)
+              + r"""(?=$|[\s"'])""")
+    return re.search(patron, hook["command"]) is not None
 
 
 def registrar(settings: dict, hooks_dir: str) -> tuple[dict, list[str]]:
