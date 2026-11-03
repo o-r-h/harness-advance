@@ -227,6 +227,45 @@ def _mostrar(raiz: Path, ruta: Path) -> str:
         return str(resuelta)
 
 
+# Convención "VN=<SP>|V0=<validar>|V1=...": la cadena que despachan LlenaCombos/LlenaGrid
+# hacia EjecutarSp(Sp, Validar, ...). El SP y el @Validar van dentro de la cadena.
+RE_VN_SP = re.compile(r"(?<![\w|])VN=(?P<sp>[\w.\[\]]+)\|", re.IGNORECASE)
+RE_V0_LITERAL = re.compile(r"\|\s*V0=(?P<n>\d+)\s*\|", re.IGNORECASE)
+RE_COMENTARIO_JS = re.compile(
+    r"//[^\n]*|/\*.*?\*/|(?P<cadena>\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*')", re.DOTALL)
+
+
+def _sentencias_js(texto: str) -> list[tuple[str, list[int]]]:
+    """Líneas de JS sin comentarios (las cadenas se conservan: llevan los Vn).
+
+    Por línea física: en el repo cada cadena VN= se arma en una sola línea."""
+    def blanquear(encontrado: re.Match) -> str:
+        if encontrado.group("cadena"):
+            return encontrado.group(0)
+        return re.sub(r"[^\n]", " ", encontrado.group(0))
+    limpio = RE_COMENTARIO_JS.sub(blanquear, texto)
+    return [(linea, [n]) for n, linea in enumerate(limpio.splitlines(), start=1)]
+
+
+def _llamadas_vn(sentencias, agregadas: set[int]) -> list[Llamada]:
+    llamadas: list[Llamada] = []
+    for codigo, numeros in sentencias:
+        if not any(n in agregadas for n in numeros):
+            continue  # solo lo agregado, igual que las llamadas directas
+        inicios = list(RE_VN_SP.finditer(codigo))
+        for i, encontrada in enumerate(inicios):
+            # Cada VN= lleva solo lo de su tramo, hasta el siguiente VN= de la línea: un
+            # ternario o dos argumentos no deben cruzar los Vn ni el V0 de otro SP.
+            fin = inicios[i + 1].start() if i + 1 < len(inicios) else len(codigo)
+            tramo = codigo[encontrada.end() - 1:fin]
+            validar = RE_V0_LITERAL.search("|" + tramo)
+            vns = {m.group("vn").upper(): numeros[0] for m in RE_VN_ENVIADO.finditer(tramo)}
+            llamadas.append(Llamada(encontrada.group("sp"),
+                                    validar.group("n") if validar else None,
+                                    numeros[0], True, vns))
+    return llamadas
+
+
 def run(project_root: Path, archivos_modificados: list[Path], ctx: dict | None) -> list[dict]:
     raiz = Path(project_root)
     hallazgos: list[dict] = []
@@ -234,7 +273,8 @@ def run(project_root: Path, archivos_modificados: list[Path], ctx: dict | None) 
     for archivo in archivos_modificados:
         archivo = Path(archivo)
         nombre = archivo.name.lower()
-        if not nombre.endswith(".vb") or nombre.endswith(".designer.vb"):
+        es_vb = nombre.endswith(".vb") and not nombre.endswith(".designer.vb")
+        if not (es_vb or nombre.endswith(".js")):
             continue
         try:
             agregadas = gitdiff.added_lines(raiz, archivo)
@@ -243,7 +283,15 @@ def run(project_root: Path, archivos_modificados: list[Path], ctx: dict | None) 
                                                       f"diff (¿repo git?); no se verificó",
                                            "error_check"))
                 continue
-            llamadas = _llamadas(gitdiff.read_text(archivo), {n for n, _ in agregadas})
+            texto = gitdiff.read_text(archivo)
+            numeros = {n for n, _ in agregadas}
+            if es_vb:
+                sentencias = _lineas_logicas(texto.splitlines())
+                llamadas = _llamadas(texto, numeros)
+            else:
+                sentencias = _sentencias_js(texto)
+                llamadas = []
+            llamadas += _llamadas_vn(sentencias, numeros)
             if llamadas:
                 por_archivo.append((archivo, llamadas))
         except Exception:

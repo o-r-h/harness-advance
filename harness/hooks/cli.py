@@ -85,6 +85,10 @@ def _fase_corriendo(raiz: Path) -> tuple[str, str, str] | None:
 
 def cmd_open_ticket(args) -> int:
     raiz = resolver_proyecto(args.project)
+    if not RE_TICKET_ID.match(args.ticket_id):
+        return _error(f"--ticket-id '{args.ticket_id}' no es válido: usa solo letras, "
+                      f"dígitos, '-' o '_' (sin acentos ni puntos), empezando por letra o "
+                      f"dígito; las referencias TICKET/fase_N/hN lo exigen")
     corriendo = _fase_corriendo(raiz)
     if corriendo:
         return _error(f"la fase '{corriendo[1]}' del ticket '{corriendo[0]}' está en estado "
@@ -292,6 +296,8 @@ def cmd_record_veredicto(args) -> int:
         return _error(f"el veredicto dice fase '{veredicto['fase_id']}' pero la fase "
                       f"activa es '{fase['id']}'")
 
+    if (args.modelo_esceptico or "").strip():  # en blanco se ignora: dejaría un veredicto inválido
+        veredicto["juicio_esceptico"]["modelo"] = args.modelo_esceptico.strip()
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     harness.write_json(destino / "veredicto.json", veredicto)
 
@@ -310,6 +316,37 @@ def cmd_record_veredicto(args) -> int:
 
     state.aprobar_fase(raiz, ticket_id, fase["id"])
     print("Escéptico aprobó y la fase no requería prueba manual: fase aprobada.")
+    return 0
+
+
+# Alias de modelo que acepta el subagente de Claude Code (parámetro `model`).
+MODELOS_CLAUDE = ("haiku", "sonnet", "opus", "fable")
+
+
+def _familia(modelo: str) -> str | None:
+    """`claude-sonnet-5-5[1m]` → `sonnet`; None si no nombra ninguna familia conocida."""
+    texto = modelo.lower()
+    return next((m for m in MODELOS_CLAUDE if m in texto), None)
+
+
+def cmd_modelo_esceptico(args) -> int:
+    """Modelo con el que juzga el escéptico: el que fija el perfil o, si no, Sonnet,
+    salvo que el ejecutor ya sea Sonnet (entonces Opus): quien juzga no debe compartir
+    los puntos ciegos de quien hizo el trabajo."""
+    raiz = resolver_proyecto(args.project)
+    reglas = harness.load_rules(raiz) if (raiz / ".claude" / "rules.json").is_file() else {}
+    config = reglas.get("esceptico") if isinstance(reglas, dict) else None
+    if config is not None and not isinstance(config, dict):
+        return _error('rules.json: "esceptico" debe ser un objeto, por ejemplo '
+                      '{"modelo": "opus"}')
+    fijado = (config or {}).get("modelo")
+    if fijado is not None:
+        if fijado not in MODELOS_CLAUDE:
+            return _error(f"rules.json: esceptico.modelo '{fijado}' no es uno de "
+                          f"{', '.join(MODELOS_CLAUDE)}")
+        print(fijado)
+        return 0
+    print("opus" if _familia(args.ejecutor) == "sonnet" else "sonnet")
     return 0
 
 
@@ -385,8 +422,8 @@ def cmd_record_manual(args) -> int:
 
 
 # Referencia completa de un hallazgo, tal como la imprime 'hallazgos-pendientes'.
-RE_REF_HALLAZGO = re.compile(r"^([A-Za-z0-9][\w.-]*)/(fase_\d+)/(h\d+)$")
-RE_TICKET_ID = re.compile(r"^[A-Za-z0-9][\w.-]*$")
+RE_REF_HALLAZGO = re.compile(rf"^({contracts.TICKET_ID})/(fase_\d+)/(h\d+)\Z")
+RE_TICKET_ID = contracts.RE_TICKET_ID
 
 
 def _validar_ticket_y_fase(ticket: str | None, fase: str | None) -> str | None:
@@ -569,15 +606,28 @@ def cmd_resolver_hallazgo(args) -> int:
 
 def cmd_hallazgo(args) -> int:
     raiz = resolver_proyecto(args.project)
-    activa = _fase_activa(raiz)
-    if activa is None:
-        return _error("no hay fase activa: corre 'open-fase'")
-    ticket_id, _, fase, _ = activa
+    if bool(args.ticket) != bool(args.fase):
+        return _error("--ticket y --fase van juntos: indica los dos o ninguno")
+    if args.ticket:
+        # Entre tickets no hay fase activa: la lección se cuelga de una fase que ya existió.
+        error = _validar_ticket_y_fase(args.ticket, args.fase)
+        if error:
+            return _error(error)
+        if state.leer_fase(raiz, args.ticket, args.fase) is None:
+            return _error(f"la fase '{args.fase}' del ticket '{args.ticket}' no se ha abierto")
+        ticket_id, fase_id = args.ticket, args.fase
+    else:
+        activa = _fase_activa(raiz)
+        if activa is None:
+            return _error("no hay fase activa: corre 'open-fase', o indica de qué fase es "
+                          "la lección con --ticket <id> --fase fase_N")
+        ticket_id, _, fase, _ = activa
+        fase_id = fase["id"]
     if not args.texto.strip():
         return _error("--texto no puede estar vacío")
 
-    datos = lib_hallazgos.leer(raiz, ticket_id, fase["id"]) or {
-        "ticket_id": ticket_id, "fase_id": fase["id"], "hallazgos": []}
+    datos = lib_hallazgos.leer(raiz, ticket_id, fase_id) or {
+        "ticket_id": ticket_id, "fase_id": fase_id, "hallazgos": []}
     numeros = [int(h["id"][1:]) for h in datos["hallazgos"]]
     nuevo = {"id": f"h{max(numeros, default=0) + 1}", "origen": "humano",
              "estado": "aprobado", "leccion": args.texto}
@@ -587,9 +637,10 @@ def cmd_hallazgo(args) -> int:
         nuevo["componente"] = args.componente
     datos["hallazgos"].append(nuevo)
 
-    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo, fecha=_hoy())
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, nuevo, fecha=_hoy())
     lib_hallazgos.guardar(raiz, datos)
-    print(f"Hallazgo {nuevo['id']} aprobado: {entrada}")
+    ref = lib_hallazgos.referencia(ticket_id, fase_id, nuevo["id"])
+    print(f"Hallazgo {ref} aprobado: {entrada}")
     return 0
 
 
@@ -867,7 +918,15 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("record-veredicto", help="Registra el veredicto del escéptico")
     p.add_argument("--project")
     p.add_argument("--archivo", required=True)
+    p.add_argument("--modelo-esceptico", help="el modelo que juzgó (de modelo-esceptico)")
     p.set_defaults(func=cmd_record_veredicto)
+
+    p = sub.add_parser("modelo-esceptico",
+                       help="Con qué modelo de Claude debe juzgar el escéptico")
+    p.add_argument("--project")
+    p.add_argument("--ejecutor", required=True,
+                   help="modelo del que ejecutó la fase, o 'desconocido'")
+    p.set_defaults(func=cmd_modelo_esceptico)
 
     p = sub.add_parser("generar-prueba", help="Escribe el guion de prueba manual")
     p.add_argument("--project")
@@ -908,6 +967,8 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--texto", required=True)
     p.add_argument("--dimension", choices=sorted(contracts.DIMENSIONES))
     p.add_argument("--componente", choices=sorted(contracts.COMPONENTES))
+    p.add_argument("--ticket", help="con --fase: la fase a la que pertenece, sin fase activa")
+    p.add_argument("--fase")
     p.set_defaults(func=cmd_hallazgo)
 
     p = sub.add_parser("hallazgo-hecho", help="Marca una lección como implementada")

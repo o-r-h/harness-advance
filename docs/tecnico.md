@@ -62,12 +62,13 @@ se indica, se usa el proyecto del directorio actual.
 | `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
 | `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
-| `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |
+| `record-veredicto --archivo [--modelo-esceptico]` | Registra el veredicto del escéptico; si rechaza, incrementa el intento. `--modelo-esceptico` guarda en `juicio_esceptico.modelo` qué modelo juzgó |
+| `modelo-esceptico --ejecutor <modelo\|desconocido>` | Imprime el modelo de Claude con el que debe juzgar el escéptico: `esceptico.modelo` de `rules.json` si está; si no, `sonnet`, salvo que el ejecutor ya sea Sonnet (entonces `opus`). Así quien juzga no comparte los puntos ciegos de quien hizo el trabajo |
 | `generar-prueba --pasos-json` | Escribe `prueba_manual.md` |
 | `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |
 | `record-hallazgos --archivo [--ticket --fase]` | Registra la propuesta del reflector. Solo sobre una fase `aprobada` o `escalado`; con `--ticket --fase`, sobre una fase ya cerrada |
 | `resolver-hallazgo --id <hN\|TICKET/fase_N/hN> --decision ok\|no\|editar [--texto] [--motivo] [--nueva \| --reincide <ref>]` | Resuelve un hallazgo y lo escribe en la biblioteca. `--nueva` ignora el `reincide` del reflector; `--reincide` fija la lección a la que reincide. Solo valen con `ok` o `editar`, y no juntos. Una reincidencia aprobada no crea entrada: agrega una línea `falló` a la original |
-| `hallazgo --texto [--dimension] [--componente]` | Hallazgo humano, en la fase activa |
+| `hallazgo --texto [--dimension] [--componente] [--ticket --fase]` | Hallazgo humano, en la fase activa; entre tickets, en la fase de `--ticket --fase` (que debe haberse abierto) |
 | `hallazgo-hecho --id <TICKET/fase_N/hN> --nota` | Marca una lección aprobada como implementada (`- **implementada**: <fecha> · <nota>`). Solo acepta la referencia completa; si ya estaba marcada, reemplaza la marca e imprime la anterior |
 | `hallazgos-pendientes` | Lista los hallazgos sin resolver de todos los tickets; siempre sale con 0 |
 | `reconstruir-biblioteca` | Regenera `INDEX.md` desde las entradas |
@@ -114,7 +115,7 @@ En `.harness/curacion.json` (`contracts.validate_curacion`) cada acción suma `i
 Aplicar una **retirada** mueve la entrada a `retiradas/` y le agrega la línea
 `retirada`. Aplicar una **fusión** reemplaza la `lección` (y la `señal`, si viene) del
 destino, guarda la anterior como `lección original` si no tenía una, copia las líneas
-`falló` de las absorbidas y les agrega una línea `fusionada` a cada una; después las
+`falló` de las absorbidas (y sus propias líneas `fusionada`, para que una fusión en cadena siga contando los usos) y les agrega una línea `fusionada` a cada una; después las
 absorbidas se retiran con motivo `fusionada en <destino>`.
 
 ### Contrato de hallazgos y `reincide`
@@ -148,6 +149,7 @@ lleva líneas que escribe solo el CLI (`harness/hooks/lib/biblioteca.py`):
 | `- **implementada**: <fecha> · <nota>` | `hallazgo-hecho` | La pieza que pedía la lección ya existe. Una sola línea: marcar de nuevo la reemplaza |
 | `- **falló**: <fecha> · <ref nueva> · implementada\|sin pieza — <lección>` | `resolver-hallazgo` al aprobar una reincidencia | La lección volvió a fallar. Guarda su estado **en ese momento**, así "falló estando implementada" no depende de fechas ni del estado de hoy. Puede haber varias |
 | `- **fusionada**: <fecha> · <ref absorbida>[ · implementada <fecha> · <nota>]` | `resolver-curacion`, en el destino de una fusión | Esa lección se fusionó en esta. Una por absorbida; las señales siguen esta línea para contar los usos |
+| `- **lección reemplazada**: <fecha> · <lección>` | `resolver-curacion`, en el destino de una fusión que ya tenía `lección original` | La lección que la fusión reemplaza, para no perder la que el humano aprobó antes (por otra fusión o al editar) |
 | `- **retirada**: <fecha> · <motivo>` | `resolver-curacion`, al retirar o al absorber | La lección salió de `entradas/`. Va en el archivo de `retiradas/` |
 
 Las líneas que el código no conoce (agregadas a mano, o con CRLF tras un checkout de
@@ -191,9 +193,13 @@ profiles/<perfil>/
   "no_new_deps": { "vigilar": ["package.json"], "severidad": "error",
                    "mensaje": "Ninguna dependencia nueva sin aprobación" },
   "checks_estructurales": ["mi_build"],
-  "grupos": { "sintaxis_web": ["no_fetch"] }
+  "grupos": { "sintaxis_web": ["no_fetch"] },
+  "esceptico": { "modelo": "opus" }
 }
 ```
+
+`esceptico.modelo` es opcional (`haiku`, `sonnet`, `opus` o `fable`): fija el modelo del
+escéptico para el proyecto. Sin él, juzga Sonnet, u Opus si el ejecutor ya es Sonnet.
 
 Severidad: `error` bloquea; `warning` se reporta en `checks.json` y el escéptico
 decide si importa. Un check nuevo conviene que entre como `warning` y se promueva a
@@ -250,7 +256,7 @@ $env:ANTHROPIC_MODEL      = "<modelo definido en el proxy>"
 claude
 ```
 
-- Los agentes del harness piden `model: opus` en su frontmatter. Mapea ese alias
+- Los agentes del harness piden `model: opus` (y el escéptico `model: sonnet`) en su frontmatter. Mapea ese alias
   al modelo que quieras en la configuración del gateway, o con las variables de
   alias de modelo de tu versión de Claude Code (por ejemplo
   `ANTHROPIC_DEFAULT_OPUS_MODEL`). Verifica el nombre exacto en la documentación de
@@ -394,30 +400,18 @@ Documentos de diseño:
 
 Menores abiertos:
 
-- `/hallazgo` no funciona entre tickets: exige fase activa (`no hay fase activa: corre 'open-fase'`).
-- `open-ticket` no valida la forma del id del ticket, y las referencias
-  `TICKET/fase_N/hN` sí la exigen (`[A-Za-z0-9][A-Za-z0-9_-]*`): un id raro se acepta al
-  abrir y falla después al referenciarlo.
-- `resumen.volvieron_sin_pieza` del reporte es histórico: cuenta las lecciones con al
-  menos una falla `sin pieza` aunque después se hayan implementado, así que puede ser
-  mayor que lo que lista la Deuda.
-- El reporte lista como ilegible la entrada de un ticket cuyo id lleva punto o caracteres
-  no ASCII, porque `RE_REFERENCIA` es más estricto que `open-ticket`.
 - La sección Fases del reporte es larga con datos reales: lista todas las fases, las
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.
 
 Límites conocidos de los checks y del diff (revisión del paso 4, 03-11-2026):
 
-- `sp_params` no ve las llamadas que llevan el SP en la cadena (`|VN=Sp|V0=n|...`),
-  que se despachan con `LlenaCombos`/`LlenaGrid` → `EjecutarSp(Sp, Validar, ...)`: son
-  cerca de la mitad de las llamadas reales (unas 23 en `Scripts/*.js` y 2 en VB). Un
-  `|V27=` que el SP no parsea ahí pasa sin aviso.
+- `sp_params` revisa la convención `"VN=<SP>|V0=<n>|..."` (que despachan
+  `LlenaCombos`/`LlenaGrid`) en `.vb` y `.js`, pero en JS por línea física: una cadena
+  que se arma en varias líneas o con `p += ...` más abajo solo aporta los Vn de la línea
+  del `VN=`. En el repo, las 23 están en una sola línea.
 - `sp_params` da `error` para `IF @Validar = 1 ... ELSE ...` llamado con otro valor; en
   el corpus actual solo aparece en SPs sin `@Parametros`.
-- `gitdiff`: un archivo renombrado con `git mv` cuenta todas sus líneas como agregadas,
-  y las rutas con acentos (que git cita en octal) no llegan a `archivos_modificados`:
-  ese archivo no se revisa.
 
 Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; el
 paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
@@ -428,5 +422,8 @@ congelada desde 2016; y el paso 5, la curación de la biblioteca con señales, c
 aprobación humana. Sin caducidad por fecha, a propósito: la señal es el uso, y la
 decisión, humana):
 
-6. **Backlog**: escéptico con otro modelo (vía gateway) y tickets en paralelo (hoy hay
-   un solo `current.json` por proyecto).
+6. **Backlog** (03-11-2026): hechos los menores que afectaban la verificación, la
+   convención `VN=` en `sp_params` y el escéptico con otro modelo de Claude (solo hay
+   Claude: Sonnet por defecto, Opus si el ejecutor es Sonnet). Tickets en paralelo se
+   descartó por ahora: no ocurre en el trabajo diario (hay un solo `current.json` por
+   proyecto).

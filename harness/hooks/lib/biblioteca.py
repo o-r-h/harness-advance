@@ -159,7 +159,10 @@ def _indice_de(lineas: list[str], etiqueta: str) -> int | None:
 
 
 def _poner(lineas: list[str], indice: int, nueva: str) -> None:
-    """Reemplaza la línea conservando su CRLF si lo tenía."""
+    """Reemplaza la línea conservando su CRLF si lo tenía.
+
+    Con `Path.read_text` el `\\r` ya llega normalizado y esta rama no se ejecuta: la
+    entrada se reescribe con LF. Queda por si alguien pasa líneas leídas en binario."""
     lineas[indice] = nueva + ("\r" if lineas[indice].endswith("\r") else "")
 
 
@@ -197,6 +200,10 @@ def fusionar(project_root: Path, destino: str, absorbidas: list[str], leccion: s
         _poner(lineas, i_leccion, nueva_leccion)
         if _indice_de(lineas, "lección original") is None and anterior:
             lineas.insert(i_leccion + 1, f"- **lección original**: {anterior}")
+        elif anterior and anterior != " ".join(leccion.split()):
+            # Ya tenía original (otra fusión, o una edición al aprobar): lo que se
+            # reemplaza ahora también lo aprobó el humano y no se pierde.
+            _agregar_al_final(lineas, f"- **lección reemplazada**: {fecha} · {anterior}")
     if senal and senal.strip():
         nueva_senal = f"- **señal**: {' '.join(senal.split())}"
         i_senal = _indice_de(lineas, "señal")
@@ -209,7 +216,10 @@ def fusionar(project_root: Path, destino: str, absorbidas: list[str], leccion: s
         texto = textos[ref]
         for linea in texto.split("\n"):
             linea = linea.rstrip("\r")
-            if linea.startswith("- **falló**: ") and linea not in presentes:
+            # Las `fusionada` de la absorbida viajan también: así una fusión en cadena
+            # (B en A, después A en C) sigue contando los usos de B para C.
+            if (linea.startswith("- **falló**: ") or linea.startswith("- **fusionada**: ")) \
+                    and linea not in presentes:
                 _agregar_al_final(lineas, linea)
                 presentes.add(linea)
         if any(re.match(rf"^- \*\*fusionada\*\*: \S+ · {re.escape(ref)}(?: |$)", l)

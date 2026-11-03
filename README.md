@@ -363,9 +363,10 @@ Agrega una lección que viste tú y que ningún agente vio. Entra **ya aprobada*
   la corrige (`regla`, `check`, `skill`, `hook` o `agente`), y el agente los pasa al
   CLI. Por ejemplo:
   `/hallazgo "..." — dimensión dominio, componente regla`
-- **Corre:** `cli.py hallazgo --texto "..." [--dimension ...] [--componente ...]`
-- **Requisito:** hay que tener una fase activa. Entre tickets todavía no funciona
-  (ver [Pendientes conocidos](docs/tecnico.md#pendientes-conocidos)).
+- **Corre:** `cli.py hallazgo --texto "..." [--dimension ...] [--componente ...] [--ticket ... --fase ...]`
+- **Entre tickets** (sin fase activa), di de qué fase es:
+  `/hallazgo "..." — ticket ISR-110722, fase fase_2`, y el agente pasa
+  `--ticket ISR-110722 --fase fase_2`. La fase tiene que haberse abierto alguna vez.
 
 #### `/hallazgo-hecho <ref> "<nota>"`
 
@@ -409,9 +410,10 @@ Léelas en ese orden.
 
 **Resumen.** Los contadores: tickets, fases, fases escaladas, lecciones aprobadas,
 implementadas, las que fallaron estando implementadas y las que volvieron sin pieza.
-Ojo: *volvieron sin pieza* es **histórico**. Cuenta las lecciones que fallaron al menos
-una vez cuando no tenían pieza, aunque luego la hayas construido, así que puede ser
-mayor que lo que lista la Deuda.
+Ojo: *volvieron sin pieza* es **histórico**. Cuenta las veces que una lección volvió a
+fallar cuando no tenía pieza (una por reincidencia), aunque luego hayas construido la
+pieza o la lección se haya retirado o fusionado en una curación, así que puede ser
+mayor que lo que lista la Deuda. Curar no lo baja.
 
 **Fallaron estando implementadas.** Cada lección que volvió a fallar *después* de
 marcarla con `/hallazgo-hecho`, con su señal, su pieza y, por cada falla, la fecha, el
@@ -439,6 +441,14 @@ rutas que git ya no rastrea, cuántas acciones de curación esperan tu decisión
 fue la última curación y cuántas lecciones se retiraron. Si hay alguna señal o
 pendiente, sugiere `/biblioteca-curar`. Son pistas: ver
 [Curar la biblioteca](#curar-la-biblioteca).
+
+**Escéptico por modelo.** El escéptico juzga con un modelo de Claude distinto al que
+hizo la fase (Sonnet por defecto; Opus si el ejecutor ya es Sonnet; el perfil puede
+fijarlo con `esceptico.modelo` en `rules.json`). Por cada modelo: cuántas fases juzgó,
+cuántas aprobó y rechazó, y cuántas **se le escaparon**: las aprobó y después la
+prueba manual falló. Esa última cifra dice si el modelo alcanza; si crece, fija uno más
+exigente para el proyecto. Los veredictos anteriores a esta versión salen como
+`desconocido`.
 
 **Hallazgos.** Cuántos se aprobaron tal cual, cuántos con edición, cuántos eran
 reincidencias y cuántos son tuyos; los **propuestos sin resolver**, con su referencia

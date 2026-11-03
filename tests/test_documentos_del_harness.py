@@ -323,3 +323,15 @@ class TestRetiradasEnPlannerYReflector(unittest.TestCase):
                        ("harness", "skills", "task-planner", "SKILL.md")):
             with self.subTest(archivo="/".join(partes)):
                 self.assertIn("Retiradas — no aplicar", leer(*partes))
+
+
+class TestEscepticoConOtroModelo(unittest.TestCase):
+    def test_el_esceptico_es_sonnet_por_defecto(self):
+        self.assertEqual(frontmatter(leer("harness", "agents", "skeptic.md")).get("model"),
+                         "sonnet")
+
+    def test_ticket_loop_elige_el_modelo_y_lo_registra(self):
+        texto = leer("harness", "skills", "ticket-loop", "SKILL.md")
+        self.assertIn("modelo-esceptico --ejecutor", texto)
+        self.assertIn("--modelo-esceptico", texto)
+        self.assertIn("parámetro `model`", texto)

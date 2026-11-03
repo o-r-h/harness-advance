@@ -102,6 +102,52 @@ def _validar_checks(datos) -> list[str]:
     return [] if ok else ["checks: requerido, lista"]
 
 
+def _reincidencias_sin_pieza(project_root: Path, lecciones: list[dict]) -> int:
+    """Veces distintas que una lección volvió a fallar sin pieza (por la ref del hallazgo
+    nuevo). Cuenta también las retiradas: es histórico y no baja al curar. Por ref y no
+    por lección, porque una fusión copia las fallas al destino."""
+    refs = {f["ref"] for e in lecciones for f in _fallas(e, "sin pieza")}
+    retiradas = biblioteca.biblioteca_dir(project_root) / "retiradas"
+    for archivo in sorted(retiradas.glob("*.md")) if retiradas.is_dir() else []:
+        try:
+            texto = archivo.read_text(encoding="utf-8")
+        except _ERRORES_DE_LECTURA:
+            continue
+        refs |= {f["ref"] for f in biblioteca._fallas(texto) if f["tipo"] == "sin pieza"}
+    return len(refs)
+
+
+def _esceptico_por_modelo(project_root: Path) -> dict[str, dict]:
+    """Por modelo del escéptico: juicios, aprobados, rechazados y cuántas veces aprobó y
+    después la prueba manual falló (lo que se le escapó). Sin modelo: "desconocido".
+
+    Los veredictos ilegibles los nombra ya la lectura de fases; aquí se saltan."""
+    datos: dict[str, dict] = {}
+    try:
+        rutas = sorted(harness.tickets_dir(project_root).glob("*/fase_*/intento_*/veredicto.json"))
+    except OSError:
+        return datos
+    for ruta in rutas:
+        try:
+            veredicto = harness.read_json(ruta)
+            if contracts.validate_veredicto(veredicto):
+                continue
+        except _ERRORES_DE_LECTURA:
+            continue
+        juicio = veredicto["juicio_esceptico"]
+        fila = datos.setdefault(juicio.get("modelo") or "desconocido", {
+            "juicios": 0, "aprobados": 0, "rechazados": 0,
+            "aprobados_que_fallaron_en_prueba": 0})
+        fila["juicios"] += 1
+        if juicio["aprobado"]:
+            fila["aprobados"] += 1
+            if veredicto["prueba_manual"].get("resultado") == "fallo":
+                fila["aprobados_que_fallaron_en_prueba"] += 1
+        else:
+            fila["rechazados"] += 1
+    return dict(sorted(datos.items()))
+
+
 def _curacion(project_root: Path, ilegibles: list[str]) -> dict:
     datos = senales.senales(project_root)
     try:
@@ -207,7 +253,7 @@ def agregar(project_root: Path) -> dict:
             "lecciones_aprobadas": len(lecciones),
             "implementadas": len(implementadas),
             "fallaron_implementadas": len(fallaron),
-            "volvieron_sin_pieza": sum(1 for e in lecciones if _fallas(e, "sin pieza")),
+            "volvieron_sin_pieza": _reincidencias_sin_pieza(project_root, lecciones),
         },
         "fallaron_implementadas": fallaron,
         "deuda": deuda,
@@ -223,6 +269,7 @@ def agregar(project_root: Path) -> dict:
             "rechazos_repetidos_del_esceptico": repetidos,
         },
         "curacion": curacion_datos,
+        "esceptico": _esceptico_por_modelo(project_root),
         "ilegibles": sorted(ilegibles),
     }
 
@@ -265,6 +312,16 @@ def _seccion_deuda(datos: dict) -> list[str]:
             for f in d["fallas"]:
                 lineas.append(f"      {f['fecha']} en {f['ref']}: {f['leccion']}")
     return lineas or [_SIN_DATOS]
+
+
+def _seccion_esceptico(datos: dict) -> list[str]:
+    if not datos["esceptico"]:
+        return [_SIN_DATOS]
+    lineas = [f"  {modelo}: {f['juicios']} juicios — aprobó {f['aprobados']}, rechazó "
+              f"{f['rechazados']}; se le escaparon {f['aprobados_que_fallaron_en_prueba']} "
+              f"(aprobó y la prueba manual falló)"
+              for modelo, f in datos["esceptico"].items()]
+    return lineas + ["  Lo que se le escapa a un modelo es la cifra que dice si alcanza."]
 
 
 def _seccion_curacion(datos: dict) -> list[str]:
@@ -333,6 +390,7 @@ def render(datos: dict) -> str:
         ("Fallaron estando implementadas", _seccion_fallaron(datos)),
         ("Deuda", _seccion_deuda(datos)),
         ("Curación", _seccion_curacion(datos)),
+        ("Escéptico por modelo", _seccion_esceptico(datos)),
         ("Hallazgos", _seccion_hallazgos(datos)),
         ("Fases", _seccion_fases(datos)),
     ]

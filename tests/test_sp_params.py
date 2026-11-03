@@ -81,7 +81,7 @@ End
 """
 
 
-class TestSpParams(unittest.TestCase):
+class BaseSp(unittest.TestCase):
     def setUp(self):
         self.modulo = cargar()
         self.tmp = tempfile.TemporaryDirectory()
@@ -124,6 +124,8 @@ class TestSpParams(unittest.TestCase):
     def errores(self, hallazgos):
         return [h for h in hallazgos if h["resultado"] == "fallo" and h["severidad"] == "error"]
 
+
+class TestSpParams(BaseSp):
     def test_todo_coherente_no_produce_hallazgos(self):
         self.en_guardar('lConsulta.EjecutarSp("ReviewInsUpd", 7, "|V9=" + a + "|V21=" + b + "|")')
         self.assertEqual(self.correr(), [])
@@ -358,6 +360,84 @@ class TestSpParams(unittest.TestCase):
         designer = self.root / "frmReview.aspx.designer.vb"
         designer.write_text('EjecutarSp("ReviewInsUpd", 9, "|V99=")\n', encoding="utf-8")
         self.assertEqual(self.correr(otro, designer), [])
+
+
+class TestConvencionVN(BaseSp):
+    """Backlog: la cadena "VN=<SP>|V0=<validar>|..." que despachan LlenaCombos/LlenaGrid.
+
+    Cerca de la mitad de las llamadas reales (23 en Scripts/*.js y 2 en VB) no pasan
+    por un EjecutarSp con el nombre literal: el SP y el @Validar van en la cadena."""
+
+    def setUp(self):
+        super().setUp()
+        reglas = json.loads((self.root / ".claude" / "rules.json").read_text(encoding="utf-8"))
+        reglas["sp_params"]["vn_ignorados"] = ["V0"]
+        (self.root / ".claude" / "rules.json").write_text(json.dumps(reglas), encoding="utf-8")
+        self.js = self.root / "Scripts" / "frmReview.js"
+        self.js.parent.mkdir()
+        self.js.write_text("function cargar() {\n    var x = 1;\n}\n", encoding="utf-8")
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "js")
+
+    def en_js(self, *lineas: str) -> list[dict]:
+        cuerpo = "".join(f"    {l}\n" for l in lineas)
+        self.js.write_text("function cargar() {\n    var x = 1;\n" + cuerpo + "}\n",
+                           encoding="utf-8")
+        return self.modulo.run(self.root, [self.js], None)
+
+    def test_js_coherente_no_produce_hallazgos(self):
+        self.assertEqual(self.en_js('var p = "VN=ReviewInsUpd|V0=7|V9=" + a + "|V21=" + b + "|";'),
+                         [])
+
+    def test_js_un_vn_que_el_sp_no_parsea_es_error(self):
+        errores = self.errores(self.en_js(
+            "var p = 'VN=ReviewInsUpd|V0=7|V9=' + $('#x').val() + '|V22=' + b + '|';"))
+        self.assertEqual(len(errores), 1, errores)
+        self.assertIn("V22", errores[0]["detalle"])
+        self.assertIn("frmReview.js:3", errores[0]["detalle"])
+
+    def test_js_un_validar_sin_rama_es_error(self):
+        errores = self.errores(self.en_js('var p = "VN=ReviewInsUpd|V0=9|V9=" + a + "|";'))
+        self.assertTrue(any("@Validar = 9" in h["detalle"] for h in errores))
+
+    def test_js_validar_no_literal_no_se_verifica(self):
+        self.assertEqual(self.en_js('var p = "VN=ReviewGetFilters|V0=" + tipo + "|V1=" + a;'),
+                         [])
+
+    def test_js_comentado_no_cuenta(self):
+        self.assertEqual(self.en_js('// var p = "VN=ReviewInsUpd|V0=9|V22=" + a;',
+                                    '/* var q = "VN=ReviewInsUpd|V0=9|V23=" + a; */'), [])
+
+    def test_js_un_sp_que_no_aparece_es_warning(self):
+        hallazgos = self.en_js('var p = "VN=NoExiste|V0=1|V1=" + a + "|";')
+        self.assertTrue(hallazgos)
+        self.assertEqual(self.errores(hallazgos), [])
+
+    def test_js_lo_viejo_no_se_revisa(self):
+        self.en_js('var p = "VN=ReviewInsUpd|V0=9|V22=" + a;')
+        _git(self.root, "commit", "-am", "viejo")
+        self.js.write_text(self.js.read_text(encoding="utf-8").replace("var x = 1;",
+                                                                        "var x = 2;"),
+                           encoding="utf-8")
+        self.assertEqual(self.modulo.run(self.root, [self.js], None), [])
+
+    def test_dos_cadenas_vn_en_la_misma_linea_no_se_mezclan(self):
+        # Revisión del paso 6, #1: cada VN= lleva solo los Vn y el V0 de su tramo.
+        self.assertEqual(self.en_js(
+            'var p = c ? "VN=ReviewGetFilters|V0=4|V1=" + a + "|" : '
+            '"VN=ReviewGetFiltersInsitu|V0=4|V2=" + b + "|";'), [])
+        errores = self.errores(self.en_js(
+            'f("VN=ReviewInsUpd|V0=" + t + "|V9=" + a, "VN=ReviewGetFilters|V0=4|V1=" + b);'))
+        self.assertEqual(errores, [])
+
+    def test_vb_con_la_convencion_vn_tambien_se_revisa(self):
+        self.en_guardar('Dim p As String = "VN=ReviewInsUpd|V0=7|V9=" + a + "|V22=" + b + "|"')
+        errores = self.errores(self.correr())
+        self.assertTrue(any("V22" in h["detalle"] for h in errores))
+
+    def test_vb_vn_en_un_comentario_no_cuenta(self):
+        self.en_guardar("' Dim p As String = \"VN=ReviewInsUpd|V0=9|V22=\"")
+        self.assertEqual(self.correr(), [])
 
 
 if __name__ == "__main__":
