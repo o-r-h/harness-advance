@@ -163,12 +163,19 @@ def _fase_activa(raiz: Path) -> tuple[str, dict, dict, dict] | None:
     return ticket_id, ctx, fase, estado
 
 
+# Estados en que el ejecutor está trabajando la fase y los checks tienen sentido.
+EN_CICLO = frozenset({"en_ejecucion", "en_correccion", "en_verificacion"})
+
+
 def cmd_run_checks(args) -> int:
     raiz = resolver_proyecto(args.project)
     activa = _fase_activa(raiz)
     if activa is None:
         return _error("no hay fase activa con plan y contexto: corre 'open-fase'")
     ticket_id, ctx, fase, estado = activa
+    if estado["estado"] not in EN_CICLO:
+        return _error(f"la fase '{fase['id']}' está en estado '{estado['estado']}': los "
+                      f"checks se corren mientras la fase está en ejecución o en corrección")
     reglas = harness.load_rules(raiz)
 
     pedidos = [c for c in fase.get("checks_deterministas") or [] if isinstance(c, str)]
@@ -206,7 +213,17 @@ def cmd_run_checks(args) -> int:
     harness.write_json(destino / "checks.json", resultado)
     print(f"checks: {resultado['resultado']} — {len(bloqueantes)} error(es) bloqueante(s), "
           f"{len(hallazgos) - len(bloqueantes)} no bloqueante(s) → {destino / 'checks.json'}")
-    return 1 if bloqueantes else 0
+
+    # Un fallo de checks es un intento perdido, igual que un rechazo del escéptico:
+    # el contador lo lleva el CLI, no la memoria del modelo.
+    if not bloqueantes:
+        state.set_estado(raiz, ticket_id, fase["id"], "en_verificacion")
+        return 0
+    razon = "; ".join(f"{h['id']}: {h.get('detalle', '')}" for h in bloqueantes)
+    nuevo = state.registrar_fallo(raiz, ticket_id, fase["id"], "check", razon)
+    print(f"Fallo registrado. Estado: {nuevo['estado']}, "
+          f"intento {nuevo['intento_actual']}/{nuevo['max_reintentos']}")
+    return 1
 
 
 def cmd_record_veredicto(args) -> int:

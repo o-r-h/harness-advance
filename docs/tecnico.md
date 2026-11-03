@@ -60,7 +60,7 @@ se indica, se usa el proyecto del directorio actual.
 | `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json` |
 | `open-fase --fase fase_N` | Abre una fase. Rechaza la apertura si una fase de `depende_de` no está aprobada |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
-| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Sale con 1 si hay errores bloqueantes |
+| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
 | `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |
 | `generar-prueba --pasos-json` | Escribe `prueba_manual.md` |
 | `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |

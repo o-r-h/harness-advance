@@ -8,7 +8,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 CLI = RAIZ / "harness" / "hooks" / "cli.py"
 sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
-from lib import harness  # noqa: E402
+from lib import harness, state  # noqa: E402
 
 REGLAS = {
     "perfil": "reviewsystemgfs",
@@ -133,6 +133,53 @@ class TestRunChecks(unittest.TestCase):
         resultado = correr("run-checks", "--project", str(self.root))
         self.assertEqual(resultado.returncode, 1)
         self.assertTrue(any(c["id"] == "siempre_falla" for c in self.leer_checks()["checks"]))
+
+
+    def estado(self) -> dict:
+        return state.leer_fase(self.root, "ISR-110722", "fase_1")
+
+    def test_un_fallo_bloqueante_queda_en_el_historial_con_origen_check(self):
+        (self.root / "frm.js").write_text("var a = 1;\nvar b = 2;\n", encoding="utf-8")
+        resultado = correr("run-checks", "--project", str(self.root))
+        self.assertEqual(resultado.returncode, 1)
+        estado = self.estado()
+        self.assertEqual(estado["estado"], "en_correccion")
+        self.assertEqual(estado["intento_actual"], 2)
+        fallo = estado["historial_fallos"][0]
+        self.assertEqual((fallo["intento"], fallo["origen"]), (1, "check"))
+        self.assertIn("audit_comments", fallo["razon"])
+        self.assertEqual(self.leer_checks()["intento"], 1)
+
+    def test_un_fallo_en_el_ultimo_intento_escala(self):
+        plan = json.loads(json.dumps(PLAN))
+        plan["fases"][0]["max_reintentos"] = 1
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json", plan)
+        harness.write_json(harness.fase_dir(self.root, "ISR-110722", "fase_1")
+                           / "fase_state.json",
+                           dict(self.estado(), max_reintentos=1))
+        (self.root / "frm.js").write_text("var a = 1;\nvar b = 2;\n", encoding="utf-8")
+        resultado = correr("run-checks", "--project", str(self.root))
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("escalado", resultado.stdout)
+        estado = self.estado()
+        self.assertEqual((estado["estado"], estado["intento_actual"]), ("escalado", 1))
+
+    def test_checks_ok_dejan_la_fase_en_verificacion(self):
+        resultado = correr("run-checks", "--project", str(self.root))
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        estado = self.estado()
+        self.assertEqual((estado["estado"], estado["historial_fallos"]), ("en_verificacion", []))
+
+    def test_se_rechaza_fuera_del_ciclo_de_ejecucion(self):
+        for nuevo in ("esperando_humano", "aprobada", "escalado"):
+            with self.subTest(estado=nuevo):
+                state.set_estado(self.root, "ISR-110722", "fase_1", nuevo)
+                resultado = correr("run-checks", "--project", str(self.root))
+                self.assertEqual(resultado.returncode, 1)
+                self.assertIn(nuevo, resultado.stderr)
+                self.assertFalse((harness.intento_dir(self.root, "ISR-110722", "fase_1", 1)
+                                  / "checks.json").exists())
+                self.assertEqual(self.estado()["historial_fallos"], [])
 
 
 if __name__ == "__main__":
