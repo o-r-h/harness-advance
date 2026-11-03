@@ -241,6 +241,10 @@ El orquestador es la skill `ticket-loop`, que los comandos invocan. Si la sesió
 corta, se retoma desde el estado en `.harness/`: el CLI y el hook `Stop` saben en qué
 estado quedó cada fase.
 
+Para emergencias, si el hook `Stop` te atrapa y no hay otra salida, ábrelo apagado:
+`$env:HARNESS_STOP="off"; claude`. Solo se lee al abrir la sesión, y apaga el hook
+por completo mientras dure.
+
 ### Los comandos de hallazgos, uno por uno
 
 Los cinco comandos de hallazgos son atajos de `cli.py`. El agente solo extrae los argumentos y

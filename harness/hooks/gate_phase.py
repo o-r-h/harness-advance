@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """Hook Stop: impide cerrar el turno con el ciclo de fase a mitad de vuelo.
 
-Solo bloquea los estados en que el ciclo está corriendo. 'esperando_humano' y
-'escalado' NO bloquean: en ambos el objetivo es precisamente devolverle el
-turno al humano, y bloquear ahí produciría un bucle.
+Solo bloquea los estados en que el ciclo está corriendo. 'esperando_humano',
+'escalado' y 'pausada' NO bloquean: en los dos primeros el objetivo es
+precisamente devolverle el turno al humano, y bloquear ahí produciría un bucle;
+la pausa la pidió el humano. Existe también el interruptor de emergencia
+HARNESS_STOP=off, que apaga el hook entero (se lee al abrir la sesión).
 
 Antes de modificar este archivo, revisar docs/hook-payloads.md.
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import harness, state  # noqa: E402
+from lib import contracts, harness, state  # noqa: E402
 
-BLOQUEANTES = frozenset({"en_ejecucion", "en_verificacion", "en_correccion"})
+BLOQUEANTES = contracts.ESTADOS_EN_CICLO
 
 SIGUIENTE_PASO = {
     "en_ejecucion": "termina el trabajo de la fase y corre 'cli.py run-checks'",
@@ -29,6 +32,9 @@ SIGUIENTE_PASO = {
 
 
 def main() -> int:
+    if os.environ.get("HARNESS_STOP", "").strip().lower() == "off":
+        return 0
+
     for flujo in (sys.stdout, sys.stderr):
         try:
             flujo.reconfigure(encoding="utf-8")
@@ -64,7 +70,9 @@ def main() -> int:
         f"(intento {estado['intento_actual']}/{estado['max_reintentos']}): el ciclo "
         f"no terminó.\nSiguiente paso: {SIGUIENTE_PASO[estado['estado']]}.\n"
         f"Si de verdad hay que detenerse aquí, escala explícitamente al humano "
-        f"explicando por qué.\n")
+        f"explicando por qué.\n"
+        f"Si el humano pidió detenerse o cambió de tema, ofrécele /fase-pausa y "
+        f"termina el turno sin retomar la fase.\n")
     return 2
 
 

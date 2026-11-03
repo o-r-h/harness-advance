@@ -138,6 +138,14 @@ class CicloCompleto(unittest.TestCase):
         self.assertEqual(self.ejecutor("modulo.txt", "leer entrada\n").returncode, 0)
         self.cli("run-checks")
         self.assertEqual(self.fase(t)["estado"], "en_verificacion")
+        self.cli("open-ticket", "--ticket-id", "ISR-9", "--nroticket", "9",
+                 "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "02-11-2026",
+                 "--perfil", PERFIL, codigo=1)
+        self.cli("pausar-fase", "--motivo", "almuerzo")
+        self.assertEqual(self.hook_stop().returncode, 0)
+        self.cli("open-fase", "--fase", "fase_1")
+        self.assertEqual((self.fase(t)["estado"], self.fase(t)["intento_actual"]),
+                         ("en_verificacion", 2))
         self.assertEqual(self.hook_stop().returncode, 2)
         self.cli("record-veredicto", "--archivo",
                  self.esceptico(2, False, ["no valida la entrada vacía"]))

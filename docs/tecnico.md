@@ -83,7 +83,7 @@ se indica, se usa el proyecto del directorio actual.
     ├── ticket_context.json            nroticket, desarrollador, fecha, perfil
     ├── plan.md / plan.json            el plan (humano / máquina)
     └── fase_1/
-        ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos
+        ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos, pausas
         ├── hallazgos.json / .md       propuestas del reflector y decisiones
         └── intento_1/
             ├── resultado.md           lo que hizo el ejecutor, con evidencia
@@ -134,8 +134,15 @@ git) se conservan intactas. `INDEX.md` marca cada lección con `(implementada <f
 
 Una fase pasa por: `pendiente` → `en_ejecucion` → `en_verificacion` →
 `esperando_humano` → `aprobada`, con `en_correccion` entre intentos y `escalado` al
-agotar los reintentos. Los contratos están en `harness/hooks/lib/contracts.py` y
+agotar los reintentos. Desde cualquier estado en ciclo (`en_ejecucion`,
+`en_correccion`, `en_verificacion`) se puede pasar a `pausada` y volver al estado
+de antes; `pausada` no bloquea el hook `Stop`. Los contratos están en `harness/hooks/lib/contracts.py` y
 documentados en la spec, §6.
+
+`fase_state.pausas` es una lista que nunca se borra, con un elemento por pausa:
+`{"desde": <estado en ciclo>, "fecha": "dd-mm-aaaa", "motivo": str}`. Reanudar vuelve
+al `desde` de la última. El interruptor `HARNESS_STOP=off` (solo ese valor, sin
+distinguir mayúsculas ni espacios) apaga el hook `Stop`.
 
 ## Crear el perfil de un proyecto nuevo
 

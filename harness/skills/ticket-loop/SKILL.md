@@ -34,7 +34,7 @@ sientes tentado a hacerlo, es que falta un subcomando.
 ## El ciclo de una fase
 
 1. **Abrir:** `CLI open-fase --fase fase_N`. Si una dependencia no está aprobada, el
-   CLI lo rechaza — respeta ese orden, no lo saltes.
+   CLI lo rechaza — respeta ese orden, no lo saltes. Si la fase estaba `pausada`, `open-fase` la reanuda.
 2. **Ejecutar:** delega el trabajo al subagente indicado en el campo
    **`agente_ejecutor`** de la fase (`open-fase` lo imprime en la línea `Ejecutor:`).
    Si la fase no lo trae, al **subagente ejecutor del perfil** (para ReviewSystemGFS,
@@ -79,6 +79,16 @@ sientes tentado a hacerlo, es que falta un subcomando.
    fase por tu cuenta:** aunque el perfil tenga build y pruebas automáticas (que
    corren como checks estructurales), la prueba en el navegador es la única
    verificación funcional de punta a punta.
+
+## Pausar una fase
+
+- Solo el humano pausa, con `/fase-pausa`. Nunca corras `pausar-fase` por iniciativa
+  propia.
+- Si a mitad de fase el humano pregunta otra cosa o pide parar, respóndele,
+  recuérdale `/fase-pausa` y termina el turno sin retomar la fase.
+- Se retoma con `/fase fase_N`: `open-fase` reanuda en el mismo intento.
+- Mientras la fase activa corre, `open-fase` de otra fase y `open-ticket` se
+  rechazan.
 
 ## Cuando una fase escala
 
