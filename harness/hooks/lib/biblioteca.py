@@ -128,15 +128,24 @@ def _motivo_retirada(texto: str) -> str:
     return valor.split(" · ", 1)[1].strip() if " · " in valor else valor
 
 
-def retirar(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
-    """Mueve la entrada a retiradas/ con su motivo. Nada se borra: las líneas
-    `falló` e `implementada` viajan con ella."""
-    ruta, lineas = _editar_lineas(project_root, ref)
+def _copiar_a_retiradas(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
+    """Escribe la copia retirada; la de entradas/ sigue hasta que se borre aparte.
+
+    Siempre parte del texto de entradas/: repetir la copia tras un fallo la
+    reescribe igual, sin una segunda línea `retirada`."""
+    _, lineas = _editar_lineas(project_root, ref)
     _agregar_al_final(lineas, f"- **retirada**: {fecha} · {' '.join(motivo.split())}")
     destino = entrada_path(project_root, ref, subdir="retiradas")
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text("\n".join(lineas), encoding="utf-8")
-    ruta.unlink()
+    return destino
+
+
+def retirar(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
+    """Mueve la entrada a retiradas/ con su motivo. Nada se borra: las líneas
+    `falló` e `implementada` viajan con ella."""
+    destino = _copiar_a_retiradas(project_root, ref, motivo, fecha)
+    entrada_path(project_root, ref).unlink()
     reconstruir_indice(project_root)
     return destino
 
@@ -158,7 +167,12 @@ def fusionar(project_root: Path, destino: str, absorbidas: list[str], leccion: s
              senal: str | None, fecha: str) -> Path:
     """Fusiona las absorbidas en el destino: el destino toma la lección (y la señal)
     nuevas y las líneas `falló` de las otras; las absorbidas se retiran como
-    `fusionada en <destino>`. Valida todo antes de escribir."""
+    `fusionada en <destino>`. Valida todo antes de escribir.
+
+    Repetirla tras un fallo a mitad (un archivo bloqueado en Windows) termina el
+    trabajo sin duplicar: no copia una `falló` ni una `fusionada` que el destino ya
+    tenga. El orden deja siempre una copia de cada absorbida: primero retiradas/,
+    después el destino y al final se borran de entradas/."""
     if not absorbidas:
         raise ValueError("una fusión necesita al menos una lección que absorber")
     if destino in absorbidas or len(set(absorbidas)) != len(absorbidas):
@@ -183,25 +197,35 @@ def fusionar(project_root: Path, destino: str, absorbidas: list[str], leccion: s
         _poner(lineas, i_leccion, nueva_leccion)
         if _indice_de(lineas, "lección original") is None and anterior:
             lineas.insert(i_leccion + 1, f"- **lección original**: {anterior}")
-    if senal:
+    if senal and senal.strip():
         nueva_senal = f"- **señal**: {' '.join(senal.split())}"
         i_senal = _indice_de(lineas, "señal")
         if i_senal is None:
             lineas.insert(_indice_de(lineas, "lección") or 1, nueva_senal)
         else:
             _poner(lineas, i_senal, nueva_senal)
+    presentes = {l.rstrip("\r") for l in lineas}
     for ref in absorbidas:
         texto = textos[ref]
         for linea in texto.split("\n"):
-            if linea.rstrip("\r").startswith("- **falló**: "):
-                _agregar_al_final(lineas, linea.rstrip("\r"))
+            linea = linea.rstrip("\r")
+            if linea.startswith("- **falló**: ") and linea not in presentes:
+                _agregar_al_final(lineas, linea)
+                presentes.add(linea)
+        if any(re.match(rf"^- \*\*fusionada\*\*: \S+ · {re.escape(ref)}(?: |$)", l)
+               for l in presentes):
+            continue
         implementada = _campo(texto, "implementada")
         marca = f" · implementada {implementada}" if implementada else ""
         _agregar_al_final(lineas, f"- **fusionada**: {fecha} · {ref}{marca}")
-    resultado = _guardar_lineas(project_root, ruta, lineas)
+
     for ref in absorbidas:
-        retirar(project_root, ref, f"fusionada en {destino}", fecha)
-    return resultado
+        _copiar_a_retiradas(project_root, ref, f"fusionada en {destino}", fecha)
+    ruta.write_text("\n".join(lineas), encoding="utf-8")
+    for ref in absorbidas:
+        entrada_path(project_root, ref).unlink()
+    reconstruir_indice(project_root)
+    return ruta
 
 
 def ubicacion(project_root: Path, ref: str) -> tuple[str, str]:

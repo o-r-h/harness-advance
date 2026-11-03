@@ -672,7 +672,12 @@ def cmd_record_curacion(args) -> int:
     # al mayor que hubo: un cN que el humano ya vio nunca nombra otra acción.
     resueltas = [a for a in previo["acciones"] if a["estado"] != "propuesto"]
     siguiente = max((int(a["id"][1:]) for a in previo["acciones"]), default=0) + 1
-    nuevas = [dict(accion, id=f"c{n}", estado="propuesto", fecha_propuesta=_hoy())
+    # Solo los campos del contrato: la propuesta la escribe un modelo, y un campo de
+    # más (una fecha_resuelta inventada) falsearía el estado y el reporte.
+    campos = {"retirar": ("tipo", "ref", "motivo"),
+              "fusionar": ("tipo", "refs", "destino", "leccion", "senal", "motivo")}
+    nuevas = [{**{c: accion[c] for c in campos[accion["tipo"]] if c in accion},
+               "id": f"c{n}", "estado": "propuesto", "fecha_propuesta": _hoy()}
               for n, accion in enumerate(propuesta["acciones"], start=siguiente)]
     md = lib_curacion.guardar(raiz, {"acciones": resueltas + nuevas})
     if nuevas:
@@ -683,16 +688,27 @@ def cmd_record_curacion(args) -> int:
 
 
 def _anclada_por_el_ticket_abierto(raiz: Path, refs: list[str]) -> tuple[str, str] | None:
-    """(ref, ticket) si el plan del ticket de current.json ancla alguna de las refs."""
+    """(ref, ticket) si el plan del ticket de current.json ancla alguna de las refs y
+    ese ticket sigue abierto: alguna de sus fases no está aprobada. current.json no se
+    limpia al terminar, así que un ticket con todo aprobado ya no cuenta."""
     actual = harness.read_current(raiz) or {}
     ticket = actual.get("ticket_id")
     plan = harness.ticket_dir(raiz, ticket) / "plan.json" if ticket else None
     if plan is None or not plan.is_file():
         return None
+    datos = harness.read_json(plan)
+    fases = [f for f in (datos.get("fases") if isinstance(datos, dict) else None) or []
+             if isinstance(f, dict)]
+    abierto = any(((state.leer_fase(raiz, ticket, str(f.get("id"))) or {}).get("estado")
+                   != "aprobada") for f in fases if f.get("id"))
+    if not abierto:
+        return None
     nombres = set()
-    for fase in harness.read_json(plan).get("fases") or []:
-        for ancla in fase.get("anclajes") or []:
-            nombres.add(str(ancla.get("ref", "")).replace("\\", "/").rsplit("/", 1)[-1])
+    for fase in fases:
+        anclajes = fase.get("anclajes")
+        for ancla in anclajes if isinstance(anclajes, list) else []:
+            if isinstance(ancla, dict):
+                nombres.add(str(ancla.get("ref", "")).replace("\\", "/").rsplit("/", 1)[-1])
     for ref in refs:
         if biblioteca.entrada_path(raiz, ref).name in nombres:
             return ref, ticket
@@ -750,23 +766,36 @@ def cmd_resolver_curacion(args) -> int:
             if args.senal:
                 accion["senal"] = args.senal
 
+    errores = contracts.validate_propuesta_curacion({"acciones": [accion]})
+    if errores:  # lo editado se valida antes de tocar la biblioteca
+        return _error(f"la acción {args.id} editada no es válida: " + "; ".join(errores))
     refs = lib_curacion.refs_de(accion)
+    # Un intento anterior que falló a mitad pudo dejar absorbidas ya retiradas como
+    # "fusionada en <destino>": esas ya están hechas, el reintento sigue con el resto.
+    hechas = [r for r in refs if accion["tipo"] == "fusionar" and r != accion["destino"]
+              and biblioteca.ubicacion(raiz, r) == ("retiradas",
+                                                    f"fusionada en {accion['destino']}")]
+    refs = [r for r in refs if r not in hechas]
     for ref in refs:
         if biblioteca.leer_entrada(raiz, ref) is None:
             return _error(f"la acción {args.id} nombra {_fuera_de_entradas(raiz, ref)}")
     anclada = _anclada_por_el_ticket_abierto(raiz, refs)
     if anclada:
         return _error(f"la lección {anclada[0]} la ancla el ticket abierto {anclada[1]}: "
-                      f"resuélvela al cerrarlo")
+                      f"resuélvela cuando todas sus fases estén aprobadas")
 
     # La biblioteca se escribe antes que curacion.json: si falla, la acción sigue
     # 'propuesto' y se puede reintentar.
     if accion["tipo"] == "retirar":
         ruta = biblioteca.retirar(raiz, accion["ref"], accion["motivo"], _hoy())
     else:
-        otras = [r for r in accion["refs"] if r != accion["destino"]]
-        ruta = biblioteca.fusionar(raiz, accion["destino"], otras, accion["leccion"],
-                                   accion.get("senal"), _hoy())
+        otras = [r for r in refs if r != accion["destino"]]
+        if otras:
+            ruta = biblioteca.fusionar(raiz, accion["destino"], otras, accion["leccion"],
+                                       accion.get("senal"), _hoy())
+        else:  # todas quedaron absorbidas en el intento anterior
+            biblioteca.reconstruir_indice(raiz)
+            ruta = biblioteca.entrada_path(raiz, accion["destino"])
     accion.update(estado="aprobado", fecha_resuelta=_hoy())
     lib_curacion.guardar(raiz, datos)
     print(f"Acción {args.id} aplicada: {ruta}")

@@ -70,6 +70,14 @@ class TestUsos(Base):
         self.assertEqual(self.leccion(REF_A)["usos"], 2)
         self.assertEqual(self.leccion(REF_B)["usos"], 1)
 
+    def test_un_plan_fuera_de_contrato_no_revienta(self):
+        # Revisión final M1: el reporte no debe caerse por un plan.json raro en disco.
+        _entrada(self.raiz, "h1")
+        for n, plan in enumerate(({"fases": 5}, {"fases": [{"anclajes": 3}, 7]}, [1, 2])):
+            harness.write_json(harness.ticket_dir(self.raiz, f"ISR-{n}") / "plan.json", plan)
+        _plan(self.raiz, "ISR-10", "01-10-2026", [[REF_A]])
+        self.assertEqual(self.leccion(REF_A)["usos"], 1)
+
     def test_ultimo_uso_es_el_ticket_mas_reciente_por_fecha(self):
         _entrada(self.raiz, "h1")
         _plan(self.raiz, "ISR-99", "01-01-2026", [[REF_A]])

@@ -145,10 +145,64 @@ class TestRecordCuracion(Base):
         self.assertFalse(harness.tickets_dir(self.root).exists())
         self.assertEqual(self.proponer(_retirar()).returncode, 0)
 
+    def test_solo_guarda_los_campos_del_contrato(self):
+        # Revisión final M4: el curador es un modelo; un campo de más no entra al estado.
+        salida = self.proponer(dict(_retirar(), fecha_resuelta="01-01-2030",
+                                    motivo_rechazo="x", estado="aprobado", extra="y"))
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        accion = self.acciones()[0]
+        self.assertEqual(set(accion), {"tipo", "ref", "motivo", "id", "estado",
+                                       "fecha_propuesta"})
+        self.assertEqual(accion["estado"], "propuesto")
+
     def test_una_propuesta_fuera_de_contrato_no_escribe(self):
         salida = self.proponer(_fusionar(refs=(REF_A,)))
         self.assertEqual(salida.returncode, 1)
         self.assertIsNone(curacion.leer(self.root))
+
+
+class TestFusionQueFallaAMitad(Base):
+    """Revisión final I1: un archivo bloqueado (editor, antivirus) a mitad de la fusión."""
+
+    def test_reintentar_completa_la_fusion_sin_duplicar_fallas(self):
+        import cli
+        from unittest import mock
+        biblioteca.registrar_falla(self.root, REF_B, "ISR-2/fase_1/h1", "b falló", "02-11-2026")
+        biblioteca.registrar_falla(self.root, REF_C, "ISR-3/fase_1/h1", "c falló", "02-11-2026")
+        self.proponer(_fusionar(refs=(REF_A, REF_B, REF_C)))
+        bloqueado = biblioteca.entrada_path(self.root, REF_C)
+        original = Path.unlink
+
+        def unlink(self_, *a, **k):
+            if self_ == bloqueado:
+                raise PermissionError("archivo en uso")
+            return original(self_, *a, **k)
+
+        argumentos = ["resolver-curacion", "--project", str(self.root), "--id", "c1",
+                      "--decision", "ok"]
+        with mock.patch.object(Path, "unlink", unlink):
+            self.assertEqual(cli.main(argumentos), 1)
+        self.assertEqual(cli.main(argumentos), 0)
+
+        entrada = biblioteca.leer_entrada(self.root, REF_A)
+        self.assertEqual(len(entrada["fallas"]), 2)
+        texto = biblioteca.entrada_path(self.root, REF_A).read_text(encoding="utf-8")
+        self.assertEqual(texto.count(f"- **fusionada**: "), 2)
+        for ref in (REF_B, REF_C):
+            self.assertEqual(biblioteca.ubicacion(self.root, ref),
+                             ("retiradas", f"fusionada en {REF_A}"))
+        self.assertEqual(self.acciones()[0]["estado"], "aprobado")
+        indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
+        self.assertNotIn("entradas/ISR-1-fase_1-h3.md", indice)
+
+    def test_fusionar_dos_veces_lo_mismo_no_duplica(self):
+        biblioteca.registrar_falla(self.root, REF_B, "ISR-2/fase_1/h1", "b falló", "02-11-2026")
+        texto_b = biblioteca.entrada_path(self.root, REF_B).read_text(encoding="utf-8")
+        biblioteca.fusionar(self.root, REF_A, [REF_B], "x", None, "03-11-2026")
+        # Como si el primer intento hubiera escrito el destino y no hubiera retirado B.
+        biblioteca.entrada_path(self.root, REF_B).write_text(texto_b, encoding="utf-8")
+        biblioteca.fusionar(self.root, REF_A, [REF_B], "x", None, "03-11-2026")
+        self.assertEqual(len(biblioteca.leer_entrada(self.root, REF_A)["fallas"]), 1)
 
 
 class TestResolverCuracion(Base):
@@ -199,6 +253,18 @@ class TestResolverCuracion(Base):
             self.assertEqual(salida.returncode, 1, extra)
         self.assertEqual(self.accion("c1")["estado"], "propuesto")
         self.assertEqual(biblioteca.ubicacion(self.root, REF_B), ("entradas", ""))
+
+    def test_texto_o_senal_en_blanco_fallan_sin_tocar_la_biblioteca(self):
+        # Revisión final I2.
+        antes = biblioteca.entrada_path(self.root, REF_A).read_text(encoding="utf-8")
+        for extra in (("--texto", "   "), ("--senal", "  ")):
+            with self.subTest(extra=extra):
+                salida = self.resolver("c1", "editar", *extra)
+                self.assertEqual(salida.returncode, 1)
+                self.assertEqual(biblioteca.entrada_path(self.root, REF_A)
+                                 .read_text(encoding="utf-8"), antes)
+                self.assertEqual(biblioteca.ubicacion(self.root, REF_B), ("entradas", ""))
+                self.assertEqual(self.accion("c1")["estado"], "propuesto")
 
     def test_editar_fusion_sin_nada_que_editar_es_error(self):
         self.assertEqual(self.resolver("c1", "editar").returncode, 1)
@@ -255,6 +321,27 @@ class TestResolverCuracion(Base):
         self.assertEqual(salida.returncode, 1)
         self.assertIn("ISR-7", salida.stderr)
         self.assertEqual(biblioteca.ubicacion(self.root, REF_C), ("entradas", ""))
+
+    def test_un_ticket_con_todas_sus_fases_aprobadas_ya_no_bloquea(self):
+        # Revisión final I2b: current.json nunca se limpia; un ticket terminado no es "abierto".
+        harness.write_json(harness.ticket_dir(self.root, "ISR-7") / "plan.json", {
+            "ticket_id": "ISR-7", "fases": [{"id": "fase_1", "anclajes": [
+                {"ref": ".claude/biblioteca/entradas/ISR-1-fase_1-h3.md",
+                 "confianza": "por_confirmar"}]}]})
+        harness.write_json(harness.fase_dir(self.root, "ISR-7", "fase_1") / "fase_state.json",
+                           {"fase_id": "fase_1", "estado": "aprobada", "intento_actual": 1,
+                            "max_reintentos": 3, "historial_fallos": []})
+        harness.write_current(self.root, "ISR-7", None)
+        salida = self.resolver("c2", "ok")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+
+    def test_un_plan_raro_en_el_ticket_abierto_no_revienta(self):
+        # Revisión final M1: datos en disco fuera de contrato.
+        harness.write_json(harness.ticket_dir(self.root, "ISR-7") / "plan.json",
+                           {"ticket_id": "ISR-7", "fases": [5, {"anclajes": 3}]})
+        harness.write_current(self.root, "ISR-7", None)
+        salida = self.resolver("c2", "ok")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
 
     def test_un_id_inexistente_lista_los_validos(self):
         salida = self.resolver("c9", "ok")

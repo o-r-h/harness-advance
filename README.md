@@ -209,8 +209,8 @@ proponer en ningún clon.
 
 **Cuándo correrla:** cuando el [reporte](#cómo-leer-el-reporte) lo sugiere en su
 sección Curación, o cuando la biblioteca creció varios tickets sin revisarse. No hace
-falta un ticket abierto, pero una lección que ancla el ticket abierto no se toca hasta
-cerrarlo.
+falta un ticket abierto, pero una lección que ancla el ticket en curso no se toca hasta
+que todas sus fases estén aprobadas.
 
 **Cómo decidir:** las señales (`cli.py senales-biblioteca`) son pistas, no motivos.
 `usos` cuenta los planes de **tu** clon, así que "sin uso" no basta para retirar; una

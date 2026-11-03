@@ -86,8 +86,10 @@ def _anclajes(project_root: Path) -> dict[str, list[tuple[tuple, str]]]:
             continue
         ticket = plan.parent.name
         nombres: set[str] = set()
-        for fase in (datos.get("fases") or []) if isinstance(datos, dict) else []:
-            for ancla in (fase.get("anclajes") or []) if isinstance(fase, dict) else []:
+        fases = datos.get("fases") if isinstance(datos, dict) else None
+        for fase in fases if isinstance(fases, list) else []:
+            anclajes = fase.get("anclajes") if isinstance(fase, dict) else None
+            for ancla in anclajes if isinstance(anclajes, list) else []:
                 ref = str(ancla.get("ref", "")) if isinstance(ancla, dict) else ""
                 ref = ref.replace("\\", "/")
                 if "biblioteca/entradas/" in ref:
