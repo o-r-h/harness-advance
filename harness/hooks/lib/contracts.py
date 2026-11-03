@@ -10,8 +10,10 @@ import re
 
 ESTADOS_FASE = frozenset({
     "pendiente", "en_ejecucion", "en_verificacion",
-    "esperando_humano", "en_correccion", "aprobada", "escalado",
+    "esperando_humano", "en_correccion", "aprobada", "escalado", "pausada",
 })
+# Estados desde los que se puede pausar una fase (y a los que vuelve al reanudar).
+ESTADOS_EN_CICLO = frozenset({"en_ejecucion", "en_correccion", "en_verificacion"})
 CONFIANZAS = frozenset({"verificado", "por_confirmar"})
 ORIGENES = frozenset({"check", "esceptico", "humano"})
 SEVERIDADES = frozenset({"error", "warning"})
@@ -239,6 +241,31 @@ def validate_veredicto(data: dict) -> list[str]:
     return errores
 
 
+def _validar_pausas(data: dict, errores: list[str]) -> None:
+    """`pausas` es opcional, salvo en una fase pausada, donde no puede faltar ni ir vacía."""
+    if "pausas" not in data:
+        if data.get("estado") == "pausada":
+            errores.append("pausas: requerido en una fase pausada, lista no vacía")
+        return
+    pausas = data["pausas"]
+    if not isinstance(pausas, list):
+        errores.append("pausas: debe ser lista")
+        return
+    if data.get("estado") == "pausada" and not pausas:
+        errores.append("pausas: no puede estar vacía en una fase pausada")
+    for indice, pausa in enumerate(pausas):
+        prefijo = f"pausas[{indice}]."
+        if not isinstance(pausa, dict):
+            errores.append(f"pausas[{indice}]: debe ser objeto")
+            continue
+        if pausa.get("desde") not in ESTADOS_EN_CICLO:
+            errores.append(f"{prefijo}desde: esperado uno de {sorted(ESTADOS_EN_CICLO)}")
+        fecha = pausa.get("fecha")
+        if not isinstance(fecha, str) or not RE_FECHA.match(fecha):
+            errores.append(f"{prefijo}fecha: formato esperado dd-mm-aaaa")
+        _texto(pausa, "motivo", errores, prefijo)
+
+
 def validate_fase_state(data: dict) -> list[str]:
     if not isinstance(data, dict):
         return ["fase_state: requerido, objeto JSON"]
@@ -256,6 +283,8 @@ def validate_fase_state(data: dict) -> list[str]:
         if intento > maximo:
             errores.append("intento_actual: no puede exceder max_reintentos "
                            "(al excederlo la fase pasa a 'escalado')")
+
+    _validar_pausas(data, errores)
 
     historial = data.get("historial_fallos")
     if not isinstance(historial, list):
