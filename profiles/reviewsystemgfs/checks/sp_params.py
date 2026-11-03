@@ -252,9 +252,14 @@ def _llamadas_vn(sentencias, agregadas: set[int]) -> list[Llamada]:
     for codigo, numeros in sentencias:
         if not any(n in agregadas for n in numeros):
             continue  # solo lo agregado, igual que las llamadas directas
-        for encontrada in RE_VN_SP.finditer(codigo):
-            validar = RE_V0_LITERAL.search("|" + codigo[encontrada.end() - 1:])
-            vns = {m.group("vn").upper(): numeros[0] for m in RE_VN_ENVIADO.finditer(codigo)}
+        inicios = list(RE_VN_SP.finditer(codigo))
+        for i, encontrada in enumerate(inicios):
+            # Cada VN= lleva solo lo de su tramo, hasta el siguiente VN= de la línea: un
+            # ternario o dos argumentos no deben cruzar los Vn ni el V0 de otro SP.
+            fin = inicios[i + 1].start() if i + 1 < len(inicios) else len(codigo)
+            tramo = codigo[encontrada.end() - 1:fin]
+            validar = RE_V0_LITERAL.search("|" + tramo)
+            vns = {m.group("vn").upper(): numeros[0] for m in RE_VN_ENVIADO.finditer(tramo)}
             llamadas.append(Llamada(encontrada.group("sp"),
                                     validar.group("n") if validar else None,
                                     numeros[0], True, vns))

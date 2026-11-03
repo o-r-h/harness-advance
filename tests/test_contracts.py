@@ -430,3 +430,19 @@ class TestReincide(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFormaDelTicket(unittest.TestCase):
+    """Revisión del paso 6, #6: una sola forma de id, sin '\n' final ni puntos."""
+
+    def test_el_id_no_acepta_un_salto_de_linea_final(self):
+        self.assertIsNone(contracts.RE_TICKET_ID.match("ISR-2\n"))
+        self.assertIsNone(contracts.RE_REFERENCIA.match("ISR-2/fase_1/h1\n"))
+
+    def test_la_referencia_del_cli_usa_la_misma_forma(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "harness" / "hooks"))
+        import cli
+        for ref in ("T.1/fase_1/h1", "TÑ/fase_1/h1", "ISR-1/fase_1/h1\n"):
+            with self.subTest(ref=ref):
+                self.assertIsNone(cli.RE_REF_HALLAZGO.match(ref))
+        self.assertIsNotNone(cli.RE_REF_HALLAZGO.match("ISR-109204-P11/fase_1/h1"))

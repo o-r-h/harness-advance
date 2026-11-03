@@ -421,6 +421,15 @@ class TestConvencionVN(BaseSp):
                            encoding="utf-8")
         self.assertEqual(self.modulo.run(self.root, [self.js], None), [])
 
+    def test_dos_cadenas_vn_en_la_misma_linea_no_se_mezclan(self):
+        # Revisión del paso 6, #1: cada VN= lleva solo los Vn y el V0 de su tramo.
+        self.assertEqual(self.en_js(
+            'var p = c ? "VN=ReviewGetFilters|V0=4|V1=" + a + "|" : '
+            '"VN=ReviewGetFiltersInsitu|V0=4|V2=" + b + "|";'), [])
+        errores = self.errores(self.en_js(
+            'f("VN=ReviewInsUpd|V0=" + t + "|V9=" + a, "VN=ReviewGetFilters|V0=4|V1=" + b);'))
+        self.assertEqual(errores, [])
+
     def test_vb_con_la_convencion_vn_tambien_se_revisa(self):
         self.en_guardar('Dim p As String = "VN=ReviewInsUpd|V0=7|V9=" + a + "|V22=" + b + "|"')
         errores = self.errores(self.correr())

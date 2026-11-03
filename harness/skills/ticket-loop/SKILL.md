@@ -63,7 +63,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
 
    **Con otro modelo.** Quien juzga no debe compartir los puntos ciegos de quien hizo
    el trabajo. El ejecutor es el `agente_ejecutor` de la fase (su modelo está en el
-   `model:` de su `.md`) o, si no hay, tú (tu modelo está en tu contexto). Pregunta
+   `model:` de su `.md`) o, si no hay, tú (tu modelo está en tu contexto). Si el `.md`
+   dice `model: inherit` o no tiene `model:`, el agente corre con tu modelo: pasa el tuyo. Pregunta
    cuál toca: `CLI modelo-esceptico --ejecutor <modelo del ejecutor, o desconocido>`.
    Invoca al subagente con ese valor en el parámetro `model`, y regístralo:
    `CLI record-veredicto --archivo <ruta> --modelo-esceptico <ese mismo valor>`.

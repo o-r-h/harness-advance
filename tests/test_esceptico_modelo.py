@@ -58,6 +58,14 @@ class TestModeloEsceptico(Base):
         self.reglas(dict(REGLAS, esceptico={"modelo": "opus"}))
         self.assertEqual(self.modelo("--ejecutor", "opus").stdout.strip(), "opus")
 
+    def test_esceptico_que_no_es_objeto_es_error_claro(self):
+        # Revisión del paso 6, #5: antes salía un traceback.
+        self.reglas(dict(REGLAS, esceptico="opus"))
+        salida = self.modelo("--ejecutor", "opus")
+        self.assertEqual(salida.returncode, 1)
+        self.assertIn("esceptico", salida.stderr)
+        self.assertNotIn("Traceback", salida.stderr)
+
     def test_un_modelo_del_perfil_que_no_existe_es_error(self):
         self.reglas(dict(REGLAS, esceptico={"modelo": "gpt-5"}))
         salida = self.modelo("--ejecutor", "opus")
@@ -86,6 +94,15 @@ class TestRecordVeredictoConModelo(Base):
                         str(self.ruta), "--modelo-esceptico", "sonnet")
         self.assertEqual(salida.returncode, 0, salida.stderr)
         self.assertEqual(self.guardado()["juicio_esceptico"]["modelo"], "sonnet")
+
+    def test_un_modelo_en_blanco_no_deja_un_veredicto_invalido(self):
+        # Revisión del paso 6, #4: después record-manual fallaba y la fase quedaba trabada.
+        salida = correr("record-veredicto", "--project", str(self.root), "--archivo",
+                        str(self.ruta), "--modelo-esceptico", "   ")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        self.assertEqual(contracts.validate_veredicto(self.guardado()), [])
+        manual = correr("record-manual", "--project", str(self.root), "--resultado", "ok")
+        self.assertEqual(manual.returncode, 0, manual.stderr)
 
     def test_sin_modelo_sigue_funcionando(self):
         salida = correr("record-veredicto", "--project", str(self.root), "--archivo",

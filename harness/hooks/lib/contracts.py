@@ -37,8 +37,9 @@ RE_HALLAZGO_ID = re.compile(r"^h\d+$")
 # Forma de un id de ticket: la misma que exige la referencia, y ASCII porque el id
 # se vuelve nombre de carpeta y de archivo de la biblioteca.
 TICKET_ID = r"[A-Za-z0-9][A-Za-z0-9_-]*"
-RE_TICKET_ID = re.compile(rf"^{TICKET_ID}$")
-RE_REFERENCIA = re.compile(rf"^{TICKET_ID}/fase_\d+/h\d+$")
+# \Z y no $: en Python `$` acepta un "\n" final, y el id se vuelve nombre de carpeta.
+RE_TICKET_ID = re.compile(rf"^{TICKET_ID}\Z")
+RE_REFERENCIA = re.compile(rf"^{TICKET_ID}/fase_\d+/h\d+\Z")
 
 
 def _texto(data: dict, campo: str, errores: list[str], prefijo: str = "") -> None:

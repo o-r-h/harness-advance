@@ -296,7 +296,7 @@ def cmd_record_veredicto(args) -> int:
         return _error(f"el veredicto dice fase '{veredicto['fase_id']}' pero la fase "
                       f"activa es '{fase['id']}'")
 
-    if args.modelo_esceptico:
+    if (args.modelo_esceptico or "").strip():  # en blanco se ignora: dejaría un veredicto inválido
         veredicto["juicio_esceptico"]["modelo"] = args.modelo_esceptico.strip()
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     harness.write_json(destino / "veredicto.json", veredicto)
@@ -335,8 +335,11 @@ def cmd_modelo_esceptico(args) -> int:
     los puntos ciegos de quien hizo el trabajo."""
     raiz = resolver_proyecto(args.project)
     reglas = harness.load_rules(raiz) if (raiz / ".claude" / "rules.json").is_file() else {}
-    fijado = ((reglas.get("esceptico") or {}).get("modelo")
-              if isinstance(reglas, dict) else None)
+    config = reglas.get("esceptico") if isinstance(reglas, dict) else None
+    if config is not None and not isinstance(config, dict):
+        return _error('rules.json: "esceptico" debe ser un objeto, por ejemplo '
+                      '{"modelo": "opus"}')
+    fijado = (config or {}).get("modelo")
     if fijado is not None:
         if fijado not in MODELOS_CLAUDE:
             return _error(f"rules.json: esceptico.modelo '{fijado}' no es uno de "
@@ -419,7 +422,7 @@ def cmd_record_manual(args) -> int:
 
 
 # Referencia completa de un hallazgo, tal como la imprime 'hallazgos-pendientes'.
-RE_REF_HALLAZGO = re.compile(r"^([A-Za-z0-9][\w.-]*)/(fase_\d+)/(h\d+)$")
+RE_REF_HALLAZGO = re.compile(rf"^({contracts.TICKET_ID})/(fase_\d+)/(h\d+)\Z")
 RE_TICKET_ID = contracts.RE_TICKET_ID
 
 
