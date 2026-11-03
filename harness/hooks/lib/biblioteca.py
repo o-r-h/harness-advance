@@ -122,6 +122,35 @@ def marcar_implementada(project_root: Path, ref: str, nota: str, fecha: str) -> 
     return anterior
 
 
+def _motivo_retirada(texto: str) -> str:
+    """El motivo de la línea `retirada` (`<fecha> · <motivo>`)."""
+    valor = _campo(texto, "retirada")
+    return valor.split(" · ", 1)[1].strip() if " · " in valor else valor
+
+
+def retirar(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
+    """Mueve la entrada a retiradas/ con su motivo. Nada se borra: las líneas
+    `falló` e `implementada` viajan con ella."""
+    ruta, lineas = _editar_lineas(project_root, ref)
+    _agregar_al_final(lineas, f"- **retirada**: {fecha} · {' '.join(motivo.split())}")
+    destino = entrada_path(project_root, ref, subdir="retiradas")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text("\n".join(lineas), encoding="utf-8")
+    ruta.unlink()
+    reconstruir_indice(project_root)
+    return destino
+
+
+def ubicacion(project_root: Path, ref: str) -> tuple[str, str]:
+    """Dónde está una lección: ("entradas", ""), ("retiradas", motivo) o ("ninguna", "")."""
+    if entrada_path(project_root, ref).is_file():
+        return "entradas", ""
+    retirada = entrada_path(project_root, ref, subdir="retiradas")
+    if retirada.is_file():
+        return "retiradas", _motivo_retirada(retirada.read_text(encoding="utf-8"))
+    return "ninguna", ""
+
+
 def _marcas(texto: str) -> str:
     """` (implementada <fecha>) (falló N×)`, solo con las marcas que la entrada trae."""
     marcas = ""
@@ -156,12 +185,19 @@ def reconstruir_indice(project_root: Path) -> Path:
         t = f.read_text(encoding="utf-8")
         aprobadas.append(f"- {_clasificacion(t)}{_resumen(t)} — entradas/{f.name}"
                          f"{_marcas(t)}")
+    retiradas = []
+    for f in _archivos(base / "retiradas"):
+        t = f.read_text(encoding="utf-8")
+        retiradas.append(f"- {_resumen(t)} — retiradas/{f.name} — motivo: "
+                         f"{_motivo_retirada(t)}")
     rechazadas = []
     for f in _archivos(base / "rechazados"):
         t = f.read_text(encoding="utf-8")
         rechazadas.append(f"- {_resumen(t)} — motivo: {_campo(t, 'motivo')}")
     lineas = ["# Biblioteca de lecciones", "", _INTRO, "", "## Aprobadas", "",
               *(aprobadas or ["_(vacía)_"]), "",
+              "## Retiradas — no aplicar", "",
+              *(retiradas or ["_(vacía)_"]), "",
               "## Rechazadas — no volver a proponer", "",
               *(rechazadas or ["_(vacía)_"])]
     destino = base / "INDEX.md"
