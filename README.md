@@ -3,12 +3,16 @@
 Harness de ingeniería para desarrollar con agentes de IA sobre proyectos reales de
 Azzule. Corre de forma nativa en **Claude Code**, y su núcleo (CLI, contratos y
 checks) es Python puro, así que también se puede usar con otros modelos (ver
-[Usarlo con otro modelo](#usarlo-con-otro-modelo-que-no-sea-claude)).
+[Usarlo con otro modelo](docs/tecnico.md#usarlo-con-otro-modelo-que-no-sea-claude)).
 
 > **Agente = Modelo + Harness.** El modelo razona; el harness convierte ese
 > razonamiento en trabajo verificable. Cada vez que el agente comete un error
 > repetible, la corrección va al harness (una regla, un check, un hook), no solo
 > al prompt.
+
+
+> **Documentación técnica** (arquitectura, CLI, contratos, perfiles, desarrollo y
+> pendientes): [docs/tecnico.md](docs/tecnico.md). Este README es la guía de uso.
 
 ---
 
@@ -16,18 +20,13 @@ checks) es Python puro, así que también se puede usar con otros modelos (ver
 
 - [Qué hace](#qué-hace)
 - [Qué trae la versión harness advance](#qué-trae-la-versión-harness-advance)
-- [Arquitectura: tres planos](#arquitectura-tres-planos)
 - [El ciclo de un ticket](#el-ciclo-de-un-ticket)
 - [Hallazgos y biblioteca de lecciones](#hallazgos-y-biblioteca-de-lecciones)
 - [Instalación y despliegue](#instalación-y-despliegue)
 - [Uso diario](#uso-diario)
   - [Los comandos de hallazgos, uno por uno](#los-comandos-de-hallazgos-uno-por-uno)
-- [Referencia del CLI](#referencia-del-cli)
-- [Estado en disco y contratos](#estado-en-disco-y-contratos)
-- [Crear el perfil de un proyecto nuevo](#crear-el-perfil-de-un-proyecto-nuevo)
-- [Usarlo con otro modelo que no sea Claude](#usarlo-con-otro-modelo-que-no-sea-claude)
-- [Desarrollo del propio harness](#desarrollo-del-propio-harness)
-- [Estructura del repositorio](#estructura-del-repositorio)
+- [Cómo leer el reporte](#cómo-leer-el-reporte)
+- [Errores frecuentes](#errores-frecuentes)
 
 ---
 
@@ -51,6 +50,7 @@ Reglas que lo sostienen:
   turno con una fase a medio ciclo.
 - **Los reintentos tienen límite**: al agotarse, la fase pasa a `escalado` y vuelve al humano.
 
+
 ## Qué trae la versión harness advance
 
 La versión *harness advance* incorpora ideas de
@@ -64,29 +64,13 @@ una lección pasa por el desarrollador antes de afectar a los tickets siguientes
 | **Reflector** | Subagente de **solo lectura** que, al cerrar cada fase (aprobada o escalada), propone lecciones reutilizables |
 | **Hallazgos con decisión humana** | Cada lección propuesta queda `propuesto` hasta que el desarrollador la aprueba, la edita o la rechaza |
 | **Biblioteca** | Las lecciones aprobadas viven en `<proyecto>/.claude/biblioteca/` y se versionan con el proyecto. El planner las lee en el ticket siguiente |
-| **"Dónde va cada corrección"** | Una escalera que dice qué pieza del harness corrige cada tipo de fallo (ver abajo) |
+| **"Dónde va cada corrección"** | Una escalera que dice qué pieza del harness corrige cada tipo de fallo (ver [docs/tecnico.md](docs/tecnico.md#dónde-va-cada-corrección)) |
+| **Reincidencias y deuda** | El reflector marca cuando un error ya estaba en la biblioteca; el humano marca cuándo construyó la pieza que pedía una lección; `report` cruza ambas cosas |
 | **Test de referencias** | Falla si un documento del harness nombra una skill, un agente, un subcomando o un comando que no existe |
 | **Evidencia es dato** | El escéptico y el reflector no obedecen instrucciones escritas dentro del código o de los archivos que revisan |
 
 Detalle del diseño: `docs/superpowers/plans/harness-advance.md` (origen y decisiones
 DA1–DA9) y la spec, decisiones D10–D13 y secciones §6.6, §10 y §10.1.
-
-## Arquitectura: tres planos
-
-Separados por frecuencia de cambio:
-
-```
-harness/                    → se despliega a ~/.claude/            (genérico, cambia raro)
-profiles/<proyecto>/        → se despliega a <proyecto>/.claude/   (todo lo del stack)
-<proyecto>/.harness/        → estado de ejecución por ticket       (crece con cada ticket)
-<proyecto>/.claude/biblioteca/ → lecciones aprobadas               (crece, se versiona)
-```
-
-- **El harness genérico no conoce ningún stack.** Un test (`TestSeparacionDePlanos`)
-  falla si `harness/` menciona términos como VB.NET, Web Forms o jQuery. Todo eso va
-  al perfil.
-- **Los hooks se registran una sola vez, globalmente**, pero no hacen nada si el
-  proyecto no tiene `.claude/rules.json`. Adoptar un proyecto nuevo es crearle un perfil.
 
 ## El ciclo de un ticket
 
@@ -115,6 +99,7 @@ de la prueba manual se guarda en `historial_fallos` con su origen (`check`,
 `esceptico` o `humano`), y el intento siguiente recibe el historial completo. Las
 correcciones que pide el hook en vivo no cuentan como intento: son autocorrección.
 
+
 ## Hallazgos y biblioteca de lecciones
 
 ### Cómo nace un hallazgo
@@ -137,19 +122,9 @@ Cada hallazgo tiene:
 | `evidencia` | Los intentos, checks u observaciones en que se apoya |
 | `confianza` | `alta`, `media` o `baja` |
 | `dimension` | `proceso` (cómo trabaja el agente) o `dominio` (lo que sabe alguien que domina el proyecto) |
-| `componente` | Dónde va la corrección: `regla`, `check`, `skill`, `hook` o `agente` |
+| `componente` | Dónde va la corrección: `regla`, `check`, `skill`, `hook` o `agente` (ver [dónde va cada corrección](docs/tecnico.md#dónde-va-cada-corrección)) |
+| `reincide` | Opcional. La referencia de una lección aprobada que ya debía evitar este error |
 
-### Dónde va cada corrección
-
-De la más barata a la más cara. Se elige la primera que corrige el fallo:
-
-| Lo que muestra la evidencia | `componente` |
-|---|---|
-| Un fallo mecánico que un patrón detecta en las líneas agregadas | `regla` (entrada de `rules.json`) |
-| Un fallo mecánico que exige cruzar archivos o correr una herramienta | `check` (check estructural del perfil) |
-| Un procedimiento de varios pasos con un disparador claro | `skill` |
-| Evidencia **repetida** de que una instrucción escrita se ignora | `hook` |
-| Orden normal del trabajo, o un dato corto que vale para toda fase | `agente` (texto siempre cargado; si se agrega algo, se recorta otro) |
 
 ### Tu decisión
 
@@ -189,6 +164,28 @@ De la más barata a la más cara. Se elige la primera que corrige el fallo:
 - **Para el planner, una lección es una hipótesis**: si la usa, la ancla como
   `por_confirmar` y la verifica en el código.
 
+
+### Reincidencias y lecciones implementadas
+
+Dos marcas cuentan qué pasa con una lección después de aprobarla:
+
+- **Reincidencia.** Si en otra fase el agente repite un error que una lección aprobada
+  ya debía evitar, el reflector lo propone con `reincide` apuntando a esa lección y
+  `hallazgos.md` lo muestra como `reincide en <ref>`. Al aprobarlo con `/hallazgo-ok`
+  o `/hallazgo-editar` **no nace una entrada nueva**: la original suma una línea
+  `falló` con la fecha, el ticket y si la lección tenía pieza en ese momento. Si el
+  reflector se equivocó, `--nueva` o `--reincide <ref>` lo corrigen (ver
+  [los comandos](#los-comandos-de-hallazgos-uno-por-uno)). Rechazarlo funciona como siempre.
+- **Implementada.** Cuando construyes la pieza que pedía la lección, `/hallazgo-hecho`
+  la marca. Desde entonces una nueva falla cuenta como "falló estando implementada".
+
+`INDEX.md` muestra las marcas junto a cada lección, por ejemplo
+`(implementada 02-11-2026) (falló 2×)`. El planner y el reflector lo leen: una lección
+que ya falló pesa más al planear, y el reflector sabe cuáles tienen pieza. El
+[reporte](#cómo-leer-el-reporte) las cruza. Detalle de las líneas en
+[docs/tecnico.md](docs/tecnico.md#líneas-de-una-entrada-de-la-biblioteca).
+
+
 ## Instalación y despliegue
 
 Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude Code.
@@ -224,6 +221,7 @@ Perfiles incluidos en este repo: `reviewsystemgfs` (VB.NET, Web Forms, .NET 3.5,
 sin build desde línea de comandos) y `editornotificaciones` (.NET + Vue 2, con build,
 pruebas y un check de contraste WCAG).
 
+
 ## Uso diario
 
 | Comando | Cuándo |
@@ -236,6 +234,7 @@ pruebas y un check de contraste WCAG).
 | `/hallazgo-editar <ref> "<lección>"` | Corregir y aprobar un hallazgo |
 | `/hallazgo-no <ref> "<motivo>"` | Rechazar un hallazgo |
 | `/hallazgo "<lección>"` | Agregar una lección propia (entra aprobada) |
+| `/hallazgo-hecho <ref> "<nota>"` | Avisar que ya construiste la pieza que pedía una lección aprobada |
 
 El orquestador es la skill `ticket-loop`, que los comandos invocan. Si la sesión se
 corta, se retoma desde el estado en `.harness/`: el CLI y el hook `Stop` saben en qué
@@ -243,7 +242,7 @@ estado quedó cada fase.
 
 ### Los comandos de hallazgos, uno por uno
 
-Los cuatro comandos son atajos de `cli.py`. El agente solo extrae los argumentos y
+Los cinco comandos de hallazgos son atajos de `cli.py`. El agente solo extrae los argumentos y
 corre el CLI, que es el único que escribe estado: `hallazgos.json`, `hallazgos.md` y
 la biblioteca. Si falta un argumento obligatorio, el agente lo pide antes de correr
 nada. Si el CLI falla, muestra el error tal cual.
@@ -274,6 +273,15 @@ Aprueba la lección tal como la propuso el reflector.
   - Se escribe `.claude/biblioteca/entradas/ISR-110722-fase_1-h1.md`.
   - Se reconstruye `INDEX.md`.
 - **Salida:** `Hallazgo ISR-110722/fase_1/h1 aprobado: <ruta de la entrada>`
+- **Si es una reincidencia** (el hallazgo trae `reincide en <ref>` en `hallazgos.md`):
+  no se crea entrada; se agrega una línea `falló` a la lección original. La salida es
+  `Hallazgo <ref> aprobado como reincidencia de <ref original>: <ruta de la entrada original>`.
+- **Si el reflector se equivocó**, dos opciones que se pasan tal cual al CLI:
+  - `--nueva`: no es reincidencia; ignora la marca y crea una entrada nueva.
+    Ejemplo: `/hallazgo-ok ISR-110722/fase_1/h4 --nueva`
+  - `--reincide <ref>`: sí es reincidencia, de esa otra lección (la haya marcado o no
+    el reflector). Ejemplo: `/hallazgo-ok ISR-110722/fase_1/h4 --reincide ISR-110501/fase_2/h1`
+  - Solo valen al aprobar, no juntas, y la lección tiene que estar **aprobada**.
 
 #### `/hallazgo-editar <ref> "<lección corregida>"`
 
@@ -288,6 +296,7 @@ lección está mal dicha, es demasiado amplia o es demasiado específica.
   - La propuesta del reflector se conserva en `lección original`, así queda visible
     qué corregiste.
   - La entrada va a `entradas/`.
+- **Opciones:** admite `--nueva` y `--reincide <ref>`, igual que `/hallazgo-ok`.
 
 #### `/hallazgo-no <ref> "<motivo>"`
 
@@ -314,9 +323,100 @@ Agrega una lección que viste tú y que ningún agente vio. Entra **ya aprobada*
   `/hallazgo "..." — dimensión dominio, componente regla`
 - **Corre:** `cli.py hallazgo --texto "..." [--dimension ...] [--componente ...]`
 - **Requisito:** hay que tener una fase activa. Entre tickets todavía no funciona
-  (ver [Pendientes conocidos](#pendientes-conocidos)).
+  (ver [Pendientes conocidos](docs/tecnico.md#pendientes-conocidos)).
 
-#### Errores frecuentes
+#### `/hallazgo-hecho <ref> "<nota>"`
+
+Avisa que ya construiste la pieza del harness que pedía una lección aprobada: la
+regla, el check, la skill, el hook o el texto del agente. Úsalo después de hacer la
+pieza, no antes: el reporte distingue las lecciones con pieza de las que siguen siendo
+deuda.
+
+- **Ejemplo:**
+  `/hallazgo-hecho ISR-110722/fase_1/h2 "regla no_firma_sin_llamadores en rules.json, commit 4f2a9c1"`
+- **Corre:** `cli.py hallazgo-hecho --id ISR-110722/fase_1/h2 --nota "..."`
+- **Efecto:** escribe en la entrada `- **implementada**: <fecha> · <nota>` y `INDEX.md`
+  pasa a mostrar `(implementada <fecha>)`. Las líneas `falló` anteriores se conservan.
+- **Salida:** `Lección <ref> implementada: <fecha> · <nota>`. Si ya estaba marcada, una
+  segunda línea dice la marca que reemplazó.
+- **Requisitos:** la referencia completa (un `h1` suelto no vale), una nota (di qué
+  hiciste: un commit, un archivo) y una lección **aprobada**.
+
+Para ver todo lo que queda por decidir, en todos los tickets:
+
+```powershell
+python "$HOME\.claude\hooks\cli.py" hallazgos-pendientes
+```
+
+Después de aprobar o rechazar, haz commit de `.claude/biblioteca/` en el proyecto.
+
+## Cómo leer el reporte
+
+```powershell
+python "$HOME\.claude\hooks\cli.py" report [--project <ruta>] [--json]
+```
+
+Solo lee: no escribe nada en el proyecto. Mira `.harness/tickets/` y
+`.claude/biblioteca/`. Con `--json` imprime los mismos datos crudos, para otra
+herramienta. Un proyecto sin datos no da error: cada sección dice `Sin datos todavía.`
+Un archivo ilegible o mal formado no detiene el reporte: se nombra al final, en
+"Archivos que no se pudieron leer", y sigue.
+
+Las secciones van de lo que más dice sobre si el harness aprende a lo que menos.
+Léelas en ese orden.
+
+**Resumen.** Los contadores: tickets, fases, fases escaladas, lecciones aprobadas,
+implementadas, las que fallaron estando implementadas y las que volvieron sin pieza.
+Ojo: *volvieron sin pieza* es **histórico**. Cuenta las lecciones que fallaron al menos
+una vez cuando no tenían pieza, aunque luego la hayas construido, así que puede ser
+mayor que lo que lista la Deuda.
+
+**Fallaron estando implementadas.** Cada lección que volvió a fallar *después* de
+marcarla con `/hallazgo-hecho`, con su señal, su pieza y, por cada falla, la fecha, el
+ticket y lo que debió hacerse. Es la sección más grave: **la pieza no funciona**.
+Qué hacer:
+
+1. Abre la lección y la falla, y averigua por qué la pieza no la atrapó: ¿el patrón
+   no cubre este caso? ¿el check no corre en esta fase? ¿la instrucción se ignora?
+2. Corrígela o súbela a una pieza más fuerte (de `skill` o `agente` a `check`, de
+   `check` a `hook`; ver [dónde va cada corrección](docs/tecnico.md#dónde-va-cada-corrección)).
+3. Cuando la pieza nueva esté, vuelve a correr `/hallazgo-hecho` con una nota nueva: la
+   marca anterior se reemplaza y las fallas quedan en el historial.
+
+**Deuda.** Lecciones aprobadas sin `implementada`, agrupadas por pieza
+(`regla`, `check`, `skill`, `hook`, `agente`; las lecciones propias sin pieza, en su
+grupo). Dentro de cada grupo van primero las que **volvieron sin pieza**, con
+`costó otra vez N×` y, por cada vez, fecha, ticket y lo que debió hacerse. Ese N× es
+tu orden de trabajo: **construye primero la pieza de la lección que más veces costó**.
+Al terminar una, márcala con `/hallazgo-hecho`: sale de la deuda.
+
+**Hallazgos.** Cuántos se aprobaron tal cual, cuántos con edición, cuántos eran
+reincidencias y cuántos son tuyos; los **propuestos sin resolver**, con su referencia
+(decídelos con `/hallazgo-ok`, `/hallazgo-editar` o `/hallazgo-no`), y los rechazados
+con su motivo. Muchos editados sugieren que el reflector redacta mal; muchos
+rechazados, que propone lo que no es un patrón.
+
+**Fases.** Intentos por fase (`usados/máximo` y estado), las fases escaladas, el origen
+de los fallos (`check`, `esceptico`, `humano`), las reglas más violadas y las fases
+que el escéptico rechazó en dos o más intentos, con sus razones. Una fase rechazada
+varias veces por razones parecidas es candidata a un check determinista. Una regla muy
+violada puede estar mal escrita o no llegarle a quien la necesita.
+
+**Archivos que no se pudieron leer.** Solo aparece si hubo alguno: JSON inválido,
+bytes que no se pueden decodificar, un `hallazgos.json` fuera de contrato. El reporte
+cuenta lo demás; arregla o borra esos archivos para que entren.
+
+Ejemplo, con una lección que volvió a costar sin pieza:
+
+```text
+Deuda
+  check
+    ISR-110722/fase_1/h2 — Cambio de firma sin buscar llamadores — costó otra vez 2×
+      02-11-2026 en ISR-111003/fase_2/h1: Buscar los llamadores antes de cambiar la firma
+      05-11-2026 en ISR-111240/fase_1/h3: Buscar los llamadores antes de cambiar la firma
+```
+
+## Errores frecuentes
 
 | Mensaje del CLI | Qué pasó |
 |---|---|
@@ -328,254 +428,10 @@ Agrega una lección que viste tú y que ningún agente vio. Entra **ya aprobada*
 | `rechazar un hallazgo exige --motivo …` | `/hallazgo-no` sin motivo |
 | `editar un hallazgo exige --texto …` | `/hallazgo-editar` sin la lección corregida |
 | `no hay fase activa: corre 'open-fase'` | `/hallazgo` fuera de una fase |
-
-Para ver todo lo que queda por decidir, en todos los tickets:
-
-```powershell
-python "$HOME\.claude\hooks\cli.py" hallazgos-pendientes
-```
-
-Después de aprobar o rechazar, haz commit de `.claude/biblioteca/` en el proyecto.
-
-## Referencia del CLI
-
-`python ~/.claude/hooks/cli.py <subcomando>`. Todos aceptan `--project <ruta>`; si no
-se indica, se usa el proyecto del directorio actual.
-
-| Subcomando | Qué hace |
-|---|---|
-| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json` |
-| `open-fase --fase fase_N` | Abre una fase. Rechaza la apertura si una fase de `depende_de` no está aprobada |
-| `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
-| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Sale con 1 si hay errores bloqueantes |
-| `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |
-| `generar-prueba --pasos-json` | Escribe `prueba_manual.md` |
-| `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |
-| `record-hallazgos --archivo [--ticket --fase]` | Registra la propuesta del reflector. Solo sobre una fase `aprobada` o `escalado`; con `--ticket --fase`, sobre una fase ya cerrada |
-| `resolver-hallazgo --id <hN\|TICKET/fase_N/hN> --decision ok\|no\|editar [--texto] [--motivo]` | Resuelve un hallazgo y lo escribe en la biblioteca |
-| `hallazgo --texto [--dimension] [--componente]` | Hallazgo humano, en la fase activa |
-| `hallazgos-pendientes` | Lista los hallazgos sin resolver de todos los tickets; siempre sale con 0 |
-| `reconstruir-biblioteca` | Regenera `INDEX.md` desde las entradas |
-
-## Estado en disco y contratos
-
-```
-<proyecto>/.harness/
-├── current.json                       ticket y fase activos
-└── tickets/ISR-110722/
-    ├── ticket.md                      el requerimiento
-    ├── ticket_context.json            nroticket, desarrollador, fecha, perfil
-    ├── plan.md / plan.json            el plan (humano / máquina)
-    └── fase_1/
-        ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos
-        ├── hallazgos.json / .md       propuestas del reflector y decisiones
-        └── intento_1/
-            ├── resultado.md           lo que hizo el ejecutor, con evidencia
-            ├── checks.json            hechos de los scripts
-            ├── prueba_manual.md       guion de clics
-            └── veredicto.json         escéptico + prueba manual
-```
-
-Estados de una fase: `pendiente` → `en_ejecucion` → `en_verificacion` →
-`esperando_humano` → `aprobada`, con `en_correccion` entre intentos y `escalado` al
-agotar los reintentos. Los contratos están en `harness/hooks/lib/contracts.py` y
-documentados en la spec, §6.
-
-## Crear el perfil de un proyecto nuevo
-
-```
-profiles/<perfil>/
-├── rules.json          reglas declarativas (obligatorio: es lo que activa el harness)
-├── agents/<nombre>.md  el agente ejecutor del proyecto (uno o varios)
-└── checks/<id>.py      checks estructurales opcionales
-```
-
-**`rules.json`**: reglas que se verifican sobre las líneas agregadas, sin escribir código.
-
-```json
-{
-  "perfil": "mi-proyecto",
-  "audit_comments": { "requerido": false, "severidad": "warning" },
-  "prohibido": [
-    { "id": "no_fetch", "archivos": [".js"], "severidad": "error",
-      "patron": "\\bfetch\\s*\\(", "mensaje": "Usar el cliente HTTP del proyecto",
-      "excluir": ["tests/"] }
-  ],
-  "no_new_deps": { "vigilar": ["package.json"], "severidad": "error",
-                   "mensaje": "Ninguna dependencia nueva sin aprobación" },
-  "checks_estructurales": ["mi_build"],
-  "grupos": { "sintaxis_web": ["no_fetch"] }
-}
-```
-
-Severidad: `error` bloquea; `warning` se reporta en `checks.json` y el escéptico
-decide si importa. Un check nuevo conviene que entre como `warning` y se promueva a
-`error` cuando se confirme que no da falsos positivos.
-
-**Check estructural**: un `.py` en `checks/` que expone
-`run(project_root, archivos_modificados, ctx) -> list[dict]`. Cada resultado es
-`{"id", "resultado": "ok"|"fallo", "severidad": "error"|"warning", "detalle"}`. Si el
-check revienta, se registra como `error_check` y no bloquea la fase: un bug del
-harness no debe parecer un bug del código. Ejemplos: `profiles/editornotificaciones/checks/`.
-
-**Agente ejecutor**: un `.md` con frontmatter `name` y `description` que conoce los
-patrones del stack. Si el perfil tiene varios, cada fase del plan dice cuál la
-ejecuta (`agente_ejecutor`).
-
-## Usarlo con otro modelo que no sea Claude
-
-El harness tiene dos capas, y solo una depende de Claude Code:
-
-| Capa | Archivos | ¿Depende de Claude Code? |
-|---|---|---|
-| **Núcleo determinista** | `harness/hooks/cli.py`, `harness/hooks/lib/`, `rules.json`, `checks/`, contratos JSON | **No.** Es Python 3.12 sin dependencias; lo puede invocar cualquier agente o una persona |
-| **Prompts** | `harness/agents/*.md`, `harness/skills/*/SKILL.md`, `harness/commands/*.md`, agentes del perfil | **No en su contenido.** Son instrucciones en Markdown que sirven como *system prompt* de cualquier modelo. El frontmatter (`model: opus`, `tools:`) sí es de Claude Code |
-| **Cableado** | Registro de hooks en `settings.json`, subagentes con contexto aislado, comandos `/…`, carga de skills | **Sí.** Es lo que hay que reemplazar |
-
-Hay tres caminos, de menos a más trabajo.
-
-### Opción A — Claude Code con otro modelo, vía un gateway
-
-Claude Code puede apuntar a un *LLM gateway* que hable la API de Anthropic y
-traduzca a otros proveedores, por ejemplo [LiteLLM](https://docs.litellm.ai/docs/tutorials/claude_non_anthropic_models).
-Así el harness funciona sin cambios: hooks, subagentes, skills y comandos incluidos.
-
-```powershell
-$env:ANTHROPIC_BASE_URL   = "http://localhost:4000"   # tu proxy LiteLLM
-$env:ANTHROPIC_AUTH_TOKEN = "<clave del proxy>"
-$env:ANTHROPIC_MODEL      = "<modelo definido en el proxy>"
-claude
-```
-
-- Los agentes del harness piden `model: opus` en su frontmatter. Mapea ese alias
-  al modelo que quieras en la configuración del gateway, o con las variables de
-  alias de modelo de tu versión de Claude Code (por ejemplo
-  `ANTHROPIC_DEFAULT_OPUS_MODEL`). Verifica el nombre exacto en la documentación de
-  tu versión.
-- Anthropic documenta el mecanismo de gateway
-  ([LLM gateway](https://docs.claude.com/en/docs/claude-code/llm-gateway)), pero
-  **no da soporte oficial a modelos que no sean Claude**. El uso de herramientas y
-  el seguimiento de instrucciones largas varían según el modelo.
-- El harness compensa una parte de esa variación: el estado lo escribe el CLI, los
-  JSON se validan y los hooks bloquean. Aun así, prueba primero con un ticket chico.
-
-### Opción B — Otro agente de programación (adaptador)
-
-Para usarlo desde otra herramienta de agentes, reproduce cuatro piezas de cableado:
-
-**1. Validación en vivo (equivale a `PostToolUse`).** Después de cada archivo que
-el agente escriba, corre:
-
-```bash
-echo '{"tool_input": {"file_path": "C:/ruta/absoluta/al/archivo"}, "cwd": "C:/ruta/del/proyecto"}' \
-  | python ~/.claude/hooks/check_rules.py
-```
-
-- Exit 0: todo bien.
-- Exit 2: hubo violaciones. El **stderr** trae el mensaje; devuélveselo al modelo
-  para que corrija antes de seguir.
-
-Si tu herramienta no tiene eventos de post-escritura, pídele al agente en su prompt
-que lo corra él mismo, o confía en `run-checks` (punto 3), que revisa todo el diff de
-la fase.
-
-**2. Puerta de cierre (equivale a `Stop`).** Antes de dar el turno por terminado:
-
-```bash
-echo '{"cwd": "C:/ruta/del/proyecto", "stop_hook_active": false}' \
-  | python ~/.claude/hooks/gate_phase.py
-```
-
-Exit 2 significa que la fase está a medio ciclo: el stderr dice cuál es el siguiente
-paso y el agente no debe cerrar el turno. Los payloads completos de los dos hooks
-están en `docs/hook-payloads.md`.
-
-**3. Orquestación.** Usa `harness/skills/ticket-loop/SKILL.md` como instrucciones del
-agente principal, y el CLI tal cual. Las rutas `$HOME/.claude/hooks/cli.py` de los
-documentos apuntan al lugar donde despliegues `harness/hooks/`; ajústalas si usas otro.
-
-**4. Subagentes con contexto aislado.** El escéptico y el reflector deben correr como
-**conversaciones nuevas**, con `harness/agents/skeptic.md` o
-`harness/agents/reflector.md` como *system prompt* y solo las entradas que piden.
-Nunca les pases la conversación del ejecutor. Si la herramienta no tiene subagentes,
-haz una llamada aparte al modelo, en una conversación nueva.
-
-- Para el reflector, da acceso **solo de lectura**: no debe poder correr el CLI ni
-  escribir en la biblioteca.
-- Su salida es JSON. Guárdala en archivo y regístrala con `record-veredicto` o
-  `record-hallazgos`: el CLI la rechaza si no cumple el contrato.
-
-Los comandos `/fase-ok`, `/hallazgo-ok`, etc. son atajos de un CLI: el humano puede
-correr directamente `cli.py record-manual --resultado ok` o
-`cli.py resolver-hallazgo --decision ok --id <ref>`.
-
-### Opción C — Sin herramienta de agentes (modo manual)
-
-Con cualquier chat (incluso un modelo local), el desarrollador hace de orquestador:
-
-1. `cli.py open-ticket …`, pega el requerimiento y el prompt de `task-planner` en el
-   chat, guarda el `plan.json` que devuelva y corre `cli.py validate --contrato plan`.
-2. `cli.py open-fase --fase fase_1`, pega en el chat el agente del perfil más la fase
-   del plan, y aplica los cambios.
-3. `cli.py run-checks`.
-4. En un chat **nuevo**, pega `skeptic.md`, el diff y `checks.json`; guarda el JSON y
-   corre `cli.py record-veredicto`.
-5. Haz la prueba manual y corre `cli.py record-manual`.
-6. En otro chat nuevo, pega `reflector.md` con la evidencia de la fase y registra con
-   `cli.py record-hallazgos`.
-
-Es más lento, pero conserva lo esencial: el estado, los límites de reintento, los
-contratos y la biblioteca no dependen del modelo.
-
-## Desarrollo del propio harness
-
-```bash
-python -m unittest discover -s tests -q
-```
-
-- Solo stdlib y `unittest`.
-- Cada cambio entra con su test, escrito primero.
-- El harness no se valida a sí mismo: los hooks detectan el repo fuente y salen en silencio.
-
-Tests que protegen el diseño:
-
-- `TestSeparacionDePlanos`: `harness/` no menciona ningún stack.
-- `TestReferenciasDelHarness`: toda skill, subagente, subcomando y comando nombrado en
-  `harness/**/*.md` existe.
-- `test_ningun_perfil_trae_biblioteca`: `deploy.ps1` nunca puede pisar la biblioteca
-  de un proyecto.
-
-Documentos de diseño:
-
-| Documento | Contenido |
-|---|---|
-| `docs/superpowers/specs/2026-07-28-ia-harness-engineering-design.md` | La spec: decisiones D1–D13, contratos, ciclo, verificación |
-| `docs/superpowers/plans/2026-07-28-ia-harness.md` | Plan original (tareas 1–20) |
-| `docs/superpowers/plans/harness-advance.md` | Plan de esta versión: origen en Harness² y decisiones DA1–DA9 |
-| `docs/hook-payloads.md` | Payloads reales de los hooks, capturados con una sonda |
-
-## Estructura del repositorio
-
-```
-├── harness/                  harness genérico → ~/.claude/
-│   ├── agents/               skeptic.md, reflector.md
-│   ├── commands/             /ticket-abrir, /fase, /fase-ok, /fase-fallo, /hallazgo*
-│   ├── hooks/                check_rules.py (PostToolUse), gate_phase.py (Stop), cli.py, lib/
-│   └── skills/               ticket-loop, task-planner
-├── profiles/                 un perfil por proyecto → <proyecto>/.claude/
-│   ├── reviewsystemgfs/
-│   └── editornotificaciones/
-├── tests/                    suite unittest del harness
-├── docs/                     spec, planes y payloads de hooks
-├── historico/                archivos de partida, ya migrados
-├── task-plannerv2.md         fuente del planner v3
-└── deploy.ps1                despliegue a ~/.claude y al proyecto
-```
-
-### Pendientes conocidos
-
-- `report.py` (observabilidad: intentos por fase, reglas más violadas, hallazgos
-  aprobados que aún no se convirtieron en regla o check).
-- Checks estructurales de `reviewsystemgfs`: `designer_sync`, `sp_params`, `xhtml_selfclose`.
-- `/hallazgo` no funciona entre tickets (antes de `open-fase`).
-- `open-ticket` no valida la forma del id del ticket.
+| `--nueva y --reincide se excluyen: elige una` | Pasaste las dos a `/hallazgo-ok` o `/hallazgo-editar` |
+| `--nueva y --reincide solo valen al aprobar …` | Las pasaste con `/hallazgo-no` |
+| `el hallazgo <ref> reincide en …` | La lección a la que reincide no está aprobada (rechazada, sin decidir o mal escrita). No se escribió nada |
+| `--reincide '…' no tiene la forma TICKET/fase_N/hN` | La referencia está mal escrita |
+| `--id '…' no tiene la forma TICKET/fase_N/hN: este comando solo acepta la referencia completa` | `/hallazgo-hecho` con un id suelto |
+| `--nota no puede estar vacía …` | `/hallazgo-hecho` sin decir qué se hizo |
+| `no se puede marcar … ` | Solo se marca una lección aprobada; esa no existe o no está aprobada |
