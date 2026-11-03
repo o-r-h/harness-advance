@@ -63,6 +63,11 @@ deploy reemplaza el respaldo bueno por uno ya modificado.
   elemento de `pausas` lleva `desde`, `fecha` y `motivo` de tipo texto, y `fecha` con
   el formato `dd-mm-aaaa`.
 - Pausar no toca `intento_actual` ni `historial_fallos`.
+- El contrato se aplica donde ya se aplica el de `fase_state`: `state._guardar` valida
+  en cada escritura, y el reporte valida al leer. El hook `Stop` no valida; si no puede
+  leer el estado, no bloquea, como hoy.
+- En `lib/state.py`, `registrar_fallo` y `aprobar_fase` lanzan `TransicionInvalida` con
+  la fase en `pausada`. Es la red de seguridad debajo de los rechazos del CLI.
 
 ### Pausar: `cli.py pausar-fase [--motivo "<texto>"]`
 
@@ -80,8 +85,23 @@ deploy reemplaza el respaldo bueno por uno ya modificado.
   `desde` de su última pausa e imprime que se reanudó en ese estado y en ese intento.
 - Así `/fase fase_N`, que ya pasa por `open-fase`, sirve para retomar sin un comando
   nuevo (*decisión de Claude*: un solo camino para "seguir con la fase").
+- `open-fase` sobre una fase que no está `pausada` sigue como hoy: idempotente, devuelve
+  el estado existente sin cambiarlo.
 - Si se intenta abrir otra fase del mismo ticket que depende de la pausada, el error de
   dependencia que ya existe lo cubre: la pausada no está `aprobada`.
+
+### No se deja una fase corriendo sin dueño
+
+Hoy `open-fase` de otra fase, u `open-ticket` de otro ticket, reapunta `current.json`
+aunque la fase activa siga corriendo. Esa fase queda huérfana: sigue `en_ejecucion`,
+pero `Stop` y `pausar-fase` ya no la ven. Con la pausa hay una salida explícita, así que
+(*decisión de Claude*):
+
+- `open-fase` de una fase distinta y `open-ticket` se rechazan si la fase activa de
+  `current.json` está en `en_ejecucion`, `en_correccion` o `en_verificacion`. El error
+  dice cuál y pide pausarla primero con `/fase-pausa`.
+- Con la fase activa en `pausada`, `esperando_humano`, `aprobada` o `escalado`, se
+  permite. Una fase pausada queda pausada y se retoma después con `/fase fase_N`.
 
 ### Lo que se rechaza mientras la fase está pausada
 
@@ -144,8 +164,11 @@ Comportamiento:
 - **Identificación:** una entrada es del harness si el `command` de alguno de sus hooks
   nombra `check_rules.py` (en `PostToolUse`) o `gate_phase.py` (en `Stop`), sea cual
   sea la ruta.
-- **Si existe:** se corrigen su `command` y su `matcher` a los de la tabla. Si ya
-  estaban así, no se cambia nada.
+- **Si existe:** se corrige el `command` de nuestro hook a la ruta de la tabla. El
+  `matcher` de la entrada se corrige solo si todos sus hooks son nuestros. Si la entrada
+  mezcla hooks ajenos, el `matcher` no se toca y se avisa. Si ya estaba todo así, no se
+  cambia nada. Un comando personalizado (barras `/`, `$HOME`) se reescribe con la ruta
+  de la tabla y se informa como "ruta actualizada".
 - **Si no existe:** se agrega al final de la lista del evento. Si faltan la lista o el
   objeto `hooks`, se crean.
 - **Si hay más de una entrada del harness en el mismo evento:** se corrigen todas y se
@@ -154,7 +177,9 @@ Comportamiento:
 - **Lo demás no se toca:** las otras entradas del evento, los otros eventos y las otras
   claves conservan su contenido y su orden.
 - **Escritura:** solo si los datos cambiaron (se comparan los datos, no el texto).
-  - Antes de escribir, respaldo con fecha y hora: `settings.json.bak-dd-mm-aaaa-HHMM`.
+  - Antes de escribir, respaldo con fecha y hora: `settings.json.bak-dd-mm-aaaa-HHMMSS`.
+    Los respaldos no se podan (*decisión de Claude*): solo se crean cuando algo
+    cambió, que es raro.
   - Se escribe en UTF-8 sin BOM, sin escapar los acentos, con indentación de 2 y saltos
     de línea `\n`, como el archivo actual.
   - La escritura es atómica: archivo temporal y luego reemplazo.
@@ -195,6 +220,9 @@ Comportamiento:
 - `unittest`, como todo el repo. Cada cambio entra con su test escrito primero.
 - **M1:**
   - Pausar desde cada estado permitido y rechazo desde los demás.
+  - `open-fase` de otra fase y `open-ticket` se rechazan con la fase activa corriendo y
+    se permiten con ella pausada.
+  - `registrar_fallo` y `aprobar_fase` lanzan en `pausada`.
   - El intento y el historial no cambian al pausar.
   - `open-fase` reanuda al estado previo.
   - `record-veredicto` y `generar-prueba` se rechazan en `pausada`.
@@ -212,6 +240,9 @@ Comportamiento:
   - Archivo inexistente.
   - JSON roto intacto con exit 1.
   - Duplicados.
+  - Una entrada que mezcla nuestro hook con uno ajeno.
+  - Los tests importan `registrar_hooks.py` con un `sys.path.insert` a la raíz, como
+    hoy hacen con `harness/hooks`.
   - El respaldo existe solo cuando se escribió.
 - **Punta a punta:** `test_punta_a_punta` suma una pausa a mitad de un intento: `Stop`
   deja de bloquear, `/fase` reanuda y el ciclo sigue con el mismo intento.
