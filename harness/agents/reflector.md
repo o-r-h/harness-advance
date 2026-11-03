@@ -103,8 +103,10 @@ que pasó al primer intento sin observaciones normalmente no enseña nada nuevo.
 Adaptar el harness sin evidencia lo empeora: cada pieza nueva cuesta en todas las
 fases que vienen.
 
-Tampoco repitas lo que la biblioteca ya tiene aprobado. Si la fase confirma una
-lección existente, eso no es un hallazgo nuevo.
+Tampoco repitas lo que la biblioteca ya tiene aprobado. Una fase donde la lección
+aprobada funcionó (el error no ocurrió) no es un hallazgo. Una fase donde volvió a
+ocurrir el error que esa lección debía evitar sí deja algo que registrar: es una
+reincidencia (ver "Reincidencias").
 
 ## Reincidencias
 
@@ -113,6 +115,17 @@ aprobada debía evitar**: la lección existía y aun así el error volvió. Eso 
 lección nueva; es una reincidencia, y la registra como falla de la original. Cuenta
 **aunque esa lección figure como implementada**: implementada quiere decir que se
 hizo la pieza, no que funcione, y justo por eso importa saber que falló.
+
+Las líneas de `INDEX.md` pueden terminar en `(implementada <fecha>)` y en
+`(falló N×)`: lo primero indica que la pieza ya se hizo, lo segundo cuántas veces
+volvió a fallar.
+
+No es reincidencia, y se propone un hallazgo normal (o nada):
+
+- Si los errores solo se **parecen**: tiene que ser el mismo error que describe la
+  `senal` de la lección, no uno cercano.
+- Si la lección se aprobó **después** de planear o ejecutar esta fase: no pudo
+  evitarla. La línea `- **aprobada**: <fecha>` de su entrada da la fecha.
 
 Para marcarla, agrega al hallazgo el campo opcional `reincide`:
 

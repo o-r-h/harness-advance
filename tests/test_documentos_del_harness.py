@@ -205,20 +205,29 @@ class TestAgenteReflector(unittest.TestCase):
             with self.subTest(bloque=bloque[:40]):
                 self.assertEqual(validate_propuesta_hallazgos(json.loads(bloque)), [])
 
-
     def test_explica_reincide(self):
         for termino in ("reincide", "TICKET/fase_N/hN", "debió hacer"):
             with self.subTest(termino=termino):
                 self.assertIn(termino, self.texto)
 
     def test_reincide_aunque_este_implementada(self):
-        self.assertIn("implementada", self.texto)
+        self.assertIn("aunque esa lección figure como implementada", self.texto)
+
+    def test_confirmar_una_leccion_ya_no_es_siempre_silencio(self):
+        self.assertNotIn("eso no es un hallazgo nuevo", self.texto)
+        self.assertIn('reincidencia (ver "Reincidencias")', self.texto)
+        self.assertIn("volvió a ocurrir el error que esa lección debía evitar",
+                      " ".join(self.texto.split()))
+
+    def test_reincidencia_falsa_no_se_marca(self):
+        self.assertIn("**después** de planear o ejecutar", self.texto)
+        self.assertIn("solo se **parecen**", self.texto)
 
 
 class TestPlannerPesaLasQueFallaron(unittest.TestCase):
     def test_una_leccion_que_fallo_pesa_mas(self):
         texto = leer("harness", "skills", "task-planner", "SKILL.md")
-        self.assertIn("falló", texto)
+        self.assertIn("(falló N×)", texto)
 
 
 class TestEsceptico(unittest.TestCase):
