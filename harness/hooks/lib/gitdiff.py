@@ -5,11 +5,18 @@ un archivo legacy completo produciría miles de falsos positivos.
 """
 from __future__ import annotations
 
+import codecs
+import difflib
 import re
 import subprocess
 from pathlib import Path
 
 RE_HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<inicio>\d+)(?:,\d+)? @@")
+# El orden importa: el BOM de UTF-32 LE empieza con el de UTF-16 LE.
+BOMS = ((codecs.BOM_UTF32_LE, "utf-32-le"), (codecs.BOM_UTF32_BE, "utf-32-be"),
+        (codecs.BOM_UTF8, "utf-8"), (codecs.BOM_UTF16_LE, "utf-16-le"),
+        (codecs.BOM_UTF16_BE, "utf-16-be"))
+BOMS_ANCHOS = (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
 
 
 def _decodificar_con_respaldo(datos: bytes) -> str:
@@ -19,7 +26,14 @@ def _decodificar_con_respaldo(datos: bytes) -> str:
     El código legacy de este proyecto (15 años) suele estar en cp1252; decodificar
     directo con errors="replace" produce texto corrupto en vez de un error, lo cual
     genera hallazgos falsos aguas abajo cuando se comparan acentos/ñ en el texto.
+
+    Un BOM manda sobre todo lo demás: los scripts que exportan algunas
+    herramientas salen en UTF-16, y leídos como cp1252 cada carácter queda
+    separado por un NUL y ningún regex acierta.
     """
+    for bom, codificacion in BOMS:
+        if datos.startswith(bom):
+            return datos[len(bom):].decode(codificacion, errors="replace")
     try:
         return datos.decode("utf-8")
     except UnicodeDecodeError:
@@ -30,11 +44,14 @@ def _decodificar_con_respaldo(datos: bytes) -> str:
         return datos.decode("utf-8", errors="replace")
 
 
-def _git(project_root: Path, *args: str) -> subprocess.CompletedProcess | None:
+def _git(project_root: Path, *args: str, crudo: bool = False
+         ) -> subprocess.CompletedProcess | None:
     try:
         resultado = subprocess.run(["git", *args], cwd=str(project_root), capture_output=True)
     except (OSError, ValueError):
         return None
+    if crudo:
+        return resultado
     resultado.stdout = _decodificar_con_respaldo(resultado.stdout)
     resultado.stderr = _decodificar_con_respaldo(resultado.stderr)
     return resultado
@@ -72,6 +89,10 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     if estado is not None and estado.returncode == 0 and estado.stdout.startswith("??"):
         return [(i, linea) for i, linea in enumerate(read_text(archivo).splitlines(), start=1)]
 
+    actual = archivo.read_bytes()
+    if actual.startswith(BOMS_ANCHOS):
+        return _agregadas_por_comparacion(raiz, relativo, actual)
+
     diff = _git(raiz, "diff", "HEAD", "--unified=0", "--no-color", "--", relativo)
     if diff is None or diff.returncode != 0:
         return None
@@ -86,6 +107,27 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
         if linea.startswith("+") and not linea.startswith("+++"):
             agregadas.append((linea_actual, linea[1:]))
             linea_actual += 1
+    return agregadas
+
+
+def _agregadas_por_comparacion(raiz: Path, relativo: str,
+                               actual: bytes) -> list[tuple[int, str]] | None:
+    """Líneas agregadas de un archivo que git trata como binario (UTF-16).
+
+    `git diff` solo diría "Binary files differ" y el cambio quedaría sin
+    verificar en silencio; aquí se compara el texto decodificado contra HEAD.
+    """
+    previo = _git(raiz, "show", f"HEAD:{relativo}", crudo=True)
+    if previo is None:
+        return None
+    anteriores = (_decodificar_con_respaldo(previo.stdout).splitlines()
+                  if previo.returncode == 0 else [])
+    nuevas = _decodificar_con_respaldo(actual).splitlines()
+    agregadas: list[tuple[int, str]] = []
+    comparador = difflib.SequenceMatcher(None, anteriores, nuevas, autojunk=False)
+    for operacion, _, _, desde, hasta in comparador.get_opcodes():
+        if operacion in ("replace", "insert"):
+            agregadas += [(i + 1, nuevas[i]) for i in range(desde, hasta)]
     return agregadas
 
 
