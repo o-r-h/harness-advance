@@ -198,3 +198,98 @@ def agregar(project_root: Path) -> dict:
         },
         "ilegibles": sorted(ilegibles),
     }
+
+
+_SIN_DATOS = "  Sin datos todavía."
+
+
+def _veces(n: int) -> str:
+    return f"{n}×"
+
+
+def _seccion_resumen(datos: dict) -> list[str]:
+    r = datos["resumen"]
+    return [
+        f"  Tickets: {r['tickets']}   Fases: {r['fases']} (escaladas: {r['fases_escaladas']})",
+        f"  Lecciones aprobadas: {r['lecciones_aprobadas']}   "
+        f"implementadas: {r['implementadas']}",
+        f"  Fallaron estando implementadas: {r['fallaron_implementadas']}",
+        f"  Volvieron sin pieza (histórico): {r['volvieron_sin_pieza']}",
+    ]
+
+
+def _seccion_fallaron(datos: dict) -> list[str]:
+    lineas = []
+    for e in datos["fallaron_implementadas"]:
+        lineas.append(f"  {e['ref']} — {e['senal']} (pieza: {e['componente']})")
+        for f in e["fallas"]:
+            lineas.append(f"    {f['fecha']} en {f['ref']}: {f['leccion']}")
+    return lineas or [_SIN_DATOS]
+
+
+def _seccion_deuda(datos: dict) -> list[str]:
+    lineas = []
+    for componente, grupo in datos["deuda"].items():
+        lineas.append(f"  {componente}")
+        for d in grupo:
+            costo = (f" — costó otra vez {_veces(len(d['fallas']))}" if d["fallas"] else "")
+            lineas.append(f"    {d['ref']} — {d['senal']}{costo}")
+            for f in d["fallas"]:
+                lineas.append(f"      {f['fecha']} en {f['ref']}: {f['leccion']}")
+    return lineas or [_SIN_DATOS]
+
+
+def _seccion_hallazgos(datos: dict) -> list[str]:
+    h = datos["hallazgos"]
+    contadores = (h["aprobados_tal_cual"], h["aprobados_editados"], h["reincidencias"],
+                  h["del_humano"])
+    if not (h["propuestos"] or h["rechazados"] or any(contadores)):
+        return [_SIN_DATOS]
+    lineas = [f"  Aprobados tal cual: {h['aprobados_tal_cual']}   "
+              f"editados: {h['aprobados_editados']}   reincidencias: {h['reincidencias']}   "
+              f"del humano: {h['del_humano']}",
+              f"  Propuestos sin resolver: {len(h['propuestos'])}"]
+    lineas += [f"    {p['ref']} — {p['senal']}" for p in h["propuestos"]]
+    lineas.append(f"  Rechazados: {len(h['rechazados'])}")
+    lineas += [f"    {r['ref']} — {r['motivo']}" for r in h["rechazados"]]
+    return lineas
+
+
+def _seccion_fases(datos: dict) -> list[str]:
+    f = datos["fases"]
+    if not f["intentos_por_fase"]:
+        return [_SIN_DATOS]
+    lineas = ["  Intentos por fase:"]
+    for fase, i in f["intentos_por_fase"].items():
+        lineas.append(f"    {fase}: {i['intentos']}/{i['max']} ({i['estado']})")
+    if f["escaladas"]:
+        lineas.append("  Escaladas: " + ", ".join(f["escaladas"]))
+    if f["origen_de_fallos"]:
+        lineas.append("  Origen de los fallos: " + ", ".join(
+            f"{k} {_veces(v)}" for k, v in sorted(f["origen_de_fallos"].items())))
+    if f["reglas_mas_violadas"]:
+        lineas.append("  Reglas más violadas:")
+        orden = sorted(f["reglas_mas_violadas"].items(), key=lambda kv: (-kv[1], kv[0]))
+        lineas += [f"    {k}: {_veces(v)}" for k, v in orden]
+    for r in f["rechazos_repetidos_del_esceptico"]:
+        lineas.append(f"  El escéptico rechazó {_veces(r['veces'])} en {r['fase']}:")
+        lineas += [f"    - {razon}" for razon in r["razones"]]
+    return lineas
+
+
+def render(datos: dict) -> str:
+    """El reporte como texto plano."""
+    secciones = [
+        ("Resumen", _seccion_resumen(datos)),
+        ("Fallaron estando implementadas", _seccion_fallaron(datos)),
+        ("Deuda", _seccion_deuda(datos)),
+        ("Hallazgos", _seccion_hallazgos(datos)),
+        ("Fases", _seccion_fases(datos)),
+    ]
+    if datos["ilegibles"]:
+        secciones.append(("Archivos que no se pudieron leer",
+                          [f"  {ruta}" for ruta in datos["ilegibles"]]))
+    lineas = ["HARNESS · reporte"]
+    for titulo, cuerpo in secciones:
+        lineas += ["", titulo, *cuerpo]
+    return "\n".join(lineas) + "\n"

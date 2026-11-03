@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -209,6 +210,63 @@ class TestCasosLimite(Base):
             ".claude/biblioteca/entradas/ISR-9-fase_1-h1.md",
             ".claude/biblioteca/entradas/suelta.md"])
         self.assertEqual(datos["resumen"]["lecciones_aprobadas"], 4)
+
+
+class TestRender(Base):
+    def test_secciones_en_orden(self):
+        self._sembrar()
+        texto = report.render(report.agregar(self.root))
+        encabezados = ["HARNESS · reporte", "Resumen", "Fallaron estando implementadas",
+                       "Deuda", "Hallazgos", "Fases"]
+        lineas = texto.splitlines()
+        indices = [lineas.index(e) for e in encabezados]
+        self.assertEqual(indices, sorted(indices))
+
+    def test_deuda_dice_cuanto_costo(self):
+        self._sembrar()
+        texto = report.render(report.agregar(self.root))
+        linea = next(l for l in texto.splitlines() if REF_B in l)
+        self.assertIn("costó otra vez 2×", linea)
+
+    def test_falla_muestra_lo_que_debio_hacer(self):
+        self._sembrar()
+        self.assertIn("volvió", report.render(report.agregar(self.root)))
+
+    def test_secciones_vacias(self):
+        texto = report.render(report.agregar(self.root))
+        self.assertGreaterEqual(texto.count("Sin datos todavía."), 4)
+        self.assertNotIn("Archivos que no se pudieron leer", texto)
+
+    def test_ilegibles_aparecen(self):
+        self._sembrar()
+        (biblioteca.biblioteca_dir(self.root) / "entradas" / "suelta.md").write_text(
+            "sin encabezado\n", encoding="utf-8")
+        texto = report.render(report.agregar(self.root))
+        self.assertIn("Archivos que no se pudieron leer", texto)
+        self.assertIn("suelta.md", texto)
+
+
+class TestCli(Base):
+    def _correr(self, *extra):
+        return subprocess.run(
+            [sys.executable, str(RAIZ / "harness" / "hooks" / "cli.py"), "report",
+             "--project", str(self.root), *extra],
+            capture_output=True, encoding="utf-8")
+
+    def test_cli_report_texto_y_json(self):
+        self._sembrar()
+        r = self._correr()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Resumen", r.stdout)
+        self.assertIn("costó otra vez 2×", r.stdout)
+        r = self._correr("--json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)["resumen"]["tickets"], 2)
+
+    def test_cli_report_proyecto_vacio(self):
+        r = self._correr()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Sin datos todavía.", r.stdout)
 
 
 if __name__ == "__main__":

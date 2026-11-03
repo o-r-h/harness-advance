@@ -7,6 +7,7 @@ aquí. El modelo invoca estos subcomandos; no escribe el estado a mano.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from datetime import date
 import sys
@@ -16,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import (biblioteca, checks, contracts, gitdiff, hallazgos as lib_hallazgos,  # noqa: E402
                  harness, plugins, prueba_manual, state)
+import report  # noqa: E402
 
 VALIDADORES = {
     "ticket_context": contracts.validate_ticket_context,
@@ -561,6 +563,16 @@ def cmd_hallazgos_pendientes(args) -> int:
     return 0
 
 
+def cmd_report(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    datos = report.agregar(raiz)
+    if args.json:
+        print(json.dumps(datos, ensure_ascii=False, indent=2))
+    else:
+        sys.stdout.write(report.render(datos))
+    return 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="harness-cli", description=__doc__)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -648,6 +660,11 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("hallazgos-pendientes", help="Lista los hallazgos sin resolver")
     p.add_argument("--project")
     p.set_defaults(func=cmd_hallazgos_pendientes)
+
+    p = sub.add_parser("report", help="Reporte de solo lectura de lecciones, hallazgos y fases")
+    p.add_argument("--project")
+    p.add_argument("--json", action="store_true", help="Imprime los datos en JSON")
+    p.set_defaults(func=cmd_report)
 
     return parser
 
