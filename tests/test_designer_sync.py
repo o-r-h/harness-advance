@@ -131,6 +131,34 @@ class TestDesignerSync(unittest.TestCase):
             "        Next\n    End Sub"), encoding="utf-8")
         self.assertEqual(self.correr(self.vb), [])
 
+    def test_otras_formas_de_declarar_un_local_o_un_parametro(self):
+        # Los WebMethods reales nombran sus parámetros igual que los hidden fields.
+        self.vb.write_text(CODEBEHIND.replace(
+            "    End Sub",
+            "    End Sub\n"
+            "    Public Shared Function Guardar2(hdnViejoSinDesigner As String, "
+            "Optional ByVal x As Integer = 0) As String\n"
+            "        Dim a As Integer = 0, hdnOtro As String = hdnViejoSinDesigner\n"
+            "        For i As Integer = 0 To 3\n        Next\n"
+            "        For Each fila In New String() {}\n            fila.Trim()\n        Next\n"
+            "        Return hdnViejoSinDesigner.Trim() + hdnOtro.Trim()\n"
+            "    End Function"), encoding="utf-8")
+        self.aspx.write_text(ASPX.replace(
+            "</form>", '<input type="hidden" id="hdnOtro" runat="server" />\n</form>'),
+            encoding="utf-8")
+        self.assertEqual(self.errores(self.correr(self.vb)), [])
+
+    def test_un_template_anidado_con_el_mismo_nombre(self):
+        self.agregar_al_aspx('<asp:Repeater ID="rptA" runat="server"><ItemTemplate>\n'
+                             '<asp:Repeater ID="rptB" runat="server"><ItemTemplate>\n'
+                             '</ItemTemplate></asp:Repeater>\n'
+                             '<asp:Label ID="lblDespues" runat="server" />\n'
+                             '</ItemTemplate></asp:Repeater>')
+        detalles = " ".join(h["detalle"] for h in self.correr(self.aspx))
+        self.assertIn("rptA", detalles)
+        self.assertNotIn("lblDespues", detalles)
+        self.assertNotIn("rptB", detalles)
+
     def test_un_identificador_con_prefijo_que_no_esta_en_ningun_lado_es_warning(self):
         self.agregar_al_vb("txtInventado.Text = \"1\"")
         hallazgos = self.correr(self.vb)

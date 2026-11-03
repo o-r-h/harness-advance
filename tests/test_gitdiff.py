@@ -124,6 +124,25 @@ class TestDecodificacionConBom(unittest.TestCase):
         archivo.write_bytes("uno\r\nnueva línea\r\ndos\r\n".encode("utf-16"))
         self.assertEqual(gitdiff.added_lines(self.root, archivo), [(2, "nueva línea")])
 
+    def test_utf16_con_el_proyecto_en_una_subcarpeta_del_repo(self):
+        # git show HEAD:<ruta> se resuelve desde el toplevel; el proyecto no lo es.
+        sub = self.root / "proyecto"
+        sub.mkdir()
+        archivo = sub / "sp.sql"
+        archivo.write_bytes("uno\r\ndos\r\n".encode("utf-16"))
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+        archivo.write_bytes("uno\r\nnueva\r\ndos\r\n".encode("utf-16"))
+        self.assertEqual(gitdiff.added_lines(sub, archivo), [(2, "nueva")])
+
+    def test_un_utf16_guardado_sin_bom_no_pasa_sin_verificar(self):
+        archivo = self.root / "sp.sql"
+        archivo.write_bytes("uno\r\ndos\r\n".encode("utf-16"))
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+        archivo.write_bytes("uno\r\nnueva\r\ndos\r\n".encode("utf-8"))
+        self.assertEqual(gitdiff.added_lines(self.root, archivo), [(2, "nueva")])
+
     def test_added_lines_de_un_utf16_sin_rastrear_devuelve_todo(self):
         archivo = self.root / "nuevo.sql"
         archivo.write_bytes("a\r\nb\r\n".encode("utf-16"))

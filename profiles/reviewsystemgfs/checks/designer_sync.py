@@ -27,9 +27,9 @@ EXTENSIONES = (".aspx", ".ascx", ".master")
 RE_COMENTARIO_MARKUP = re.compile(r"<%--.*?--%>|<!--.*?-->", re.DOTALL)
 # Los controles de un template se instancian por fila: el designer no los declara.
 # ContentTemplate (UpdatePanel) es de instancia única y sí se declara.
-RE_TEMPLATE = re.compile(
-    r"<(?P<tag>(?:\w+:)?(?!Content)\w*Template)\b[^>]*>.*?</(?P=tag)\s*>",
-    re.IGNORECASE | re.DOTALL)
+RE_TAG_TEMPLATE = re.compile(
+    r"<(?P<cierre>/)?(?P<tag>(?:\w+:)?(?!Content)\w*Template)\b[^>]*?(?P<auto>/)?>",
+    re.IGNORECASE)
 RE_TAG = re.compile(r"<(?P<tag>[\w:.-]+)\b(?P<atributos>[^>]*)>", re.DOTALL)
 RE_RUNAT = re.compile(r"\brunat\s*=\s*[\"']?server\b", re.IGNORECASE)
 RE_ID = re.compile(r"\bID\s*=\s*[\"'](?P<id>\w+)[\"']", re.IGNORECASE)
@@ -39,7 +39,9 @@ SIN_DECLARACION = {"asp:content"}
 
 RE_DECLARACION_VB = re.compile(
     r"\b(?:Dim|ByVal|ByRef|Each|Using|Catch|Const|Static|WithEvents|Protected|Private|"
-    r"Public|Friend|Shared|ReadOnly)\s+(?P<id>\w+)\s*(?:As\b|=|,|\(|$)", re.IGNORECASE)
+    r"Public|Friend|Shared|ReadOnly|Optional)\s+(?P<id>\w+)\s*(?:As\b|=|,|\(|$)"
+    # For i As..., For Each x In...; parámetros sin ByVal y declaradores tras coma.
+    r"|\bFor\s+(?:Each\s+)?(?P<id_for>\w+)\b|[(,]\s*(?P<id_lista>\w+)\s+As\b", re.IGNORECASE)
 # Un identificador suelto, no miembro de otro objeto (objRet.hdnX no es el control).
 RE_IDENTIFICADOR_VB = re.compile(r"(?<![\w.])(?P<id>[A-Za-z_]\w*)(?P<miembro>\s*\.)?")
 # Prefijos de control usados en el proyecto; la heurística de warning solo mira estos.
@@ -79,10 +81,36 @@ def _codigo_vb(linea: str) -> str:
     return re.sub(r"\bMe\s*\.\s*", "", codigo, flags=re.IGNORECASE)
 
 
+def _sin_templates(texto: str) -> str:
+    """Borra el contenido de los templates, contando anidados: un regex no codicioso
+    cerraría el externo en el </ItemTemplate> del interno."""
+    partes: list[str] = []
+    abiertos = 0
+    inicio = 0
+    cursor = 0
+    for tag in RE_TAG_TEMPLATE.finditer(texto):
+        if tag.group("auto"):
+            continue
+        if tag.group("cierre"):
+            if abiertos == 0:
+                continue
+            abiertos -= 1
+            if abiertos == 0:
+                partes.append(texto[cursor:inicio])
+                partes.append(re.sub(r"[^\n]", " ", texto[inicio:tag.end()]))
+                cursor = tag.end()
+        else:
+            if abiertos == 0:
+                inicio = tag.start()
+            abiertos += 1
+    partes.append(texto[cursor:])
+    return "".join(partes)
+
+
 def _controles_markup(texto: str) -> list[tuple[str, int]]:
     """(id, línea) de cada control runat="server" que el designer debe declarar."""
     limpio = RE_COMENTARIO_MARKUP.sub(_en_blanco, texto)
-    limpio = RE_TEMPLATE.sub(_en_blanco, limpio)
+    limpio = _sin_templates(limpio)
     controles: list[tuple[str, int]] = []
     for tag in RE_TAG.finditer(limpio):
         if tag.group("tag").lower() in SIN_DECLARACION:
@@ -98,7 +126,7 @@ def _controles_markup(texto: str) -> list[tuple[str, int]]:
 def _declarados(texto_vb: str) -> set[str]:
     declarados: set[str] = set()
     for linea in texto_vb.splitlines():
-        declarados |= {m.group("id").lower()
+        declarados |= {(m.group("id") or m.group("id_for") or m.group("id_lista")).lower()
                        for m in RE_DECLARACION_VB.finditer(_codigo_vb(linea))}
     return declarados
 

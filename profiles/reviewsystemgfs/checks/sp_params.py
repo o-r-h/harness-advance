@@ -132,14 +132,27 @@ def _metodos(logicas):
     return [b for b in bloques if b]
 
 
+def _vns_de_variable(metodo, variable: str) -> dict[str, list[int]]:
+    """Vn de las asignaciones a `variable` dentro del método: Dim v ... =, v =, v &=, v +=.
+
+    Solo esas: los Vn escritos en otra llamada o en otra variable no son de esta.
+    """
+    asignacion = re.compile(
+        r"^\s*(?:Dim\s+)?" + re.escape(variable) + r"\b(?:\s+As\s+[\w.]+)?\s*(?:&=|\+=|=)",
+        re.IGNORECASE)
+    vns: dict[str, list[int]] = {}
+    for codigo, numeros in metodo:
+        encontrada = asignacion.match(codigo)
+        if encontrada is None:
+            continue
+        for vn in RE_VN_ENVIADO.finditer(codigo[encontrada.end():]):
+            vns.setdefault(vn.group("vn").upper(), []).extend(numeros)
+    return vns
+
+
 def _llamadas(texto: str, agregadas: set[int]) -> list[Llamada]:
     llamadas: list[Llamada] = []
     for metodo in _metodos(_lineas_logicas(texto.splitlines())):
-        vns_metodo: dict[str, list[int]] = {}
-        for codigo, numeros in metodo:
-            for vn in RE_VN_ENVIADO.finditer(codigo):
-                vns_metodo.setdefault(vn.group("vn").upper(), []).extend(numeros)
-
         for codigo, numeros in metodo:
             for encontrada in RE_LLAMADA.finditer(codigo):
                 argumentos = _argumentos(codigo, encontrada.end() - 1)
@@ -156,7 +169,7 @@ def _llamadas(texto: str, agregadas: set[int]) -> list[Llamada]:
                     fuentes = {m.group("vn").upper(): numeros
                                for m in RE_VN_ENVIADO.finditer(parametros)}
                 elif re.fullmatch(r"\w+", parametros):
-                    fuentes = vns_metodo
+                    fuentes = _vns_de_variable(metodo, parametros)
                 else:
                     fuentes = {}
 
@@ -287,8 +300,13 @@ def _verificar(raiz: Path, archivo: Path, llamada: Llamada, indice: dict[str, Pa
                          f"perdería en silencio, sin error en ninguna capa"))
 
     if llamada.nueva and llamada.validar is not None and ramas and llamada.validar not in ramas:
+        # Con solo "If @Validar = 0" el SP no despacha por @Validar: corre igual y solo
+        # cambia @Resul (bOk). Puede estar bien si el llamador solo lee el DataSet.
+        sin_despacho = ramas == {"0"}
         hallazgos.append(_hallazgo(
-            "error", f"{archivo.name}:{llamada.linea} se llama a '{llamada.sp}' con @Validar = "
+            "warning" if sin_despacho else "error", f"{archivo.name}:{llamada.linea} se llama a '{llamada.sp}' con @Validar = "
                      f"{llamada.validar} pero el SP no tiene esa rama (tiene: "
-                     f"{', '.join(sorted(ramas, key=int))}; {mostrado}): el SP no haría nada"))
+                     f"{', '.join(sorted(ramas, key=int))}; {mostrado}): "
+                     + ("el SP corre igual, pero @Resul queda vacío y bOk sale False"
+                        if sin_despacho else "el SP no haría nada")))
     return hallazgos

@@ -17,6 +17,7 @@ BOMS = ((codecs.BOM_UTF32_LE, "utf-32-le"), (codecs.BOM_UTF32_BE, "utf-32-be"),
         (codecs.BOM_UTF8, "utf-8"), (codecs.BOM_UTF16_LE, "utf-16-le"),
         (codecs.BOM_UTF16_BE, "utf-16-be"))
 BOMS_ANCHOS = (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
+RE_BINARIO = re.compile(r"^Binary files .* differ$", re.MULTILINE)
 
 
 def _decodificar_con_respaldo(datos: bytes) -> str:
@@ -96,6 +97,11 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     diff = _git(raiz, "diff", "HEAD", "--unified=0", "--no-color", "--", relativo)
     if diff is None or diff.returncode != 0:
         return None
+    if RE_BINARIO.search(diff.stdout):
+        # Era UTF-16 en HEAD y ya no lo es: git lo sigue viendo binario.
+        previo = _git(raiz, "show", f"HEAD:./{relativo}", crudo=True)
+        if previo is not None and previo.returncode == 0 and previo.stdout.startswith(BOMS_ANCHOS):
+            return _agregadas_por_comparacion(raiz, relativo, actual)
 
     agregadas: list[tuple[int, str]] = []
     linea_actual = 0
@@ -117,7 +123,9 @@ def _agregadas_por_comparacion(raiz: Path, relativo: str,
     `git diff` solo diría "Binary files differ" y el cambio quedaría sin
     verificar en silencio; aquí se compara el texto decodificado contra HEAD.
     """
-    previo = _git(raiz, "show", f"HEAD:{relativo}", crudo=True)
+    # "./" hace que git resuelva la ruta desde project_root y no desde el toplevel
+    # del repo: el proyecto puede vivir en una subcarpeta.
+    previo = _git(raiz, "show", f"HEAD:./{relativo}", crudo=True)
     if previo is None:
         return None
     anteriores = (_decodificar_con_respaldo(previo.stdout).splitlines()

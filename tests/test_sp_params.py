@@ -277,6 +277,43 @@ class TestSpParams(unittest.TestCase):
                         'Dim r = lConsulta.EjecutarSp("ReviewInsUpd", 7, parametros, ds, "")')
         self.assertTrue(any("V22" in h["detalle"] for h in self.errores(self.correr())))
 
+    def test_los_vn_en_linea_de_otra_llamada_no_se_atribuyen_a_la_variable(self):
+        # Forma de GetAuditHeaderAIReportLimit (frmReviewReport.aspx.vb) + una llamada nueva.
+        self.en_guardar('Dim parametros As String = "|V1=" + a + "|"',
+                        'Dim r = lConsulta.EjecutarSp("ReviewGetFilters", 4, parametros, ds, "")')
+        _git(self.root, "commit", "-am", "viejo")
+        texto = self.vb.read_text(encoding="utf-8")
+        self.vb.write_text(texto.replace(
+            '        Dim r = lConsulta.EjecutarSp("ReviewGetFilters", 4, parametros, ds, "")\n',
+            '        Dim r = lConsulta.EjecutarSp("ReviewGetFilters", 4, parametros, ds, "")\n'
+            '        r = lConsulta.EjecutarSp("ReviewInsUpd", 7, "|V9=" + x + "|V21=" + y + "|")\n'),
+            encoding="utf-8")
+        self.assertEqual(self.correr(), [])
+
+    def test_cada_variable_lleva_sus_propios_vn(self):
+        self.en_guardar('Dim parametros As String = "|V1=" + a + "|"',
+                        'Dim p2 As String = "|V1=" + a + "|"',
+                        'p2 = p2 + "|V2=" + b + "|"',
+                        'p2 &= "|V3=" + c',
+                        'Dim r = lConsulta.EjecutarSp("ReviewGetFilters", 4, parametros)',
+                        'r = lConsulta.EjecutarSp("ReviewGetFiltersInsitu", 4, p2)')
+        detalles = [h["detalle"] for h in self.errores(self.correr())]
+        # V2 es de p2 y lo parsea Insitu; V3 tambien es de p2 y Insitu no lo parsea.
+        self.assertEqual(len(detalles), 1, detalles)
+        self.assertIn("V3", detalles[0])
+        self.assertIn("ReviewGetFiltersInsitu", detalles[0])
+
+    def test_un_sp_que_solo_tiene_validar_0_no_despacha_y_es_warning(self):
+        # 38 SPs de PrimusGFS: "If @Validar = 0" solo arma @Resul; el SELECT corre siempre.
+        self.escribir_sp("SinDespacho.sql", "CREATE Proc SinDespacho As\n"
+                         "Exec SepararCadena 'V1', @Parametros, '|', @Valor1 OutPut\n"
+                         "Select 1\nIf @Validar = 0 Set @Resul = 'ok'\n")
+        self.en_guardar('lConsulta.EjecutarSp("SinDespacho", 1, "|V1=" + a + "|")')
+        hallazgos = self.correr()
+        self.assertEqual(self.errores(hallazgos), [])
+        self.assertTrue(any("@Validar = 1" in h["detalle"] and h["severidad"] == "warning"
+                            for h in hallazgos))
+
     def test_los_vn_de_otro_metodo_no_se_atribuyen(self):
         self.vb.write_text(VB_BASE.replace(
             "        Dim x As Integer = 1\n",
