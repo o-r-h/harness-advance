@@ -394,15 +394,9 @@ Documentos de diseño:
 
 Menores abiertos:
 
-- `/hallazgo` no funciona entre tickets: exige fase activa (`no hay fase activa: corre 'open-fase'`).
-- `open-ticket` no valida la forma del id del ticket, y las referencias
-  `TICKET/fase_N/hN` sí la exigen (`[A-Za-z0-9][A-Za-z0-9_-]*`): un id raro se acepta al
-  abrir y falla después al referenciarlo.
 - `resumen.volvieron_sin_pieza` del reporte es histórico: cuenta las lecciones con al
   menos una falla `sin pieza` aunque después se hayan implementado, así que puede ser
   mayor que lo que lista la Deuda.
-- El reporte lista como ilegible la entrada de un ticket cuyo id lleva punto o caracteres
-  no ASCII, porque `RE_REFERENCIA` es más estricto que `open-ticket`.
 - La sección Fases del reporte es larga con datos reales: lista todas las fases, las
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.
@@ -415,9 +409,6 @@ Límites conocidos de los checks y del diff (revisión del paso 4, 03-11-2026):
   `|V27=` que el SP no parsea ahí pasa sin aviso.
 - `sp_params` da `error` para `IF @Validar = 1 ... ELSE ...` llamado con otro valor; en
   el corpus actual solo aparece en SPs sin `@Parametros`.
-- `gitdiff`: un archivo renombrado con `git mv` cuenta todas sus líneas como agregadas,
-  y las rutas con acentos (que git cita en octal) no llegan a `archivos_modificados`:
-  ese archivo no se revisa.
 
 Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; el
 paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;

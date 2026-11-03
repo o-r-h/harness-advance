@@ -363,9 +363,10 @@ Agrega una lección que viste tú y que ningún agente vio. Entra **ya aprobada*
   la corrige (`regla`, `check`, `skill`, `hook` o `agente`), y el agente los pasa al
   CLI. Por ejemplo:
   `/hallazgo "..." — dimensión dominio, componente regla`
-- **Corre:** `cli.py hallazgo --texto "..." [--dimension ...] [--componente ...]`
-- **Requisito:** hay que tener una fase activa. Entre tickets todavía no funciona
-  (ver [Pendientes conocidos](docs/tecnico.md#pendientes-conocidos)).
+- **Corre:** `cli.py hallazgo --texto "..." [--dimension ...] [--componente ...] [--ticket ... --fase ...]`
+- **Entre tickets** (sin fase activa), di de qué fase es:
+  `/hallazgo "..." — ticket ISR-110722, fase fase_2`, y el agente pasa
+  `--ticket ISR-110722 --fase fase_2`. La fase tiene que haberse abierto alguna vez.
 
 #### `/hallazgo-hecho <ref> "<nota>"`
 

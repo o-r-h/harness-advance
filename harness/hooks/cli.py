@@ -573,15 +573,28 @@ def cmd_resolver_hallazgo(args) -> int:
 
 def cmd_hallazgo(args) -> int:
     raiz = resolver_proyecto(args.project)
-    activa = _fase_activa(raiz)
-    if activa is None:
-        return _error("no hay fase activa: corre 'open-fase'")
-    ticket_id, _, fase, _ = activa
+    if bool(args.ticket) != bool(args.fase):
+        return _error("--ticket y --fase van juntos: indica los dos o ninguno")
+    if args.ticket:
+        # Entre tickets no hay fase activa: la lección se cuelga de una fase que ya existió.
+        error = _validar_ticket_y_fase(args.ticket, args.fase)
+        if error:
+            return _error(error)
+        if state.leer_fase(raiz, args.ticket, args.fase) is None:
+            return _error(f"la fase '{args.fase}' del ticket '{args.ticket}' no se ha abierto")
+        ticket_id, fase_id = args.ticket, args.fase
+    else:
+        activa = _fase_activa(raiz)
+        if activa is None:
+            return _error("no hay fase activa: corre 'open-fase', o indica de qué fase es "
+                          "la lección con --ticket <id> --fase fase_N")
+        ticket_id, _, fase, _ = activa
+        fase_id = fase["id"]
     if not args.texto.strip():
         return _error("--texto no puede estar vacío")
 
-    datos = lib_hallazgos.leer(raiz, ticket_id, fase["id"]) or {
-        "ticket_id": ticket_id, "fase_id": fase["id"], "hallazgos": []}
+    datos = lib_hallazgos.leer(raiz, ticket_id, fase_id) or {
+        "ticket_id": ticket_id, "fase_id": fase_id, "hallazgos": []}
     numeros = [int(h["id"][1:]) for h in datos["hallazgos"]]
     nuevo = {"id": f"h{max(numeros, default=0) + 1}", "origen": "humano",
              "estado": "aprobado", "leccion": args.texto}
@@ -591,9 +604,10 @@ def cmd_hallazgo(args) -> int:
         nuevo["componente"] = args.componente
     datos["hallazgos"].append(nuevo)
 
-    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo, fecha=_hoy())
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, nuevo, fecha=_hoy())
     lib_hallazgos.guardar(raiz, datos)
-    print(f"Hallazgo {nuevo['id']} aprobado: {entrada}")
+    ref = lib_hallazgos.referencia(ticket_id, fase_id, nuevo["id"])
+    print(f"Hallazgo {ref} aprobado: {entrada}")
     return 0
 
 
@@ -912,6 +926,8 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--texto", required=True)
     p.add_argument("--dimension", choices=sorted(contracts.DIMENSIONES))
     p.add_argument("--componente", choices=sorted(contracts.COMPONENTES))
+    p.add_argument("--ticket", help="con --fase: la fase a la que pertenece, sin fase activa")
+    p.add_argument("--fase")
     p.set_defaults(func=cmd_hallazgo)
 
     p = sub.add_parser("hallazgo-hecho", help="Marca una lección como implementada")

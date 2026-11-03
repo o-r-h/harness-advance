@@ -406,6 +406,26 @@ class TestHallazgoHumano(Base):
         harness.write_current(self.root, TICKET, None)
         resultado = correr("hallazgo", *self.p, "--texto", "algo")
         self.assertEqual(resultado.returncode, 1)
+        self.assertIn("--ticket", resultado.stderr)
+
+    def test_hallazgo_humano_entre_tickets_con_ticket_y_fase(self):
+        # Backlog: entre tickets no hay fase activa; se cuelga de una fase que ya existió.
+        self.preparar(cerrar=False)
+        harness.write_current(self.root, TICKET, None)
+        resultado = correr("hallazgo", *self.p, "--texto", "Una lección de cierre",
+                           "--ticket", TICKET, "--fase", "fase_1")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.guardados()["hallazgos"][-1]["leccion"], "Una lección de cierre")
+        self.assertIn(f"{TICKET}/fase_1/h", resultado.stdout)
+
+    def test_hallazgo_humano_ticket_y_fase_van_juntos_y_la_fase_debe_existir(self):
+        self.preparar(cerrar=False)
+        for extra in (("--ticket", TICKET), ("--fase", "fase_1"),
+                      ("--ticket", TICKET, "--fase", "fase_9"),
+                      ("--ticket", "ISR.1", "--fase", "fase_1")):
+            with self.subTest(extra=extra):
+                resultado = correr("hallazgo", *self.p, "--texto", "x", *extra)
+                self.assertEqual(resultado.returncode, 1)
 
 
 class TestPendientesYBiblioteca(Base):
