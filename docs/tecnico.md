@@ -335,7 +335,7 @@ Documentos de diseño:
 ```
 ├── harness/                  harness genérico → ~/.claude/
 │   ├── agents/               skeptic.md, reflector.md
-│   ├── commands/             /ticket-abrir, /fase, /fase-ok, /fase-fallo, /hallazgo*, /hallazgo-hecho
+│   ├── commands/             /ticket-abrir, /fase, /fase-pausa, /fase-ok, /fase-fallo, /hallazgo*, /hallazgo-hecho
 │   ├── hooks/                check_rules.py (PostToolUse), gate_phase.py (Stop), cli.py, report.py, lib/
 │   └── skills/               ticket-loop, task-planner
 ├── profiles/                 un perfil por proyecto → <proyecto>/.claude/

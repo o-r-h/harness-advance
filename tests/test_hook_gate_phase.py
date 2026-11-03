@@ -15,7 +15,8 @@ from lib import harness  # noqa: E402
 def lanzar(payload: dict, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(HOOK)], input=json.dumps(payload),
                           capture_output=True, text=True, encoding="utf-8",
-                          env={**os.environ, **(env or {})})
+                          env={**{k: v for k, v in os.environ.items() if k != "HARNESS_STOP"},
+                              **(env or {})})
 
 
 class TestHookStop(unittest.TestCase):

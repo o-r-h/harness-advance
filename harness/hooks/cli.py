@@ -149,13 +149,12 @@ def cmd_open_fase(args) -> int:
     existente = state.leer_fase(raiz, ticket_id, fase["id"])
     if existente is not None and existente["estado"] == "pausada":
         estado = state.reanudar_fase(raiz, ticket_id, fase["id"])
-        harness.write_current(raiz, ticket_id, fase["id"])
-        print(f"Fase {fase['id']} reanudada en estado '{estado['estado']}', "
-              f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
-        return 0
-    estado = state.abrir_fase(raiz, ticket_id, fase)
+        resumen = f"reanudada en estado '{estado['estado']}'"
+    else:
+        estado = state.abrir_fase(raiz, ticket_id, fase)
+        resumen = f"en estado '{estado['estado']}'"
     harness.write_current(raiz, ticket_id, fase["id"])
-    print(f"Fase {fase['id']} en estado '{estado['estado']}', "
+    print(f"Fase {fase['id']} {resumen}, "
           f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
     print(f"Ejecutor: {fase.get('agente_ejecutor') or 'el agente del perfil'}")
     return 0
@@ -206,7 +205,7 @@ def cmd_pausar_fase(args) -> int:
                                motivo=args.motivo or "sin motivo", fecha=_hoy())
     print(f"Fase {fase['id']} pausada, intento {estado['intento_actual']}/"
           f"{estado['max_reintentos']}")
-    print(f"Para retomarla: /fase {fase['id']}")
+    print(f"Para retomarla: /fase {fase['id']} (ticket {ticket_id})")
     return 0
 
 

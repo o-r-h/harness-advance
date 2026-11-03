@@ -76,6 +76,6 @@ else {
   # solo si lo escribe; con un JSON roto sale con 1 sin escribir nada.
   & python (Join-Path $Fuente "registrar_hooks.py") --settings $Settings --hooks-dir (Join-Path $Global "hooks")
   if ($LASTEXITCODE -ne 0) {
-    throw "No se pudieron registrar los hooks: settings.json no se tocó ($Settings). Corrígelo o usa -SinHooks."
+    throw "registrar_hooks.py falló (ver el mensaje de arriba); settings.json quedó como estaba ($Settings). Usa -SinHooks para registrarlos a mano."
   }
 }

@@ -7,6 +7,7 @@ cada uno como subproceso. Las pruebas de cada pieza viven en sus propios archivo
 esta atrapa lo que se rompe entre piezas.
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,7 +29,8 @@ LECCION = "Antes de entregar, buscar y resolver los TODO del cambio"
 
 def _python(script: Path, *args: str, entrada: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, str(script), *args], input=entrada,
-                          capture_output=True, text=True, encoding="utf-8")
+                          capture_output=True, text=True, encoding="utf-8",
+                          env={k: v for k, v in os.environ.items() if k != "HARNESS_STOP"})
 
 
 class CicloCompleto(unittest.TestCase):
