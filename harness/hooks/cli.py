@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import (biblioteca, checks, contracts, gitdiff, hallazgos as lib_hallazgos,  # noqa: E402
-                 harness, plugins, prueba_manual, state)
+                 harness, plugins, prueba_manual, senales, state)
 import report  # noqa: E402
 
 VALIDADORES = {
@@ -619,6 +619,23 @@ def cmd_reconstruir_biblioteca(args) -> int:
     return 0
 
 
+def cmd_senales_biblioteca(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    datos = senales.senales(raiz)
+    if args.json:
+        print(json.dumps(datos, ensure_ascii=False, indent=2))
+        return 0
+    if not datos["lecciones"]:
+        print("La biblioteca no tiene lecciones aprobadas.")
+    for leccion in datos["lecciones"]:
+        ultimo = f" (último {leccion['ultimo_uso']})" if leccion["ultimo_uso"] else ""
+        rutas = leccion["rutas_ausentes"]
+        texto_rutas = ("desconocido" if rutas is None else ", ".join(rutas) or "ninguna")
+        print(f"{leccion['ref']} — usos {leccion['usos']}{ultimo} — rutas ausentes: "
+              f"{texto_rutas}")
+    return 0
+
+
 def cmd_hallazgos_pendientes(args) -> int:
     raiz = resolver_proyecto(args.project)
     lineas = []
@@ -736,6 +753,12 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("reconstruir-biblioteca", help="Regenera INDEX.md desde las entradas")
     p.add_argument("--project")
     p.set_defaults(func=cmd_reconstruir_biblioteca)
+
+    p = sub.add_parser("senales-biblioteca",
+                       help="Usos, último uso y rutas ausentes de cada lección")
+    p.add_argument("--project")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(func=cmd_senales_biblioteca)
 
     p = sub.add_parser("hallazgos-pendientes", help="Lista los hallazgos sin resolver")
     p.add_argument("--project")

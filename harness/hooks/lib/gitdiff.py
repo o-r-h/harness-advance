@@ -139,6 +139,14 @@ def _agregadas_por_comparacion(raiz: Path, relativo: str,
     return agregadas
 
 
+def archivos_rastreados(project_root: Path) -> list[str] | None:
+    """Rutas que git rastrea bajo project_root, relativas a él; None sin git usable."""
+    salida = _git(Path(project_root), "ls-files", "-z", crudo=True)
+    if salida is None or salida.returncode != 0:
+        return None
+    return [_decodificar_con_respaldo(r) for r in salida.stdout.split(b"\0") if r]
+
+
 def archivos_modificados(project_root: Path) -> list[Path]:
     """Archivos con cambios respecto a HEAD, incluidos los sin rastrear."""
     raiz = Path(project_root).resolve()
