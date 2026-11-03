@@ -8,7 +8,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 CLI = RAIZ / "harness" / "hooks" / "cli.py"
 sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
-from lib import biblioteca, hallazgos, harness, state  # noqa: E402
+from lib import biblioteca, contracts, hallazgos, harness, state  # noqa: E402
 
 REGLAS = {"perfil": "p", "audit_comments": {"requerido": True, "severidad": "error"}}
 TICKET = "ISR-110722"
@@ -434,6 +434,112 @@ class TestPendientesYBiblioteca(Base):
         resultado = correr("validate", *self.p, "--contrato", "hallazgos", "--archivo",
                            str(hallazgos.ruta(self.root, TICKET, "fase_1")))
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
+
+
+class TestReincidencia(Base):
+    ORIGINAL = f"{TICKET}/fase_1/h1"
+    NUEVA = f"{TICKET}/fase_2/h1"
+
+    def setUp(self):
+        self.preparar()
+        self.proponer(1)
+        self.resolver("--id", "h1", "--decision", "ok")
+        correr("open-fase", *self.p, "--fase", "fase_2")
+        state.aprobar_fase(self.root, TICKET, "fase_2")
+
+    def proponer_reincide(self, ref: str | None, fase: str = "fase_2"):
+        item = _hallazgo(1)
+        if ref is not None:
+            item["reincide"] = ref
+        ruta = self.root / "propuesta2.json"
+        ruta.write_text(json.dumps({"fase_id": fase, "hallazgos": [item]}), encoding="utf-8")
+        return correr("record-hallazgos", *self.p, "--archivo", str(ruta))
+
+    def entradas(self) -> int:
+        return len(list((biblioteca.biblioteca_dir(self.root) / "entradas").glob("*.md")))
+
+    def test_registra_el_campo_reincide(self):
+        resultado = self.proponer_reincide(self.ORIGINAL)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.guardados("fase_2")["hallazgos"][0]["reincide"], self.ORIGINAL)
+        md = hallazgos.ruta(self.root, TICKET, "fase_2").with_suffix(".md")
+        self.assertIn(f"reincide en {self.ORIGINAL}", md.read_text(encoding="utf-8"))
+
+    def test_reincide_hacia_rechazada_o_inexistente(self):
+        rechazada = f"{TICKET}/fase_1/h9"
+        biblioteca.escribir_entrada(self.root, TICKET, "fase_1",
+                                    {"id": "h9", "estado": "rechazado", "leccion": "x"})
+        for ref in (rechazada, "ISR-9/fase_1/h1"):
+            with self.subTest(ref=ref):
+                resultado = self.proponer_reincide(ref)
+                self.assertEqual(resultado.returncode, 1)
+                self.assertIn("no es una lección aprobada", resultado.stderr)
+                self.assertIsNone(self.guardados("fase_2"))
+
+    def test_aprobar_reincidencia_no_crea_entrada(self):
+        self.proponer_reincide(self.ORIGINAL)
+        antes = self.entradas()
+        resultado = self.resolver("--decision", "ok", "--id", self.NUEVA)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.entradas(), antes)
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.ORIGINAL)["fallas"][0]["ref"],
+                         self.NUEVA)
+        self.assertIn(f"aprobado como reincidencia de {self.ORIGINAL}", resultado.stdout)
+
+    def test_editar_reincidencia_guarda_la_leccion_corregida(self):
+        self.proponer_reincide(self.ORIGINAL)
+        resultado = self.resolver("--decision", "editar", "--id", self.NUEVA,
+                                  "--texto", "Usar curl.exe")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        falla = biblioteca.leer_entrada(self.root, self.ORIGINAL)["fallas"][0]
+        self.assertEqual(falla["leccion"], "Usar curl.exe")
+
+    def test_nueva_ignora_reincide(self):
+        self.proponer_reincide(self.ORIGINAL)
+        resultado = self.resolver("--decision", "ok", "--id", self.NUEVA, "--nueva")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertTrue((biblioteca.biblioteca_dir(self.root) / "entradas"
+                         / f"{TICKET}-fase_2-h1.md").is_file())
+        self.assertNotIn("reincide", self.guardados("fase_2")["hallazgos"][0])
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.ORIGINAL)["fallas"], [])
+
+    def test_reincide_manual_sin_marca_del_reflector(self):
+        self.proponer_reincide(None)
+        antes = self.entradas()
+        resultado = self.resolver("--decision", "ok", "--id", self.NUEVA,
+                                  "--reincide", self.ORIGINAL)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertEqual(self.entradas(), antes)
+        self.assertEqual(len(biblioteca.leer_entrada(self.root, self.ORIGINAL)["fallas"]), 1)
+
+    def test_reincide_manual_hacia_inexistente_no_escribe(self):
+        self.proponer_reincide(None)
+        resultado = self.resolver("--decision", "ok", "--id", self.NUEVA,
+                                  "--reincide", "ISR-9/fase_1/h1")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("no es una lección aprobada", resultado.stderr)
+        self.assertEqual(self.guardados("fase_2")["hallazgos"][0]["estado"], "propuesto")
+
+    def test_opciones_incompatibles(self):
+        self.proponer_reincide(None)
+        casos = (("--decision", "ok", "--nueva", "--reincide", self.ORIGINAL),
+                 ("--decision", "no", "--motivo", "m", "--nueva"),
+                 ("--decision", "no", "--motivo", "m", "--reincide", self.ORIGINAL))
+        for caso in casos:
+            with self.subTest(caso=caso):
+                resultado = self.resolver("--id", self.NUEVA, *caso)
+                self.assertEqual(resultado.returncode, 1)
+                self.assertEqual(self.guardados("fase_2")["hallazgos"][0]["estado"],
+                                 "propuesto")
+
+    def test_toda_aprobacion_lleva_fecha(self):
+        self.proponer_reincide(None)
+        self.resolver("--decision", "ok", "--id", self.NUEVA)
+        entrada = biblioteca.leer_entrada(self.root, self.NUEVA)
+        self.assertRegex(entrada["aprobada"], contracts.RE_FECHA)
+        correr("hallazgo", *self.p, "--texto", "t")
+        humano = biblioteca.leer_entrada(self.root, f"{TICKET}/fase_2/h2")
+        self.assertRegex(humano["aprobada"], contracts.RE_FECHA)
 
 
 if __name__ == "__main__":

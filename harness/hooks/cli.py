@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from datetime import date
 import sys
 from pathlib import Path
 
@@ -358,6 +359,14 @@ def _fase_objetivo(raiz: Path, ref: str, ticket: str | None,
     return ticket_activo, fase_activa, ref
 
 
+def _hoy() -> str:
+    return date.today().strftime("%d-%m-%Y")
+
+
+def _no_es_aprobada(ref: str) -> str:
+    return f"'{ref}', que no es una lección aprobada de la biblioteca"
+
+
 def cmd_record_hallazgos(args) -> int:
     raiz = resolver_proyecto(args.project)
     if bool(args.ticket) != bool(args.fase):
@@ -388,6 +397,12 @@ def cmd_record_hallazgos(args) -> int:
         return _error(f"la propuesta dice fase '{propuesta['fase_id']}' pero se registra "
                       f"en '{fase_id}'")
 
+    for i, h in enumerate(propuesta["hallazgos"]):
+        ref = h.get("reincide")
+        if ref and biblioteca.leer_entrada(raiz, ref) is None:
+            return _error(f"la propuesta dice que hallazgos[{i}] reincide en '{ref}', "
+                          f"que no es una lección aprobada de la biblioteca")
+
     previo = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     existentes = (previo or {}).get("hallazgos", [])
     if any(h.get("origen") != "humano" and h.get("estado") != "propuesto" for h in existentes):
@@ -404,6 +419,8 @@ def cmd_record_hallazgos(args) -> int:
         item = {"id": f"h{numero}", "origen": "reflector", "estado": "propuesto"}
         for campo in ("senal", "leccion", "evidencia", "confianza", "dimension", "componente"):
             item[campo] = h[campo]
+        if h.get("reincide"):
+            item["reincide"] = h["reincide"]
         items.append(item)
     datos = {"ticket_id": ticket_id, "fase_id": fase_id, "hallazgos": items}
     md = lib_hallazgos.guardar(raiz, datos)
@@ -428,6 +445,13 @@ def cmd_resolver_hallazgo(args) -> int:
     if args.decision == "editar" and not args.texto:
         return _error("editar un hallazgo exige --texto con la lección corregida")
 
+    if args.decision == "no" and (args.nueva or args.reincide):
+        return _error("--nueva y --reincide solo valen al aprobar (--decision ok|editar)")
+    if args.nueva and args.reincide:
+        return _error("--nueva y --reincide se excluyen: elige una")
+    if args.reincide and not contracts.RE_REFERENCIA.fullmatch(args.reincide):
+        return _error(f"--reincide '{args.reincide}' no tiene la forma TICKET/fase_N/hN")
+
     datos = lib_hallazgos.leer(raiz, ticket_id, fase_id)
     if datos is None:
         return _error(f"la fase '{fase_id}' del ticket '{ticket_id}' no tiene hallazgos")
@@ -439,6 +463,12 @@ def cmd_resolver_hallazgo(args) -> int:
     if hallazgo["estado"] != "propuesto":
         return _error(f"el hallazgo {ref} ya está '{hallazgo['estado']}'")
 
+    ref_efectiva = None
+    if args.decision != "no" and not args.nueva:
+        ref_efectiva = args.reincide or hallazgo.get("reincide")
+        if ref_efectiva and biblioteca.leer_entrada(raiz, ref_efectiva) is None:
+            return _error(f"el hallazgo {ref} reincide en {_no_es_aprobada(ref_efectiva)}")
+
     if args.decision == "no":
         hallazgo["estado"] = "rechazado"
         hallazgo["motivo"] = args.motivo
@@ -447,9 +477,18 @@ def cmd_resolver_hallazgo(args) -> int:
             hallazgo["leccion_original"] = hallazgo.get("leccion", "")
             hallazgo["leccion"] = args.texto
         hallazgo["estado"] = "aprobado"
+        if ref_efectiva:
+            hallazgo["reincide"] = ref_efectiva
+        else:
+            hallazgo.pop("reincide", None)
 
     lib_hallazgos.guardar(raiz, datos)
-    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo)
+    if ref_efectiva:
+        entrada = biblioteca.registrar_falla(raiz, ref_efectiva, ref,
+                                             hallazgo.get("leccion", ""), _hoy())
+        print(f"Hallazgo {ref} aprobado como reincidencia de {ref_efectiva}: {entrada}")
+        return 0
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase_id, hallazgo, fecha=_hoy())
     print(f"Hallazgo {ref} {hallazgo['estado']}: {entrada}")
     return 0
 
@@ -475,7 +514,7 @@ def cmd_hallazgo(args) -> int:
     datos["hallazgos"].append(nuevo)
 
     lib_hallazgos.guardar(raiz, datos)
-    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo)
+    entrada = biblioteca.escribir_entrada(raiz, ticket_id, fase["id"], nuevo, fecha=_hoy())
     print(f"Hallazgo {nuevo['id']} aprobado: {entrada}")
     return 0
 
@@ -564,6 +603,10 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--decision", required=True, choices=["ok", "no", "editar"])
     p.add_argument("--texto")
     p.add_argument("--motivo")
+    p.add_argument("--nueva", action="store_true",
+                   help="No es reincidencia: ignora el reincide del hallazgo")
+    p.add_argument("--reincide", metavar="REF",
+                   help="Es reincidencia de esta lección aprobada (TICKET/fase_N/hN)")
     p.add_argument("--ticket")
     p.add_argument("--fase")
     p.set_defaults(func=cmd_resolver_hallazgo)

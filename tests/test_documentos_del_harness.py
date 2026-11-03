@@ -120,6 +120,13 @@ class TestComandosDeHallazgos(unittest.TestCase):
                 self.assertIn("/fase_N/hN", pista.group(1))
                 self.assertNotIn("--fase", texto, "la referencia se pasa tal cual en --id")
 
+    def test_ok_y_editar_documentan_nueva_y_reincide(self):
+        for nombre in ("hallazgo-ok", "hallazgo-editar"):
+            with self.subTest(comando=nombre):
+                texto = leer("harness", "commands", f"{nombre}.md")
+                self.assertIn("--nueva", texto)
+                self.assertIn("--reincide", texto)
+
 
 class TestComandoFaseFallo(unittest.TestCase):
     def test_si_la_fase_escala_sigue_con_el_cierre(self):
