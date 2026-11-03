@@ -102,6 +102,21 @@ def _validar_checks(datos) -> list[str]:
     return [] if ok else ["checks: requerido, lista"]
 
 
+def _reincidencias_sin_pieza(project_root: Path, lecciones: list[dict]) -> int:
+    """Veces distintas que una lección volvió a fallar sin pieza (por la ref del hallazgo
+    nuevo). Cuenta también las retiradas: es histórico y no baja al curar. Por ref y no
+    por lección, porque una fusión copia las fallas al destino."""
+    refs = {f["ref"] for e in lecciones for f in _fallas(e, "sin pieza")}
+    retiradas = biblioteca.biblioteca_dir(project_root) / "retiradas"
+    for archivo in sorted(retiradas.glob("*.md")) if retiradas.is_dir() else []:
+        try:
+            texto = archivo.read_text(encoding="utf-8")
+        except _ERRORES_DE_LECTURA:
+            continue
+        refs |= {f["ref"] for f in biblioteca._fallas(texto) if f["tipo"] == "sin pieza"}
+    return len(refs)
+
+
 def _curacion(project_root: Path, ilegibles: list[str]) -> dict:
     datos = senales.senales(project_root)
     try:
@@ -207,7 +222,7 @@ def agregar(project_root: Path) -> dict:
             "lecciones_aprobadas": len(lecciones),
             "implementadas": len(implementadas),
             "fallaron_implementadas": len(fallaron),
-            "volvieron_sin_pieza": sum(1 for e in lecciones if _fallas(e, "sin pieza")),
+            "volvieron_sin_pieza": _reincidencias_sin_pieza(project_root, lecciones),
         },
         "fallaron_implementadas": fallaron,
         "deuda": deuda,

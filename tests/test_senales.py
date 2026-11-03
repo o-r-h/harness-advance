@@ -98,6 +98,16 @@ class TestUsos(Base):
         self.assertEqual(self.leccion(REF_A)["usos"], 1)
         self.assertEqual(self.leccion(REF_A)["ultimo_uso"], "ISR-10")
 
+    def test_los_usos_siguen_fusiones_en_cadena(self):
+        # Revisión del paso 5, M3: B se fusiona en A y después A en C.
+        ref_c = "ISR-1/fase_1/h3"
+        for id in ("h1", "h2", "h3"):
+            _entrada(self.raiz, id)
+        _plan(self.raiz, "ISR-10", "01-10-2026", [[REF_B]])
+        biblioteca.fusionar(self.raiz, REF_A, [REF_B], "x", None, "02-11-2026")
+        biblioteca.fusionar(self.raiz, ref_c, [REF_A], "y", None, "03-11-2026")
+        self.assertEqual(self.leccion(ref_c)["usos"], 1)
+
     def test_trae_fallas_implementada_y_senal(self):
         _entrada(self.raiz, "h1")
         biblioteca.registrar_falla(self.raiz, REF_A, "ISR-2/fase_1/h1", "x", "02-11-2026")

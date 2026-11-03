@@ -114,7 +114,7 @@ En `.harness/curacion.json` (`contracts.validate_curacion`) cada acción suma `i
 Aplicar una **retirada** mueve la entrada a `retiradas/` y le agrega la línea
 `retirada`. Aplicar una **fusión** reemplaza la `lección` (y la `señal`, si viene) del
 destino, guarda la anterior como `lección original` si no tenía una, copia las líneas
-`falló` de las absorbidas y les agrega una línea `fusionada` a cada una; después las
+`falló` de las absorbidas (y sus propias líneas `fusionada`, para que una fusión en cadena siga contando los usos) y les agrega una línea `fusionada` a cada una; después las
 absorbidas se retiran con motivo `fusionada en <destino>`.
 
 ### Contrato de hallazgos y `reincide`
@@ -148,6 +148,7 @@ lleva líneas que escribe solo el CLI (`harness/hooks/lib/biblioteca.py`):
 | `- **implementada**: <fecha> · <nota>` | `hallazgo-hecho` | La pieza que pedía la lección ya existe. Una sola línea: marcar de nuevo la reemplaza |
 | `- **falló**: <fecha> · <ref nueva> · implementada\|sin pieza — <lección>` | `resolver-hallazgo` al aprobar una reincidencia | La lección volvió a fallar. Guarda su estado **en ese momento**, así "falló estando implementada" no depende de fechas ni del estado de hoy. Puede haber varias |
 | `- **fusionada**: <fecha> · <ref absorbida>[ · implementada <fecha> · <nota>]` | `resolver-curacion`, en el destino de una fusión | Esa lección se fusionó en esta. Una por absorbida; las señales siguen esta línea para contar los usos |
+| `- **lección reemplazada**: <fecha> · <lección>` | `resolver-curacion`, en el destino de una fusión que ya tenía `lección original` | La lección que la fusión reemplaza, para no perder la que el humano aprobó antes (por otra fusión o al editar) |
 | `- **retirada**: <fecha> · <motivo>` | `resolver-curacion`, al retirar o al absorber | La lección salió de `entradas/`. Va en el archivo de `retiradas/` |
 
 Las líneas que el código no conoce (agregadas a mano, o con CRLF tras un checkout de
@@ -394,9 +395,6 @@ Documentos de diseño:
 
 Menores abiertos:
 
-- `resumen.volvieron_sin_pieza` del reporte es histórico: cuenta las lecciones con al
-  menos una falla `sin pieza` aunque después se hayan implementado, así que puede ser
-  mayor que lo que lista la Deuda.
 - La sección Fases del reporte es larga con datos reales: lista todas las fases, las
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.

@@ -91,7 +91,16 @@ class TestAgregar(Base):
     def test_resumen(self):
         self.assertEqual(self.datos["resumen"], {
             "tickets": 2, "fases": 3, "fases_escaladas": 1, "lecciones_aprobadas": 4,
-            "implementadas": 1, "fallaron_implementadas": 1, "volvieron_sin_pieza": 1})
+            "implementadas": 1, "fallaron_implementadas": 1, "volvieron_sin_pieza": 2})
+
+    def test_volvieron_sin_pieza_no_baja_al_retirar_ni_al_fusionar(self):
+        # Revisión del paso 5, M5: es histórico; cuenta reincidencias, no lecciones.
+        biblioteca.registrar_falla(self.root, REF_C, "ISR-4/fase_1/h1", "c", "05-11-2026")
+        antes = report.agregar(self.root)["resumen"]["volvieron_sin_pieza"]
+        biblioteca.fusionar(self.root, REF_B, [REF_C], "b y c", None, "06-11-2026")
+        self.assertEqual(report.agregar(self.root)["resumen"]["volvieron_sin_pieza"], antes)
+        biblioteca.retirar(self.root, REF_B, "obsoleta", "06-11-2026")
+        self.assertEqual(report.agregar(self.root)["resumen"]["volvieron_sin_pieza"], antes)
 
     def test_fallaron_implementadas(self):
         lista = self.datos["fallaron_implementadas"]

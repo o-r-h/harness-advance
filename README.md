@@ -410,9 +410,10 @@ Léelas en ese orden.
 
 **Resumen.** Los contadores: tickets, fases, fases escaladas, lecciones aprobadas,
 implementadas, las que fallaron estando implementadas y las que volvieron sin pieza.
-Ojo: *volvieron sin pieza* es **histórico**. Cuenta las lecciones que fallaron al menos
-una vez cuando no tenían pieza, aunque luego la hayas construido, así que puede ser
-mayor que lo que lista la Deuda.
+Ojo: *volvieron sin pieza* es **histórico**. Cuenta las veces que una lección volvió a
+fallar cuando no tenía pieza (una por reincidencia), aunque luego hayas construido la
+pieza o la lección se haya retirado o fusionado en una curación, así que puede ser
+mayor que lo que lista la Deuda. Curar no lo baja.
 
 **Fallaron estando implementadas.** Cada lección que volvió a fallar *después* de
 marcarla con `/hallazgo-hecho`, con su señal, su pieza y, por cada falla, la fecha, el

@@ -101,6 +101,15 @@ class TestFusionar(Base):
         self.assertIn("- **lección original**: la del reflector", texto)
         self.assertEqual(texto.count("lección original"), 1)
 
+    def test_una_segunda_fusion_no_pierde_la_leccion_de_la_primera(self):
+        # Revisión del paso 5, M2: la lección que el humano aprobó en la primera fusión.
+        self.fusionar(leccion="primera fusionada")
+        biblioteca.fusionar(self.raiz, REF_A, [REF_C], "segunda fusionada", None, "04-11-2026")
+        texto = self.texto(biblioteca.entrada_path(self.raiz, REF_A))
+        self.assertIn("- **lección**: segunda fusionada", texto)
+        self.assertIn("- **lección original**: lección h1", texto)
+        self.assertIn("- **lección reemplazada**: 04-11-2026 · primera fusionada", texto)
+
     def test_fusionar_copia_las_fallas_de_las_absorbidas(self):
         biblioteca.registrar_falla(self.raiz, REF_B, "ISR-2/fase_1/h1", "volvió", "02-11-2026")
         self.fusionar()
