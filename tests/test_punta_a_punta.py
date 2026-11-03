@@ -230,6 +230,7 @@ class CicloCompleto(unittest.TestCase):
         self.assertEqual(datos["fases"]["origen_de_fallos"],
                          {"check": 2, "esceptico": 1, "humano": 1})
         self.assertEqual(datos["fases"]["reglas_mas_violadas"], {"no_todo": 2})
+        self.assertEqual(datos["fases"]["pausas_por_fase"], {"ISR-1/fase_1": 1})
         self.assertEqual((datos["hallazgos"]["aprobados_tal_cual"],
                           datos["hallazgos"]["reincidencias"]), (1, 1))
         self.assertIn(ref, self.cli("report").stdout)
