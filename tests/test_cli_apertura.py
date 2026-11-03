@@ -54,6 +54,19 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
         self.assertEqual(ctx["nroticket"], "110722")
         self.assertEqual(harness.read_current(self.root)["ticket_id"], "ISR-110722")
 
+    def test_open_ticket_rechaza_un_id_que_no_sirve_para_referencias(self):
+        # Backlog: un id con punto, espacio o acento se aceptaba y fallaba después al
+        # referenciar sus hallazgos (TICKET/fase_N/hN) y en el reporte.
+        for ticket in ("ISR.110722", "ISR 1", "ISR-ñ1", "_ISR", "../x"):
+            with self.subTest(ticket=ticket):
+                resultado = correr("open-ticket", "--project", str(self.root),
+                                   "--ticket-id", ticket, "--nroticket", "1",
+                                   "--desarrollador", "OMAR RODRIGUEZ", "--fecha",
+                                   "28-07-2026", "--perfil", "reviewsystemgfs")
+                self.assertEqual(resultado.returncode, 1)
+                self.assertIn("letras, dígitos, '-' o '_'", resultado.stderr)
+                self.assertFalse(harness.ticket_dir(self.root, ticket).exists())
+
     def test_open_ticket_rechaza_una_fecha_en_formato_iso(self):
         resultado = correr("open-ticket", "--project", str(self.root),
                            "--ticket-id", "ISR-1", "--nroticket", "1",

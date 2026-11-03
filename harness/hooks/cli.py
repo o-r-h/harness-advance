@@ -85,6 +85,10 @@ def _fase_corriendo(raiz: Path) -> tuple[str, str, str] | None:
 
 def cmd_open_ticket(args) -> int:
     raiz = resolver_proyecto(args.project)
+    if not RE_TICKET_ID.match(args.ticket_id):
+        return _error(f"--ticket-id '{args.ticket_id}' no es válido: usa solo letras, "
+                      f"dígitos, '-' o '_' (sin acentos ni puntos), empezando por letra o "
+                      f"dígito; las referencias TICKET/fase_N/hN lo exigen")
     corriendo = _fase_corriendo(raiz)
     if corriendo:
         return _error(f"la fase '{corriendo[1]}' del ticket '{corriendo[0]}' está en estado "
@@ -386,7 +390,7 @@ def cmd_record_manual(args) -> int:
 
 # Referencia completa de un hallazgo, tal como la imprime 'hallazgos-pendientes'.
 RE_REF_HALLAZGO = re.compile(r"^([A-Za-z0-9][\w.-]*)/(fase_\d+)/(h\d+)$")
-RE_TICKET_ID = re.compile(r"^[A-Za-z0-9][\w.-]*$")
+RE_TICKET_ID = contracts.RE_TICKET_ID
 
 
 def _validar_ticket_y_fase(ticket: str | None, fase: str | None) -> str | None:

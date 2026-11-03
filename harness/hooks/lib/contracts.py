@@ -34,7 +34,11 @@ ORIGENES_HALLAZGO = frozenset({"reflector", "humano"})
 RE_HALLAZGO_ID = re.compile(r"^h\d+$")
 # Referencia a otro hallazgo: TICKET/fase_N/hN.
 # El ticket no puede traer "\", "." ni "..": la referencia se convierte en una ruta.
-RE_REFERENCIA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/fase_\d+/h\d+$")
+# Forma de un id de ticket: la misma que exige la referencia, y ASCII porque el id
+# se vuelve nombre de carpeta y de archivo de la biblioteca.
+TICKET_ID = r"[A-Za-z0-9][A-Za-z0-9_-]*"
+RE_TICKET_ID = re.compile(rf"^{TICKET_ID}$")
+RE_REFERENCIA = re.compile(rf"^{TICKET_ID}/fase_\d+/h\d+$")
 
 
 def _texto(data: dict, campo: str, errores: list[str], prefijo: str = "") -> None:
