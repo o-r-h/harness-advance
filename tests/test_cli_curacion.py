@@ -151,5 +151,120 @@ class TestRecordCuracion(Base):
         self.assertIsNone(curacion.leer(self.root))
 
 
+class TestResolverCuracion(Base):
+    def setUp(self):
+        super().setUp()
+        self.proponer(_fusionar(), _retirar())
+
+    def resolver(self, id: str, decision: str, *extra: str) -> subprocess.CompletedProcess:
+        return correr("resolver-curacion", "--project", str(self.root), "--id", id,
+                      "--decision", decision, *extra)
+
+    def accion(self, id: str) -> dict:
+        return next(a for a in self.acciones() if a["id"] == id)
+
+    def test_ok_retira(self):
+        salida = self.resolver("c2", "ok")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_C),
+                         ("retiradas", "contradice agent-x §2"))
+        self.assertEqual(self.accion("c2")["estado"], "aprobado")
+        self.assertRegex(self.accion("c2")["fecha_resuelta"], r"^\d{2}-\d{2}-\d{4}$")
+
+    def test_ok_fusiona(self):
+        self.assertEqual(self.resolver("c1", "ok").returncode, 0)
+        self.assertEqual(biblioteca.leer_entrada(self.root, REF_A)["leccion"],
+                         "lección fusionada")
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_B)[0], "retiradas")
+
+    def test_editar_fusion_cambia_texto_y_senal(self):
+        salida = self.resolver("c1", "editar", "--texto", "la mía", "--senal", "señal mía")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        entrada = biblioteca.leer_entrada(self.root, REF_A)
+        self.assertEqual((entrada["leccion"], entrada["senal"]), ("la mía", "señal mía"))
+        self.assertEqual((self.accion("c1")["leccion"], self.accion("c1")["senal"]),
+                         ("la mía", "señal mía"))
+
+    def test_editar_quita_una_ref_y_esa_queda_en_entradas(self):
+        self.proponer(_fusionar(refs=(REF_A, REF_B, REF_C)))
+        salida = self.resolver("c3", "editar", "--quitar", REF_C)
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_C), ("entradas", ""))
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_B)[0], "retiradas")
+        self.assertEqual(self.accion("c3")["refs"], [REF_A, REF_B])
+
+    def test_quitar_el_destino_o_dejar_una_sola_ref_es_error(self):
+        for extra in (("--quitar", REF_A), ("--quitar", REF_B)):
+            salida = self.resolver("c1", "editar", *extra)
+            self.assertEqual(salida.returncode, 1, extra)
+        self.assertEqual(self.accion("c1")["estado"], "propuesto")
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_B), ("entradas", ""))
+
+    def test_editar_fusion_sin_nada_que_editar_es_error(self):
+        self.assertEqual(self.resolver("c1", "editar").returncode, 1)
+
+    def test_editar_retirar_exige_motivo_y_lo_usa(self):
+        self.assertEqual(self.resolver("c2", "editar").returncode, 1)
+        salida = self.resolver("c2", "editar", "--motivo", "obsoleta desde ISR-9")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_C),
+                         ("retiradas", "obsoleta desde ISR-9"))
+
+    def test_no_exige_motivo_y_escribe_el_rechazo_versionado(self):
+        self.assertEqual(self.resolver("c2", "no").returncode, 1)
+        salida = self.resolver("c2", "no", "--motivo", "sigue vigente")
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_C), ("entradas", ""))
+        self.assertEqual(self.accion("c2")["motivo_rechazo"], "sigue vigente")
+        texto = curacion.ruta_rechazos(self.root).read_text(encoding="utf-8")
+        self.assertRegex(texto, rf"- \d{{2}}-\d{{2}}-\d{{4}} · c2 · retirar · {REF_C} — "
+                                r"sigue vigente\n")
+
+    def test_el_primer_rechazo_crea_el_archivo_con_encabezado_y_el_segundo_no_lo_repite(self):
+        self.resolver("c1", "no", "--motivo", "no son lo mismo")
+        self.resolver("c2", "no", "--motivo", "sigue vigente")
+        texto = curacion.ruta_rechazos(self.root).read_text(encoding="utf-8")
+        self.assertTrue(texto.startswith(curacion.ENCABEZADO_RECHAZOS + "\n\n"))
+        self.assertEqual(texto.count(curacion.ENCABEZADO_RECHAZOS), 1)
+        self.assertIn(f"c1 · fusionar · {REF_A}, {REF_B} — no son lo mismo", texto)
+        self.assertEqual(len(texto.strip().splitlines()), 4)
+
+    def test_una_accion_ya_resuelta_no_se_resuelve_otra_vez(self):
+        self.resolver("c2", "ok")
+        salida = self.resolver("c2", "no", "--motivo", "x")
+        self.assertEqual(salida.returncode, 1)
+        self.assertIn("aprobado", salida.stderr)
+
+    def test_una_ref_que_ya_no_esta_en_entradas_falla_sin_escribir(self):
+        biblioteca.retirar(self.root, REF_B, "a mano", "02-11-2026")
+        antes = biblioteca.entrada_path(self.root, REF_A).read_text(encoding="utf-8")
+        salida = self.resolver("c1", "ok")
+        self.assertEqual(salida.returncode, 1)
+        self.assertIn(REF_B, salida.stderr)
+        self.assertEqual(biblioteca.entrada_path(self.root, REF_A).read_text(encoding="utf-8"),
+                         antes)
+        self.assertEqual(self.accion("c1")["estado"], "propuesto")
+
+    def test_una_leccion_anclada_por_el_ticket_abierto_no_se_toca(self):
+        harness.write_json(harness.ticket_dir(self.root, "ISR-7") / "plan.json", {
+            "ticket_id": "ISR-7", "fases": [{"id": "fase_1", "anclajes": [
+                {"ref": ".claude/biblioteca/entradas/ISR-1-fase_1-h3.md",
+                 "confianza": "por_confirmar"}]}]})
+        harness.write_current(self.root, "ISR-7", "fase_1")
+        salida = self.resolver("c2", "ok")
+        self.assertEqual(salida.returncode, 1)
+        self.assertIn("ISR-7", salida.stderr)
+        self.assertEqual(biblioteca.ubicacion(self.root, REF_C), ("entradas", ""))
+
+    def test_un_id_inexistente_lista_los_validos(self):
+        salida = self.resolver("c9", "ok")
+        self.assertEqual(salida.returncode, 1)
+        self.assertIn("c1, c2", salida.stderr)
+
+    def test_quitar_o_senal_no_valen_en_retirar_ni_con_ok(self):
+        self.assertEqual(self.resolver("c2", "editar", "--quitar", REF_A).returncode, 1)
+        self.assertEqual(self.resolver("c1", "ok", "--texto", "x").returncode, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

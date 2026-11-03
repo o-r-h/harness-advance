@@ -686,6 +686,97 @@ def cmd_record_curacion(args) -> int:
     return 0
 
 
+def _anclada_por_el_ticket_abierto(raiz: Path, refs: list[str]) -> tuple[str, str] | None:
+    """(ref, ticket) si el plan del ticket de current.json ancla alguna de las refs."""
+    actual = harness.read_current(raiz) or {}
+    ticket = actual.get("ticket_id")
+    plan = harness.ticket_dir(raiz, ticket) / "plan.json" if ticket else None
+    if plan is None or not plan.is_file():
+        return None
+    nombres = set()
+    for fase in harness.read_json(plan).get("fases") or []:
+        for ancla in fase.get("anclajes") or []:
+            nombres.add(str(ancla.get("ref", "")).replace("\\", "/").rsplit("/", 1)[-1])
+    for ref in refs:
+        if biblioteca.entrada_path(raiz, ref).name in nombres:
+            return ref, ticket
+    return None
+
+
+def cmd_resolver_curacion(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    datos = lib_curacion.leer(raiz)
+    acciones = (datos or {}).get("acciones", [])
+    accion = next((a for a in acciones if a["id"] == args.id), None)
+    if accion is None:
+        validos = ", ".join(a["id"] for a in acciones) or "ninguno"
+        return _error(f"la acción '{args.id}' no existe; ids válidos: {validos}")
+    if accion["estado"] != "propuesto":
+        return _error(f"la acción {args.id} ya está '{accion['estado']}'")
+
+    de_fusion = args.texto or args.senal or args.quitar
+    if args.decision != "editar" and (de_fusion or (args.motivo and args.decision == "ok")):
+        return _error("--texto, --senal, --quitar y --motivo solo valen al editar "
+                      "(y --motivo también al rechazar)")
+    if args.decision == "no":
+        if not (args.motivo or "").strip():
+            return _error("rechazar una acción exige --motivo: el curador lo lee para no "
+                          "volver a proponerla")
+        accion.update(estado="rechazado", motivo_rechazo=args.motivo, fecha_resuelta=_hoy())
+        rechazos = lib_curacion.registrar_rechazo(raiz, accion, _hoy())
+        lib_curacion.guardar(raiz, datos)
+        print(f"Acción {args.id} rechazada: {rechazos}")
+        return 0
+
+    if args.decision == "editar":
+        if accion["tipo"] == "retirar":
+            if de_fusion:
+                return _error("--texto, --senal y --quitar solo valen al editar una fusión")
+            if not (args.motivo or "").strip():
+                return _error("editar una retirada exige --motivo con el motivo corregido")
+            accion["motivo"] = args.motivo
+        else:
+            if not de_fusion:
+                return _error("editar una fusión exige --texto, --senal o --quitar")
+            for ref in args.quitar or []:
+                if ref == accion["destino"]:
+                    return _error(f"no se puede quitar el destino {ref}: rechaza la acción "
+                                  f"si no es esa la lección que queda")
+                if ref not in accion["refs"]:
+                    return _error(f"'{ref}' no está en la fusión {args.id}")
+            refs = [r for r in accion["refs"] if r not in (args.quitar or [])]
+            if len(refs) < 2:
+                return _error("quitando esas refs queda una sola lección: no hay fusión; "
+                              "rechaza la acción")
+            accion["refs"] = refs
+            if args.texto:
+                accion["leccion"] = args.texto
+            if args.senal:
+                accion["senal"] = args.senal
+
+    refs = lib_curacion.refs_de(accion)
+    for ref in refs:
+        if biblioteca.leer_entrada(raiz, ref) is None:
+            return _error(f"la acción {args.id} nombra {_fuera_de_entradas(raiz, ref)}")
+    anclada = _anclada_por_el_ticket_abierto(raiz, refs)
+    if anclada:
+        return _error(f"la lección {anclada[0]} la ancla el ticket abierto {anclada[1]}: "
+                      f"resuélvela al cerrarlo")
+
+    # La biblioteca se escribe antes que curacion.json: si falla, la acción sigue
+    # 'propuesto' y se puede reintentar.
+    if accion["tipo"] == "retirar":
+        ruta = biblioteca.retirar(raiz, accion["ref"], accion["motivo"], _hoy())
+    else:
+        otras = [r for r in accion["refs"] if r != accion["destino"]]
+        ruta = biblioteca.fusionar(raiz, accion["destino"], otras, accion["leccion"],
+                                   accion.get("senal"), _hoy())
+    accion.update(estado="aprobado", fecha_resuelta=_hoy())
+    lib_curacion.guardar(raiz, datos)
+    print(f"Acción {args.id} aplicada: {ruta}")
+    return 0
+
+
 def cmd_hallazgos_pendientes(args) -> int:
     raiz = resolver_proyecto(args.project)
     lineas = []
@@ -814,6 +905,16 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--project")
     p.add_argument("--archivo", required=True)
     p.set_defaults(func=cmd_record_curacion)
+
+    p = sub.add_parser("resolver-curacion", help="Aplica, edita o rechaza una acción de curación")
+    p.add_argument("--project")
+    p.add_argument("--id", required=True, help="cN")
+    p.add_argument("--decision", required=True, choices=["ok", "no", "editar"])
+    p.add_argument("--texto", help="editar una fusión: la lección corregida")
+    p.add_argument("--senal", help="editar una fusión: la señal corregida")
+    p.add_argument("--quitar", action="append", help="editar una fusión: ref a sacar")
+    p.add_argument("--motivo", help="rechazar, o editar una retirada")
+    p.set_defaults(func=cmd_resolver_curacion)
 
     p = sub.add_parser("hallazgos-pendientes", help="Lista los hallazgos sin resolver")
     p.add_argument("--project")
