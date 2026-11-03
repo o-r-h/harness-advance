@@ -72,7 +72,8 @@ def _clasificar_lecciones(lecciones: list[dict]) -> tuple[list, list, dict]:
         fallas = _fallas(e, "implementada")
         if fallas:
             fallaron.append({"ref": e["ref"], "senal": _senal(e),
-                             "componente": e["componente"], "fallas": fallas})
+                             "componente": e["componente"],
+                             "implementada": e["implementada"], "fallas": fallas})
     deuda: dict[str, list[dict]] = {}
     for e in lecciones:
         if e["implementada"]:
@@ -221,7 +222,8 @@ def _seccion_resumen(datos: dict) -> list[str]:
 def _seccion_fallaron(datos: dict) -> list[str]:
     lineas = []
     for e in datos["fallaron_implementadas"]:
-        lineas.append(f"  {e['ref']} — {e['senal']} (pieza: {e['componente']})")
+        lineas.append(f"  {e['ref']} — {e['senal']} (pieza: {e['componente']}) "
+                      f"(implementada {e['implementada']})")
         for f in e["fallas"]:
             lineas.append(f"    {f['fecha']} en {f['ref']}: {f['leccion']}")
     return lineas or [_SIN_DATOS]

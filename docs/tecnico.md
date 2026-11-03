@@ -344,6 +344,11 @@ Menores abiertos:
 - `resumen.volvieron_sin_pieza` del reporte es histórico: cuenta las lecciones con al
   menos una falla `sin pieza` aunque después se hayan implementado, así que puede ser
   mayor que lo que lista la Deuda.
+- El reporte lista como ilegible la entrada de un ticket cuyo id lleva punto o caracteres
+  no ASCII, porque `RE_REFERENCIA` es más estricto que `open-ticket`.
+- La sección Fases del reporte es larga con datos reales: lista todas las fases, las
+  razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
+  errores.
 
 Orden acordado de lo que sigue (el paso 1, el reporte y las reincidencias, está hecho):
 

@@ -373,7 +373,9 @@ mayor que lo que lista la Deuda.
 
 **Fallaron estando implementadas.** Cada lección que volvió a fallar *después* de
 marcarla con `/hallazgo-hecho`, con su señal, su pieza y, por cada falla, la fecha, el
-ticket y lo que debió hacerse. Es la sección más grave: **la pieza no funciona**.
+ticket y lo que debió hacerse. Junto a cada lección se muestra su marca `implementada`
+actual (fecha y nota): una falla anterior a una marca nueva se lee como historia.
+Es la sección más grave: **la pieza no funciona**.
 Qué hacer:
 
 1. Abre la lección y la falla, y averigua por qué la pieza no la atrapó: ¿el patrón

@@ -98,6 +98,7 @@ class TestAgregar(Base):
         self.assertEqual([e["ref"] for e in lista], [REF_A])
         self.assertEqual(len(lista[0]["fallas"]), 1)
         self.assertEqual(lista[0]["componente"], "check")
+        self.assertEqual(lista[0]["implementada"], "02-11-2026 · check designer_x")
 
     def test_deuda_agrupa_y_ordena(self):
         deuda = self.datos["deuda"]
@@ -227,6 +228,11 @@ class TestRender(Base):
         texto = report.render(report.agregar(self.root))
         linea = next(l for l in texto.splitlines() if REF_B in l)
         self.assertIn("costó otra vez 2×", linea)
+
+    def test_fallaron_muestra_la_marca_implementada(self):
+        self._sembrar()
+        texto = report.render(report.agregar(self.root))
+        self.assertIn("(implementada 02-11-2026 · check designer_x)", texto)
 
     def test_falla_muestra_lo_que_debio_hacer(self):
         self._sembrar()
