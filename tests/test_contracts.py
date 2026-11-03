@@ -362,6 +362,18 @@ class TestReincide(unittest.TestCase):
             self.assertTrue(any(e.startswith("hallazgos[0].reincide:") for e in errores),
                             (malo, errores))
 
+    def test_referencia_rechaza_ticket_que_se_sale_de_la_carpeta(self):
+        for malo in (r"..\..\x/fase_1/h1", "../x/fase_1/h1", "a.b/fase_1/h1", "..x/fase_1/h1"):
+            with self.subTest(ref=malo):
+                self.assertIsNone(contracts.RE_REFERENCIA.fullmatch(malo))
+                datos = copy.deepcopy(PROPUESTA_OK)
+                datos["hallazgos"][0]["reincide"] = malo
+                self.assertTrue(contracts.validate_propuesta_hallazgos(datos))
+
+    def test_referencia_acepta_ids_reales(self):
+        for bueno in ("ISR-109204-P5/fase_1/h2", "ISR-111269-T10/fase_12/h10", "T/fase_1/h1"):
+            self.assertIsNotNone(contracts.RE_REFERENCIA.fullmatch(bueno), bueno)
+
     def test_hallazgos_guardado_acepta_reincide(self):
         self.assertEqual(
             contracts.validate_hallazgos(_guardado(reincide="ISR-109204-P5/fase_1/h2")), [])

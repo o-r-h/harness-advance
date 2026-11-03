@@ -102,6 +102,7 @@ class TestComandosDeHallazgos(unittest.TestCase):
         "hallazgo-no": "resolver-hallazgo --decision no",
         "hallazgo-editar": "resolver-hallazgo --decision editar",
         "hallazgo": 'hallazgo --texto',
+        "hallazgo-hecho": "hallazgo-hecho --id",
     }
 
     def test_cada_comando_tiene_descripcion_y_subcomando(self):
@@ -112,7 +113,7 @@ class TestComandosDeHallazgos(unittest.TestCase):
                 self.assertIn(subcomando, texto)
 
     def test_los_que_resuelven_aceptan_la_referencia_completa(self):
-        for nombre in ("hallazgo-ok", "hallazgo-no", "hallazgo-editar"):
+        for nombre in ("hallazgo-ok", "hallazgo-no", "hallazgo-editar", "hallazgo-hecho"):
             with self.subTest(comando=nombre):
                 texto = leer("harness", "commands", f"{nombre}.md")
                 pista = re.search(r"^argument-hint:(.*)$", texto, re.MULTILINE)

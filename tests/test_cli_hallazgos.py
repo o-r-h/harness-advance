@@ -544,3 +544,46 @@ class TestReincidencia(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHallazgoHecho(Base):
+    REF = f"{TICKET}/fase_1/h1"
+
+    def setUp(self):
+        self.preparar()
+        self.proponer(1)
+        self.resolver("--id", "h1", "--decision", "ok")
+
+    def hecho(self, *args: str) -> subprocess.CompletedProcess:
+        return correr("hallazgo-hecho", *self.p, *args)
+
+    def test_marca_la_leccion(self):
+        resultado = self.hecho("--id", self.REF, "--nota", "commit abc123")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn(f"Lección {self.REF} implementada: ", resultado.stdout)
+        self.assertTrue(biblioteca.leer_entrada(self.root, self.REF)["implementada"]
+                        .endswith("· commit abc123"))
+        indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
+        self.assertIn("(implementada ", indice)
+
+    def test_reemplaza_y_avisa(self):
+        self.hecho("--id", self.REF, "--nota", "commit abc123")
+        resultado = self.hecho("--id", self.REF, "--nota", "commit def456")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn("Reemplaza la marca anterior:", resultado.stdout)
+
+    def test_exige_nota_no_vacia(self):
+        resultado = self.hecho("--id", self.REF, "--nota", "  ")
+        self.assertEqual(resultado.returncode, 1)
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.REF)["implementada"], "")
+
+    def test_rechaza_ref_suelta_o_no_aprobada(self):
+        biblioteca.escribir_entrada(self.root, TICKET, "fase_1",
+                                    {"id": "h9", "estado": "rechazado", "leccion": "x"})
+        ruta = biblioteca.entrada_path(self.root, self.REF)
+        antes = ruta.read_bytes()
+        for ref in ("h1", f"{TICKET}/fase_1/h9", r"..\..\x/fase_1/h1"):
+            with self.subTest(ref=ref):
+                resultado = self.hecho("--id", ref, "--nota", "commit abc123")
+                self.assertEqual(resultado.returncode, 1)
+        self.assertEqual(ruta.read_bytes(), antes)

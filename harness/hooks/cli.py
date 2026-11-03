@@ -519,6 +519,23 @@ def cmd_hallazgo(args) -> int:
     return 0
 
 
+def cmd_hallazgo_hecho(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    if not contracts.RE_REFERENCIA.fullmatch(args.id):
+        return _error(f"--id '{args.id}' no tiene la forma TICKET/fase_N/hN: "
+                      "este comando solo acepta la referencia completa")
+    if not args.nota.strip():
+        return _error("--nota no puede estar vacía: di qué pieza se hizo (commit, archivo)")
+    if biblioteca.leer_entrada(raiz, args.id) is None:
+        return _error(f"no se puede marcar {_no_es_aprobada(args.id)}")
+    fecha = _hoy()
+    anterior = biblioteca.marcar_implementada(raiz, args.id, args.nota, fecha)
+    print(f"Lección {args.id} implementada: {fecha} · {' '.join(args.nota.split())}")
+    if anterior:
+        print(f"Reemplaza la marca anterior: {anterior}")
+    return 0
+
+
 def cmd_reconstruir_biblioteca(args) -> int:
     raiz = resolver_proyecto(args.project)
     print(f"Índice reconstruido en {biblioteca.reconstruir_indice(raiz)}")
@@ -617,6 +634,12 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--dimension", choices=sorted(contracts.DIMENSIONES))
     p.add_argument("--componente", choices=sorted(contracts.COMPONENTES))
     p.set_defaults(func=cmd_hallazgo)
+
+    p = sub.add_parser("hallazgo-hecho", help="Marca una lección como implementada")
+    p.add_argument("--project")
+    p.add_argument("--id", required=True, help="Referencia completa TICKET/fase_N/hN")
+    p.add_argument("--nota", required=True, help="Qué pieza se hizo (commit, archivo)")
+    p.set_defaults(func=cmd_hallazgo_hecho)
 
     p = sub.add_parser("reconstruir-biblioteca", help="Regenera INDEX.md desde las entradas")
     p.add_argument("--project")

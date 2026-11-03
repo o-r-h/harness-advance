@@ -31,7 +31,8 @@ ESTADOS_HALLAZGO = frozenset({"propuesto", "aprobado", "rechazado"})
 ORIGENES_HALLAZGO = frozenset({"reflector", "humano"})
 RE_HALLAZGO_ID = re.compile(r"^h\d+$")
 # Referencia a otro hallazgo: TICKET/fase_N/hN.
-RE_REFERENCIA = re.compile(r"^[^/\s]+/fase_\d+/h\d+$")
+# El ticket no puede traer "\", "." ni "..": la referencia se convierte en una ruta.
+RE_REFERENCIA = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*/fase_\d+/h\d+$")
 
 
 def _texto(data: dict, campo: str, errores: list[str], prefijo: str = "") -> None:
