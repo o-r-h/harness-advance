@@ -60,7 +60,13 @@ sientes tentado a hacerlo, es que falta un subcomando.
    contexto aislado**. Dale el diff, el `criterio_exito`, los `anclajes`,
    `checks.json` y el `historial_fallos`. **No le pases tu conversación con el
    ejecutor** — un verificador que leyó el razonamiento ya está contaminado.
-   Guarda su JSON y córrelo: `CLI record-veredicto --archivo <ruta>`.
+
+   **Con otro modelo.** Quien juzga no debe compartir los puntos ciegos de quien hizo
+   el trabajo. El ejecutor es el `agente_ejecutor` de la fase (su modelo está en el
+   `model:` de su `.md`) o, si no hay, tú (tu modelo está en tu contexto). Pregunta
+   cuál toca: `CLI modelo-esceptico --ejecutor <modelo del ejecutor, o desconocido>`.
+   Invoca al subagente con ese valor en el parámetro `model`, y regístralo:
+   `CLI record-veredicto --archivo <ruta> --modelo-esceptico <ese mismo valor>`.
    Si rechazó, el CLI ya incrementó el intento: vuelve al paso 2.
 
    Lo que se escriba en `.claude/biblioteca/` mientras la fase está abierta (por

@@ -5,7 +5,7 @@ description: >-
   afirmación, contrasta el trabajo contra el criterio de éxito de la fase y
   emite un veredicto estructurado. No conoce ningún stack: las reglas del
   proyecto llegan en checks.json y en rules.json.
-model: opus
+model: sonnet
 color: red
 ---
 

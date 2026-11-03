@@ -296,6 +296,8 @@ def cmd_record_veredicto(args) -> int:
         return _error(f"el veredicto dice fase '{veredicto['fase_id']}' pero la fase "
                       f"activa es '{fase['id']}'")
 
+    if args.modelo_esceptico:
+        veredicto["juicio_esceptico"]["modelo"] = args.modelo_esceptico.strip()
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     harness.write_json(destino / "veredicto.json", veredicto)
 
@@ -314,6 +316,34 @@ def cmd_record_veredicto(args) -> int:
 
     state.aprobar_fase(raiz, ticket_id, fase["id"])
     print("Escéptico aprobó y la fase no requería prueba manual: fase aprobada.")
+    return 0
+
+
+# Alias de modelo que acepta el subagente de Claude Code (parámetro `model`).
+MODELOS_CLAUDE = ("haiku", "sonnet", "opus", "fable")
+
+
+def _familia(modelo: str) -> str | None:
+    """`claude-sonnet-5-5[1m]` → `sonnet`; None si no nombra ninguna familia conocida."""
+    texto = modelo.lower()
+    return next((m for m in MODELOS_CLAUDE if m in texto), None)
+
+
+def cmd_modelo_esceptico(args) -> int:
+    """Modelo con el que juzga el escéptico: el que fija el perfil o, si no, Sonnet,
+    salvo que el ejecutor ya sea Sonnet (entonces Opus): quien juzga no debe compartir
+    los puntos ciegos de quien hizo el trabajo."""
+    raiz = resolver_proyecto(args.project)
+    reglas = harness.load_rules(raiz) if (raiz / ".claude" / "rules.json").is_file() else {}
+    fijado = ((reglas.get("esceptico") or {}).get("modelo")
+              if isinstance(reglas, dict) else None)
+    if fijado is not None:
+        if fijado not in MODELOS_CLAUDE:
+            return _error(f"rules.json: esceptico.modelo '{fijado}' no es uno de "
+                          f"{', '.join(MODELOS_CLAUDE)}")
+        print(fijado)
+        return 0
+    print("opus" if _familia(args.ejecutor) == "sonnet" else "sonnet")
     return 0
 
 
@@ -885,7 +915,15 @@ def construir_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("record-veredicto", help="Registra el veredicto del escéptico")
     p.add_argument("--project")
     p.add_argument("--archivo", required=True)
+    p.add_argument("--modelo-esceptico", help="el modelo que juzgó (de modelo-esceptico)")
     p.set_defaults(func=cmd_record_veredicto)
+
+    p = sub.add_parser("modelo-esceptico",
+                       help="Con qué modelo de Claude debe juzgar el escéptico")
+    p.add_argument("--project")
+    p.add_argument("--ejecutor", required=True,
+                   help="modelo del que ejecutó la fase, o 'desconocido'")
+    p.set_defaults(func=cmd_modelo_esceptico)
 
     p = sub.add_parser("generar-prueba", help="Escribe el guion de prueba manual")
     p.add_argument("--project")

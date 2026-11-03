@@ -442,6 +442,14 @@ fue la última curación y cuántas lecciones se retiraron. Si hay alguna señal
 pendiente, sugiere `/biblioteca-curar`. Son pistas: ver
 [Curar la biblioteca](#curar-la-biblioteca).
 
+**Escéptico por modelo.** El escéptico juzga con un modelo de Claude distinto al que
+hizo la fase (Sonnet por defecto; Opus si el ejecutor ya es Sonnet; el perfil puede
+fijarlo con `esceptico.modelo` en `rules.json`). Por cada modelo: cuántas fases juzgó,
+cuántas aprobó y rechazó, y cuántas **se le escaparon**: las aprobó y después la
+prueba manual falló. Esa última cifra dice si el modelo alcanza; si crece, fija uno más
+exigente para el proyecto. Los veredictos anteriores a esta versión salen como
+`desconocido`.
+
 **Hallazgos.** Cuántos se aprobaron tal cual, cuántos con edición, cuántos eran
 reincidencias y cuántos son tuyos; los **propuestos sin resolver**, con su referencia
 (decídelos con `/hallazgo-ok`, `/hallazgo-editar` o `/hallazgo-no`), y los rechazados

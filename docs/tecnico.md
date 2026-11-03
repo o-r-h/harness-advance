@@ -62,12 +62,13 @@ se indica, se usa el proyecto del directorio actual.
 | `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
 | `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
-| `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |
+| `record-veredicto --archivo [--modelo-esceptico]` | Registra el veredicto del escéptico; si rechaza, incrementa el intento. `--modelo-esceptico` guarda en `juicio_esceptico.modelo` qué modelo juzgó |
+| `modelo-esceptico --ejecutor <modelo\|desconocido>` | Imprime el modelo de Claude con el que debe juzgar el escéptico: `esceptico.modelo` de `rules.json` si está; si no, `sonnet`, salvo que el ejecutor ya sea Sonnet (entonces `opus`). Así quien juzga no comparte los puntos ciegos de quien hizo el trabajo |
 | `generar-prueba --pasos-json` | Escribe `prueba_manual.md` |
 | `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |
 | `record-hallazgos --archivo [--ticket --fase]` | Registra la propuesta del reflector. Solo sobre una fase `aprobada` o `escalado`; con `--ticket --fase`, sobre una fase ya cerrada |
 | `resolver-hallazgo --id <hN\|TICKET/fase_N/hN> --decision ok\|no\|editar [--texto] [--motivo] [--nueva \| --reincide <ref>]` | Resuelve un hallazgo y lo escribe en la biblioteca. `--nueva` ignora el `reincide` del reflector; `--reincide` fija la lección a la que reincide. Solo valen con `ok` o `editar`, y no juntos. Una reincidencia aprobada no crea entrada: agrega una línea `falló` a la original |
-| `hallazgo --texto [--dimension] [--componente]` | Hallazgo humano, en la fase activa |
+| `hallazgo --texto [--dimension] [--componente] [--ticket --fase]` | Hallazgo humano, en la fase activa; entre tickets, en la fase de `--ticket --fase` (que debe haberse abierto) |
 | `hallazgo-hecho --id <TICKET/fase_N/hN> --nota` | Marca una lección aprobada como implementada (`- **implementada**: <fecha> · <nota>`). Solo acepta la referencia completa; si ya estaba marcada, reemplaza la marca e imprime la anterior |
 | `hallazgos-pendientes` | Lista los hallazgos sin resolver de todos los tickets; siempre sale con 0 |
 | `reconstruir-biblioteca` | Regenera `INDEX.md` desde las entradas |
@@ -192,9 +193,13 @@ profiles/<perfil>/
   "no_new_deps": { "vigilar": ["package.json"], "severidad": "error",
                    "mensaje": "Ninguna dependencia nueva sin aprobación" },
   "checks_estructurales": ["mi_build"],
-  "grupos": { "sintaxis_web": ["no_fetch"] }
+  "grupos": { "sintaxis_web": ["no_fetch"] },
+  "esceptico": { "modelo": "opus" }
 }
 ```
+
+`esceptico.modelo` es opcional (`haiku`, `sonnet`, `opus` o `fable`): fija el modelo del
+escéptico para el proyecto. Sin él, juzga Sonnet, u Opus si el ejecutor ya es Sonnet.
 
 Severidad: `error` bloquea; `warning` se reporta en `checks.json` y el escéptico
 decide si importa. Un check nuevo conviene que entre como `warning` y se promueva a
@@ -251,7 +256,7 @@ $env:ANTHROPIC_MODEL      = "<modelo definido en el proxy>"
 claude
 ```
 
-- Los agentes del harness piden `model: opus` en su frontmatter. Mapea ese alias
+- Los agentes del harness piden `model: opus` (y el escéptico `model: sonnet`) en su frontmatter. Mapea ese alias
   al modelo que quieras en la configuración del gateway, o con las variables de
   alias de modelo de tu versión de Claude Code (por ejemplo
   `ANTHROPIC_DEFAULT_OPUS_MODEL`). Verifica el nombre exacto en la documentación de
@@ -417,5 +422,8 @@ congelada desde 2016; y el paso 5, la curación de la biblioteca con señales, c
 aprobación humana. Sin caducidad por fecha, a propósito: la señal es el uso, y la
 decisión, humana):
 
-6. **Backlog**: escéptico con otro modelo (vía gateway) y tickets en paralelo (hoy hay
-   un solo `current.json` por proyecto).
+6. **Backlog** (03-11-2026): hechos los menores que afectaban la verificación, la
+   convención `VN=` en `sp_params` y el escéptico con otro modelo de Claude (solo hay
+   Claude: Sonnet por defecto, Opus si el ejecutor es Sonnet). Tickets en paralelo se
+   descartó por ahora: no ocurre en el trabajo diario (hay un solo `current.json` por
+   proyecto).

@@ -228,6 +228,8 @@ def validate_veredicto(data: dict) -> list[str]:
         _lista(juicio, campo, errores, "juicio_esceptico.")
     if juicio.get("aprobado") is False and not (juicio.get("razones_rechazo") or []):
         errores.append("juicio_esceptico.razones_rechazo: un rechazo exige al menos una razón")
+    if "modelo" in juicio:  # opcional: qué modelo de Claude juzgó (veredictos viejos no lo traen)
+        _texto(juicio, "modelo", errores, "juicio_esceptico.")
 
     prueba = data.get("prueba_manual")
     if not isinstance(prueba, dict):
