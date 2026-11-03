@@ -57,8 +57,9 @@ se indica, se usa el proyecto del directorio actual.
 
 | Subcomando | Qué hace |
 |---|---|
-| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json` |
-| `open-fase --fase fase_N` | Abre una fase. Rechaza la apertura si una fase de `depende_de` no está aprobada |
+| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json`. Se rechaza si la fase activa está corriendo, incluso con el mismo id |
+| `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla) |
+| `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
 | `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
 | `record-veredicto --archivo` | Registra el veredicto del escéptico; si rechaza, incrementa el intento |

@@ -228,6 +228,7 @@ pruebas y un check de contraste WCAG).
 |---|---|
 | `/ticket-abrir <requerimiento o ruta .md>` | Empezar un ticket: pide número, desarrollador y fecha, y genera el plan |
 | `/fase fase_N` | Correr el ciclo completo de una fase; termina en el guion de prueba manual |
+| `/fase-pausa ["<motivo>"]` | Pausar la fase activa para conversar de otra cosa o cerrar el día. Se retoma con `/fase fase_N` sin gastar intento |
 | `/fase-ok` | La prueba manual pasó. Cierra la fase y llama al reflector |
 | `/fase-fallo <paso> "<qué pasó>"` | La prueba manual falló en ese paso; arranca el intento siguiente |
 | `/hallazgo-ok <ref>` | Aprobar un hallazgo |

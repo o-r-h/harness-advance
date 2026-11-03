@@ -66,8 +66,29 @@ def _leer_ticket_activo(raiz: Path) -> tuple[str, dict] | None:
     return actual["ticket_id"], harness.read_json(ruta)
 
 
+# Estados en que el ejecutor está trabajando la fase y los checks tienen sentido.
+EN_CICLO = contracts.ESTADOS_EN_CICLO
+
+
+def _fase_corriendo(raiz: Path) -> tuple[str, str, str] | None:
+    """(ticket_id, fase_id, estado) de la fase de current.json si está en ciclo."""
+    actual = harness.read_current(raiz)
+    if not actual or not actual.get("ticket_id") or not actual.get("fase_id"):
+        return None
+    ticket_id, fase_id = actual["ticket_id"], actual["fase_id"]
+    estado = state.leer_fase(raiz, ticket_id, fase_id)
+    if estado is None or estado["estado"] not in EN_CICLO:
+        return None
+    return ticket_id, fase_id, estado["estado"]
+
+
 def cmd_open_ticket(args) -> int:
     raiz = resolver_proyecto(args.project)
+    corriendo = _fase_corriendo(raiz)
+    if corriendo:
+        return _error(f"la fase '{corriendo[1]}' del ticket '{corriendo[0]}' está en estado "
+                      f"'{corriendo[2]}': pausala con /fase-pausa o ciérrala antes de abrir "
+                      f"un ticket")
     ctx = {
         "ticket_id": args.ticket_id,
         "nroticket": args.nroticket,
@@ -97,6 +118,11 @@ def cmd_open_fase(args) -> int:
         return _error("no hay ticket activo: corre primero 'open-ticket'")
     ticket_id, _ = activo
 
+    corriendo = _fase_corriendo(raiz)
+    if corriendo and corriendo[1] != args.fase:
+        return _error(f"la fase '{corriendo[1]}' está en estado '{corriendo[2]}': pausala "
+                      f"con /fase-pausa o ciérrala antes de abrir '{args.fase}'")
+
     ruta_plan = harness.ticket_dir(raiz, ticket_id) / "plan.json"
     if not ruta_plan.is_file():
         return _error(f"falta {ruta_plan}: el planner debe emitir plan.json "
@@ -120,6 +146,13 @@ def cmd_open_fase(args) -> int:
             return _error(f"la fase '{args.fase}' depende de '{dependencia}', "
                           f"que está en estado '{actual}' y no 'aprobada'")
 
+    existente = state.leer_fase(raiz, ticket_id, fase["id"])
+    if existente is not None and existente["estado"] == "pausada":
+        estado = state.reanudar_fase(raiz, ticket_id, fase["id"])
+        harness.write_current(raiz, ticket_id, fase["id"])
+        print(f"Fase {fase['id']} reanudada en estado '{estado['estado']}', "
+              f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
+        return 0
     estado = state.abrir_fase(raiz, ticket_id, fase)
     harness.write_current(raiz, ticket_id, fase["id"])
     print(f"Fase {fase['id']} en estado '{estado['estado']}', "
@@ -163,8 +196,18 @@ def _fase_activa(raiz: Path) -> tuple[str, dict, dict, dict] | None:
     return ticket_id, ctx, fase, estado
 
 
-# Estados en que el ejecutor está trabajando la fase y los checks tienen sentido.
-EN_CICLO = frozenset({"en_ejecucion", "en_correccion", "en_verificacion"})
+def cmd_pausar_fase(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    activa = _fase_activa(raiz)
+    if activa is None:
+        return _error("no hay fase activa que pausar: corre 'open-fase'")
+    ticket_id, _, fase, _ = activa
+    estado = state.pausar_fase(raiz, ticket_id, fase["id"],
+                               motivo=args.motivo or "sin motivo", fecha=_hoy())
+    print(f"Fase {fase['id']} pausada, intento {estado['intento_actual']}/"
+          f"{estado['max_reintentos']}")
+    print(f"Para retomarla: /fase {fase['id']}")
+    return 0
 
 
 def cmd_run_checks(args) -> int:
@@ -232,6 +275,9 @@ def cmd_record_veredicto(args) -> int:
     if activa is None:
         return _error("no hay fase activa: corre 'open-fase'")
     ticket_id, _, fase, estado = activa
+    if estado["estado"] == "pausada":
+        return _error(f"la fase '{fase['id']}' está pausada: reanúdala con "
+                      f"/fase {fase['id']}")
 
     veredicto = harness.read_json(Path(args.archivo))
     errores = contracts.validate_veredicto(veredicto)
@@ -268,6 +314,9 @@ def cmd_generar_prueba(args) -> int:
     if activa is None:
         return _error("no hay fase activa: corre 'open-fase'")
     ticket_id, _, fase, estado = activa
+    if estado["estado"] == "pausada":
+        return _error(f"la fase '{fase['id']}' está pausada: reanúdala con "
+                      f"/fase {fase['id']}")
     pasos = harness.read_json(Path(args.pasos_json))
     if not isinstance(pasos, list) or not pasos:
         return _error("--pasos-json debe contener una lista no vacía de "
@@ -618,6 +667,11 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--contrato", required=True, choices=sorted(VALIDADORES))
     p.add_argument("--archivo", required=True)
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("pausar-fase", help="Pausa la fase activa; se retoma con open-fase")
+    p.add_argument("--project")
+    p.add_argument("--motivo")
+    p.set_defaults(func=cmd_pausar_fase)
 
     p = sub.add_parser("run-checks", help="Corre los checks de la fase activa")
     p.add_argument("--project")
