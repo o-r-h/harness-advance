@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import (biblioteca, checks, contracts, gitdiff, hallazgos as lib_hallazgos,  # noqa: E402
+from lib import (biblioteca, checks, contracts, curacion as lib_curacion, gitdiff,
+                 hallazgos as lib_hallazgos,  # noqa: E402
                  harness, plugins, prueba_manual, senales, state)
 import report  # noqa: E402
 
@@ -636,6 +637,55 @@ def cmd_senales_biblioteca(args) -> int:
     return 0
 
 
+def _fuera_de_entradas(raiz: Path, ref: str) -> str:
+    """Por qué una ref no es una lección aprobada; si se retiró, adónde fue."""
+    donde, motivo = biblioteca.ubicacion(raiz, ref)
+    if donde != "retiradas":
+        return f"'{ref}', que no es una lección aprobada de la biblioteca"
+    texto = f"'{ref}', que se retiró de la biblioteca ({motivo})"
+    if motivo.startswith("fusionada en "):
+        texto += f": usa {motivo[len('fusionada en '):]}"
+    return texto
+
+
+def cmd_record_curacion(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    propuesta = harness.read_json(Path(args.archivo))
+    errores = contracts.validate_propuesta_curacion(propuesta)
+    if errores:
+        return _error("propuesta de curación inválida: " + "; ".join(errores))
+
+    vistas: set[str] = set()
+    for i, accion in enumerate(propuesta["acciones"]):
+        refs = lib_curacion.refs_de(accion)
+        for ref in refs:
+            if biblioteca.leer_entrada(raiz, ref) is None:
+                return _error(f"acciones[{i}] nombra {_fuera_de_entradas(raiz, ref)}")
+            if ref in vistas:
+                return _error(f"acciones[{i}]: '{ref}' ya está en otra acción de esta "
+                              f"propuesta; una lección va en una sola acción")
+            vistas.add(ref)
+        if accion["tipo"] == "fusionar":
+            estados = {bool(biblioteca.leer_entrada(raiz, r)["implementada"]) for r in refs}
+            if len(estados) > 1:
+                return _error(f"acciones[{i}] fusiona lecciones implementadas con no "
+                              f"implementadas: sus fallas quedarían fuera del reporte")
+
+    previo = lib_curacion.leer(raiz) or {"acciones": []}
+    # Las pendientes se reemplazan; las resueltas quedan como historia. Los ids siguen
+    # al mayor que hubo: un cN que el humano ya vio nunca nombra otra acción.
+    resueltas = [a for a in previo["acciones"] if a["estado"] != "propuesto"]
+    siguiente = max((int(a["id"][1:]) for a in previo["acciones"]), default=0) + 1
+    nuevas = [dict(accion, id=f"c{n}", estado="propuesto", fecha_propuesta=_hoy())
+              for n, accion in enumerate(propuesta["acciones"], start=siguiente)]
+    md = lib_curacion.guardar(raiz, {"acciones": resueltas + nuevas})
+    if nuevas:
+        print(f"{len(nuevas)} acción(es) propuesta(s) en {md}")
+    else:
+        print("El curador no propuso acciones.")
+    return 0
+
+
 def cmd_hallazgos_pendientes(args) -> int:
     raiz = resolver_proyecto(args.project)
     lineas = []
@@ -759,6 +809,11 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--project")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_senales_biblioteca)
+
+    p = sub.add_parser("record-curacion", help="Registra la propuesta del curador")
+    p.add_argument("--project")
+    p.add_argument("--archivo", required=True)
+    p.set_defaults(func=cmd_record_curacion)
 
     p = sub.add_parser("hallazgos-pendientes", help="Lista los hallazgos sin resolver")
     p.add_argument("--project")

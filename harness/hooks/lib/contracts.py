@@ -387,3 +387,79 @@ def validate_hallazgos(data: dict) -> list[str]:
         if item.get("estado") == "rechazado":
             _texto(item, "motivo", errores, prefijo)
     return errores
+
+
+# --- Curación de la biblioteca -------------------------------------------------
+
+TIPOS_CURACION = {"retirar", "fusionar"}
+ESTADOS_CURACION = {"propuesto", "aprobado", "rechazado"}
+RE_CURACION_ID = re.compile(r"^c\d+$")
+
+
+def _ref(valor, errores: list[str], campo: str) -> None:
+    if not isinstance(valor, str) or not RE_REFERENCIA.fullmatch(valor):
+        errores.append(f"{campo}: esperado una referencia TICKET/fase_N/hN")
+
+
+def _validar_accion_curacion(accion, errores: list[str], prefijo: str) -> None:
+    if not isinstance(accion, dict):
+        errores.append(f"{prefijo[:-1]}: debe ser objeto")
+        return
+    tipo = accion.get("tipo")
+    if tipo not in TIPOS_CURACION:
+        errores.append(f"{prefijo}tipo: esperado uno de {sorted(TIPOS_CURACION)}")
+        return
+    _texto(accion, "motivo", errores, prefijo)
+    if tipo == "retirar":
+        _ref(accion.get("ref"), errores, f"{prefijo}ref")
+        return
+    refs = accion.get("refs")
+    if not isinstance(refs, list) or len(refs) < 2:
+        errores.append(f"{prefijo}refs: requerido, lista de 2 referencias o más")
+        return
+    for j, ref in enumerate(refs):
+        _ref(ref, errores, f"{prefijo}refs[{j}]")
+    if len(set(map(str, refs))) != len(refs):
+        errores.append(f"{prefijo}refs: hay referencias repetidas")
+    if accion.get("destino") not in refs:
+        errores.append(f"{prefijo}destino: debe ser una de refs")
+    _texto(accion, "leccion", errores, prefijo)
+    if "senal" in accion:
+        _texto(accion, "senal", errores, prefijo)
+
+
+def validate_propuesta_curacion(data: dict) -> list[str]:
+    """Lo que devuelve el curador: {"acciones": [...]}, lista que puede ir vacía."""
+    if not isinstance(data, dict) or not isinstance(data.get("acciones"), list):
+        return ["acciones: requerido, lista"]
+    errores: list[str] = []
+    for i, accion in enumerate(data["acciones"]):
+        _validar_accion_curacion(accion, errores, f"acciones[{i}].")
+    return errores
+
+
+def validate_curacion(data: dict) -> list[str]:
+    """El estado en .harness/curacion.json: las acciones con id, estado y fechas."""
+    errores = validate_propuesta_curacion(data)
+    if errores:
+        return errores
+    vistos: set[str] = set()
+    for i, accion in enumerate(data["acciones"]):
+        prefijo = f"acciones[{i}]."
+        identificador = accion.get("id")
+        if not isinstance(identificador, str) or not RE_CURACION_ID.match(identificador):
+            errores.append(f"{prefijo}id: requerido, formato esperado cN")
+        elif identificador in vistos:
+            errores.append(f"{prefijo}id: '{identificador}' duplicado")
+        else:
+            vistos.add(identificador)
+        if accion.get("estado") not in ESTADOS_CURACION:
+            errores.append(f"{prefijo}estado: esperado uno de {sorted(ESTADOS_CURACION)}")
+        for campo in ("fecha_propuesta", "fecha_resuelta"):
+            valor = accion.get(campo)
+            if (campo == "fecha_propuesta" or valor is not None) and (
+                    not isinstance(valor, str) or not RE_FECHA.match(valor)):
+                errores.append(f"{prefijo}{campo}: formato esperado DD-MM-YYYY")
+        if accion.get("estado") == "rechazado":
+            _texto(accion, "motivo_rechazo", errores, prefijo)
+    return errores
