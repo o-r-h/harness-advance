@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import biblioteca, contracts, harness  # noqa: E402
+from lib import biblioteca, contracts, curacion, harness, senales  # noqa: E402
 
 # Lo que puede salir al leer o interpretar un archivo a mano o de una versión vieja.
 _ERRORES_DE_LECTURA = (OSError, ValueError, KeyError, TypeError, AttributeError)
@@ -102,11 +102,31 @@ def _validar_checks(datos) -> list[str]:
     return [] if ok else ["checks: requerido, lista"]
 
 
+def _curacion(project_root: Path, ilegibles: list[str]) -> dict:
+    datos = senales.senales(project_root)
+    try:
+        estado = curacion.leer(project_root) or {"acciones": []}
+    except _ERRORES_DE_LECTURA:
+        ilegibles.append(_rel(project_root, curacion.ruta(project_root)))
+        estado = {"acciones": []}
+    retiradas = biblioteca.biblioteca_dir(project_root) / "retiradas"
+    return {
+        "sin_uso": [{"ref": l["ref"], "senal": l["senal"]}
+                    for l in datos["lecciones"] if l["usos"] == 0],
+        "rutas_ausentes": [{"ref": l["ref"], "rutas": l["rutas_ausentes"]}
+                           for l in datos["lecciones"] if l["rutas_ausentes"]],
+        "pendientes": sum(1 for a in estado["acciones"] if a["estado"] == "propuesto"),
+        "ultima_curacion": datos["ultima_curacion"],
+        "retiradas": len(list(retiradas.glob("*.md"))) if retiradas.is_dir() else 0,
+    }
+
+
 def agregar(project_root: Path) -> dict:
     project_root = Path(project_root)
     ilegibles: list[str] = []
 
     lecciones = _leer_lecciones(project_root, ilegibles)
+    curacion_datos = _curacion(project_root, ilegibles)
     implementadas, fallaron, deuda = _clasificar_lecciones(lecciones)
 
     tickets = _listar(project_root, harness.tickets_dir(project_root), ilegibles,
@@ -202,6 +222,7 @@ def agregar(project_root: Path) -> dict:
             "reglas_mas_violadas": reglas,
             "rechazos_repetidos_del_esceptico": repetidos,
         },
+        "curacion": curacion_datos,
         "ilegibles": sorted(ilegibles),
     }
 
@@ -244,6 +265,24 @@ def _seccion_deuda(datos: dict) -> list[str]:
             for f in d["fallas"]:
                 lineas.append(f"      {f['fecha']} en {f['ref']}: {f['leccion']}")
     return lineas or [_SIN_DATOS]
+
+
+def _seccion_curacion(datos: dict) -> list[str]:
+    c = datos["curacion"]
+    if not (c["sin_uso"] or c["rutas_ausentes"] or c["pendientes"] or c["retiradas"]
+            or c["ultima_curacion"]):
+        return [_SIN_DATOS]
+    lineas = [f"  Sin uso en los planes de este clon: {len(c['sin_uso'])}"]
+    lineas += [f"    {l['ref']} — {l['senal']}" for l in c["sin_uso"]]
+    lineas.append(f"  Con rutas que ya no existen: {len(c['rutas_ausentes'])}")
+    lineas += [f"    {l['ref']} — {', '.join(l['rutas'])}" for l in c["rutas_ausentes"]]
+    lineas += [f"  Acciones de curación sin resolver: {c['pendientes']}",
+               f"  Última curación: {c['ultima_curacion'] or 'nunca'}",
+               f"  Retiradas: {c['retiradas']}",
+               '  Los usos cuentan los planes de este clon; "sin uso" no basta para retirar.']
+    if c["sin_uso"] or c["rutas_ausentes"] or c["pendientes"]:
+        lineas.append("  Sugerencia: /biblioteca-curar")
+    return lineas
 
 
 def _seccion_hallazgos(datos: dict) -> list[str]:
@@ -293,6 +332,7 @@ def render(datos: dict) -> str:
         ("Resumen", _seccion_resumen(datos)),
         ("Fallaron estando implementadas", _seccion_fallaron(datos)),
         ("Deuda", _seccion_deuda(datos)),
+        ("Curación", _seccion_curacion(datos)),
         ("Hallazgos", _seccion_hallazgos(datos)),
         ("Fases", _seccion_fases(datos)),
     ]

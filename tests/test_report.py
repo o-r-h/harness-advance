@@ -271,6 +271,73 @@ class TestRender(Base):
         self.assertIn("suelta.md", texto)
 
 
+class TestCuracionDelReporte(Base):
+    def setUp(self):
+        super().setUp()
+        subprocess.run(["git", "init"], cwd=self.root, capture_output=True, check=True)
+
+    def sembrar(self):
+        biblioteca.escribir_entrada(self.root, "ISR-1", "fase_1",
+                                    _aprobado("h1", leccion="usa src/no/existe.js"), "01-11-2026")
+        biblioteca.escribir_entrada(self.root, "ISR-1", "fase_1", _aprobado("h2"), "01-11-2026")
+        harness.write_json(harness.ticket_dir(self.root, "ISR-5") / "plan.json", {
+            "ticket_id": "ISR-5", "fases": [{"id": "fase_1", "anclajes": [
+                {"ref": ".claude/biblioteca/entradas/ISR-1-fase_1-h2.md"}]}]})
+
+    def test_curacion_lista_sin_uso_y_rutas_ausentes(self):
+        self.sembrar()
+        biblioteca.escribir_entrada(self.root, "ISR-1", "fase_1", _aprobado("h3"), "01-11-2026")
+        biblioteca.retirar(self.root, REF_C, "obsoleta", "02-11-2026")
+        c = report.agregar(self.root)["curacion"]
+        self.assertEqual(c["sin_uso"], [{"ref": REF_A, "senal": "señal h1"}])
+        self.assertEqual(c["rutas_ausentes"], [{"ref": REF_A, "rutas": ["src/no/existe.js"]}])
+        self.assertEqual((c["pendientes"], c["ultima_curacion"], c["retiradas"]), (0, None, 1))
+        texto = report.render(report.agregar(self.root))
+        self.assertIn("\nCuración\n", texto)
+        self.assertLess(texto.index("\nDeuda\n"), texto.index("\nCuración\n"))
+        self.assertIn(f"{REF_A} — señal h1", texto)
+        self.assertIn("src/no/existe.js", texto)
+        self.assertIn("Última curación: nunca", texto)
+        self.assertIn('"sin uso" no basta para retirar', texto)
+
+    def test_curacion_sugiere_curar_solo_con_senales(self):
+        self.sembrar()
+        self.assertIn("Sugerencia: /biblioteca-curar", report.render(report.agregar(self.root)))
+        biblioteca.retirar(self.root, REF_A, "x", "02-11-2026")
+        texto = report.render(report.agregar(self.root))
+        self.assertNotIn("Sugerencia: /biblioteca-curar", texto)
+
+    def test_curacion_cuenta_pendientes_y_ultima(self):
+        self.sembrar()
+        harness.write_json(harness.harness_dir(self.root) / "curacion.json", {"acciones": [
+            {"id": "c1", "tipo": "retirar", "ref": REF_A, "motivo": "m", "estado": "propuesto",
+             "fecha_propuesta": "03-11-2026"},
+            {"id": "c2", "tipo": "retirar", "ref": REF_B, "motivo": "m", "estado": "rechazado",
+             "motivo_rechazo": "no", "fecha_propuesta": "02-11-2026",
+             "fecha_resuelta": "02-11-2026"}]})
+        c = report.agregar(self.root)["curacion"]
+        self.assertEqual((c["pendientes"], c["ultima_curacion"]), (1, "02-11-2026"))
+        self.assertIn("Acciones de curación sin resolver: 1",
+                      report.render(report.agregar(self.root)))
+
+    def test_curacion_sin_datos(self):
+        datos = report.agregar(self.root)
+        self.assertEqual(datos["curacion"], {"sin_uso": [], "rutas_ausentes": [],
+                                             "pendientes": 0, "ultima_curacion": None,
+                                             "retiradas": 0})
+        seccion = report.render(datos).split("\nCuración\n", 1)[1]
+        self.assertTrue(seccion.startswith("  Sin datos todavía."))
+
+    def test_curacion_ilegible_va_a_ilegibles(self):
+        self.sembrar()
+        harness.harness_dir(self.root).mkdir(exist_ok=True)
+        (harness.harness_dir(self.root) / "curacion.json").write_text("{", encoding="utf-8")
+        datos = report.agregar(self.root)
+        self.assertIn(".harness/curacion.json", datos["ilegibles"])
+        self.assertEqual(datos["curacion"]["pendientes"], 0)
+        json.dumps(datos)
+
+
 class TestCli(Base):
     def _correr(self, *extra):
         return subprocess.run(

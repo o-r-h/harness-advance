@@ -73,7 +73,11 @@ def _fecha_orden(fecha: str | None) -> tuple:
 def _anclajes(project_root: Path) -> dict[str, list[tuple[tuple, str]]]:
     """{nombre de archivo de la entrada: [(orden, ticket), ...]}, un ticket por plan."""
     usos: dict[str, list[tuple[tuple, str]]] = {}
-    for plan in sorted(harness.tickets_dir(project_root).glob("*/plan.json")):
+    try:
+        planes = sorted(harness.tickets_dir(project_root).glob("*/plan.json"))
+    except OSError:
+        return usos  # el reporte ya nombra la carpeta como ilegible
+    for plan in planes:
         try:
             datos = harness.read_json(plan)
             contexto = plan.parent / "ticket_context.json"
@@ -112,7 +116,10 @@ def senales(project_root: Path) -> dict:
 
     lecciones: list[dict] = []
     for archivo in archivos:
-        texto = archivo.read_text(encoding="utf-8")
+        try:
+            texto = archivo.read_text(encoding="utf-8")
+        except (OSError, ValueError):
+            continue  # ilegible: el reporte la lista aparte; aquí no hay señal que dar
         primera = texto.split("\n", 1)[0].strip()
         ref = primera[2:].strip() if primera.startswith("# ") else archivo.stem
         # Un ancla a una lección absorbida cuenta para el destino de la fusión.
