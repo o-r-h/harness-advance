@@ -122,6 +122,122 @@ def marcar_implementada(project_root: Path, ref: str, nota: str, fecha: str) -> 
     return anterior
 
 
+def _motivo_retirada(texto: str) -> str:
+    """El motivo de la línea `retirada` (`<fecha> · <motivo>`)."""
+    valor = _campo(texto, "retirada")
+    return valor.split(" · ", 1)[1].strip() if " · " in valor else valor
+
+
+def _copiar_a_retiradas(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
+    """Escribe la copia retirada; la de entradas/ sigue hasta que se borre aparte.
+
+    Siempre parte del texto de entradas/: repetir la copia tras un fallo la
+    reescribe igual, sin una segunda línea `retirada`."""
+    _, lineas = _editar_lineas(project_root, ref)
+    _agregar_al_final(lineas, f"- **retirada**: {fecha} · {' '.join(motivo.split())}")
+    destino = entrada_path(project_root, ref, subdir="retiradas")
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text("\n".join(lineas), encoding="utf-8")
+    return destino
+
+
+def retirar(project_root: Path, ref: str, motivo: str, fecha: str) -> Path:
+    """Mueve la entrada a retiradas/ con su motivo. Nada se borra: las líneas
+    `falló` e `implementada` viajan con ella."""
+    destino = _copiar_a_retiradas(project_root, ref, motivo, fecha)
+    entrada_path(project_root, ref).unlink()
+    reconstruir_indice(project_root)
+    return destino
+
+
+def _indice_de(lineas: list[str], etiqueta: str) -> int | None:
+    prefijo = f"- **{etiqueta}**: "
+    for i, linea in enumerate(lineas):
+        if linea.rstrip("\r").startswith(prefijo):
+            return i
+    return None
+
+
+def _poner(lineas: list[str], indice: int, nueva: str) -> None:
+    """Reemplaza la línea conservando su CRLF si lo tenía."""
+    lineas[indice] = nueva + ("\r" if lineas[indice].endswith("\r") else "")
+
+
+def fusionar(project_root: Path, destino: str, absorbidas: list[str], leccion: str,
+             senal: str | None, fecha: str) -> Path:
+    """Fusiona las absorbidas en el destino: el destino toma la lección (y la señal)
+    nuevas y las líneas `falló` de las otras; las absorbidas se retiran como
+    `fusionada en <destino>`. Valida todo antes de escribir.
+
+    Repetirla tras un fallo a mitad (un archivo bloqueado en Windows) termina el
+    trabajo sin duplicar: no copia una `falló` ni una `fusionada` que el destino ya
+    tenga. El orden deja siempre una copia de cada absorbida: primero retiradas/,
+    después el destino y al final se borran de entradas/."""
+    if not absorbidas:
+        raise ValueError("una fusión necesita al menos una lección que absorber")
+    if destino in absorbidas or len(set(absorbidas)) != len(absorbidas):
+        raise ValueError("el destino no puede absorberse y las absorbidas no se repiten")
+    textos: dict[str, str] = {}
+    for ref in [destino, *absorbidas]:
+        ruta = entrada_path(project_root, ref)
+        if not ruta.is_file():
+            raise ValueError(f"no hay una entrada aprobada para '{ref}'")
+        textos[ref] = ruta.read_text(encoding="utf-8")
+    if len({bool(_campo(t, "implementada")) for t in textos.values()}) > 1:
+        raise ValueError("no se fusionan lecciones implementadas con no implementadas: "
+                         "sus fallas quedarían fuera de las dos secciones del reporte")
+
+    ruta, lineas = _editar_lineas(project_root, destino)
+    i_leccion = _indice_de(lineas, "lección")
+    nueva_leccion = f"- **lección**: {' '.join(leccion.split())}"
+    if i_leccion is None:
+        _agregar_al_final(lineas, nueva_leccion)
+    else:
+        anterior = _campo(textos[destino], "lección")
+        _poner(lineas, i_leccion, nueva_leccion)
+        if _indice_de(lineas, "lección original") is None and anterior:
+            lineas.insert(i_leccion + 1, f"- **lección original**: {anterior}")
+    if senal and senal.strip():
+        nueva_senal = f"- **señal**: {' '.join(senal.split())}"
+        i_senal = _indice_de(lineas, "señal")
+        if i_senal is None:
+            lineas.insert(_indice_de(lineas, "lección") or 1, nueva_senal)
+        else:
+            _poner(lineas, i_senal, nueva_senal)
+    presentes = {l.rstrip("\r") for l in lineas}
+    for ref in absorbidas:
+        texto = textos[ref]
+        for linea in texto.split("\n"):
+            linea = linea.rstrip("\r")
+            if linea.startswith("- **falló**: ") and linea not in presentes:
+                _agregar_al_final(lineas, linea)
+                presentes.add(linea)
+        if any(re.match(rf"^- \*\*fusionada\*\*: \S+ · {re.escape(ref)}(?: |$)", l)
+               for l in presentes):
+            continue
+        implementada = _campo(texto, "implementada")
+        marca = f" · implementada {implementada}" if implementada else ""
+        _agregar_al_final(lineas, f"- **fusionada**: {fecha} · {ref}{marca}")
+
+    for ref in absorbidas:
+        _copiar_a_retiradas(project_root, ref, f"fusionada en {destino}", fecha)
+    ruta.write_text("\n".join(lineas), encoding="utf-8")
+    for ref in absorbidas:
+        entrada_path(project_root, ref).unlink()
+    reconstruir_indice(project_root)
+    return ruta
+
+
+def ubicacion(project_root: Path, ref: str) -> tuple[str, str]:
+    """Dónde está una lección: ("entradas", ""), ("retiradas", motivo) o ("ninguna", "")."""
+    if entrada_path(project_root, ref).is_file():
+        return "entradas", ""
+    retirada = entrada_path(project_root, ref, subdir="retiradas")
+    if retirada.is_file():
+        return "retiradas", _motivo_retirada(retirada.read_text(encoding="utf-8"))
+    return "ninguna", ""
+
+
 def _marcas(texto: str) -> str:
     """` (implementada <fecha>) (falló N×)`, solo con las marcas que la entrada trae."""
     marcas = ""
@@ -156,12 +272,19 @@ def reconstruir_indice(project_root: Path) -> Path:
         t = f.read_text(encoding="utf-8")
         aprobadas.append(f"- {_clasificacion(t)}{_resumen(t)} — entradas/{f.name}"
                          f"{_marcas(t)}")
+    retiradas = []
+    for f in _archivos(base / "retiradas"):
+        t = f.read_text(encoding="utf-8")
+        retiradas.append(f"- {_resumen(t)} — retiradas/{f.name} — motivo: "
+                         f"{_motivo_retirada(t)}")
     rechazadas = []
     for f in _archivos(base / "rechazados"):
         t = f.read_text(encoding="utf-8")
         rechazadas.append(f"- {_resumen(t)} — motivo: {_campo(t, 'motivo')}")
     lineas = ["# Biblioteca de lecciones", "", _INTRO, "", "## Aprobadas", "",
               *(aprobadas or ["_(vacía)_"]), "",
+              "## Retiradas — no aplicar", "",
+              *(retiradas or ["_(vacía)_"]), "",
               "## Rechazadas — no volver a proponer", "",
               *(rechazadas or ["_(vacía)_"])]
     destino = base / "INDEX.md"

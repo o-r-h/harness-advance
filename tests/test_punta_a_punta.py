@@ -237,6 +237,75 @@ class CicloCompleto(unittest.TestCase):
                           datos["hallazgos"]["reincidencias"]), (1, 1))
         self.assertIn(ref, self.cli("report").stdout)
 
+    # --- curación de la biblioteca ----------------------------------------------
+
+    def test_curacion_de_punta_a_punta(self):
+        """Señales → curador (JSON fijo) → humano decide → índice, rechazos, referencias
+        y reporte, todo por el CLI real."""
+        (self.root / "src" / "app").mkdir(parents=True)
+        (self.root / "src" / "app" / "main.js").write_text("x\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-m", "app")
+        a, b, c, d = (f"ISR-40/fase_1/h{n}" for n in range(1, 5))
+        for n, leccion in enumerate((
+                "Revisar los comentarios de por qué que toca la fase",
+                "Los comentarios de por qué cercanos también se revisan",
+                "Usar el helper de src/app/borrado.js para formatear",
+                "Validar la entrada vacía en src/app/main.js"), start=1):
+            biblioteca.escribir_entrada(self.root, "ISR-40", "fase_1", {
+                "id": f"h{n}", "origen": "reflector", "estado": "aprobado",
+                "senal": f"señal {n}", "leccion": leccion, "evidencia": "e",
+                "confianza": "alta", "dimension": "proceso", "componente": "check"},
+                fecha="01-10-2026")
+        biblioteca.registrar_falla(self.root, d, "ISR-41/fase_1/h1", "otra vez", "05-10-2026")
+        harness.write_json(harness.ticket_dir(self.root, "ISR-50") / "plan.json", {
+            "ticket_id": "ISR-50", "fases": [{"id": "fase_1", "anclajes": [
+                {"ref": ".claude/biblioteca/entradas/ISR-40-fase_1-h4.md",
+                 "confianza": "por_confirmar"}]}]})
+
+        senales = {l["ref"]: l for l in json.loads(
+            self.cli("senales-biblioteca", "--json").stdout)["lecciones"]}
+        self.assertEqual(senales[c]["rutas_ausentes"], ["src/app/borrado.js"])
+        self.assertEqual((senales[d]["usos"], senales[d]["rutas_ausentes"]), (1, []))
+        self.assertIn("Sugerencia: /biblioteca-curar", self.cli("report").stdout)
+
+        # El curador (falso) propone; el humano corrige la fusión y rechaza el retiro.
+        self.cli("record-curacion", "--archivo", self.escribir_json("curacion.json", {
+            "acciones": [
+                {"tipo": "fusionar", "refs": [a, b], "destino": a,
+                 "leccion": "Revisar los comentarios de por qué de la zona tocada",
+                 "motivo": "las dos piden lo mismo"},
+                {"tipo": "retirar", "ref": c, "motivo": "src/app/borrado.js ya no existe"}]}))
+        self.cli("resolver-curacion", "--id", "c1", "--decision", "editar",
+                 "--senal", "la fase toca comentarios de por qué")
+        self.cli("resolver-curacion", "--id", "c2", "--decision", "no",
+                 "--motivo", "el helper se movió, la regla sigue")
+
+        indice = (biblioteca.biblioteca_dir(self.root) / "INDEX.md").read_text(encoding="utf-8")
+        aprobadas, resto = indice.split("## Retiradas — no aplicar", 1)
+        self.assertIn("la fase toca comentarios de por qué — entradas/ISR-40-fase_1-h1.md",
+                      aprobadas)
+        self.assertIn("entradas/ISR-40-fase_1-h3.md", aprobadas)
+        self.assertIn(f"retiradas/ISR-40-fase_1-h2.md — motivo: fusionada en {a}", resto)
+        rechazos = (biblioteca.biblioteca_dir(self.root) / "curacion-rechazada.md")
+        self.assertIn(f"c2 · retirar · {c} — el helper se movió, la regla sigue",
+                      rechazos.read_text(encoding="utf-8"))
+
+        # Una reincidencia que apunta a la absorbida dice cuál usar.
+        self.cli("open-ticket", "--ticket-id", "ISR-60", "--nroticket", "60",
+                 "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "03-11-2026",
+                 "--perfil", PERFIL)
+        self.planner("ISR-60", max_reintentos=3)
+        self.cli("open-fase", "--fase", "fase_1")
+        state.aprobar_fase(self.root, "ISR-60", "fase_1")
+        fallo = self.cli("record-hallazgos", "--archivo",
+                         self.reflector("ISR-60", reincide=b), codigo=1)
+        self.assertIn(f"fusionada en {a}): usa {a}", fallo.stderr)
+
+        reporte = self.cli("report").stdout
+        self.assertNotIn("Última curación: nunca", reporte)
+        self.assertIn("Retiradas: 1", reporte)
+
 
 if __name__ == "__main__":
     unittest.main()

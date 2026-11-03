@@ -71,6 +71,9 @@ se indica, se usa el proyecto del directorio actual.
 | `hallazgo-hecho --id <TICKET/fase_N/hN> --nota` | Marca una lección aprobada como implementada (`- **implementada**: <fecha> · <nota>`). Solo acepta la referencia completa; si ya estaba marcada, reemplaza la marca e imprime la anterior |
 | `hallazgos-pendientes` | Lista los hallazgos sin resolver de todos los tickets; siempre sale con 0 |
 | `reconstruir-biblioteca` | Regenera `INDEX.md` desde las entradas |
+| `senales-biblioteca [--json]` | Solo lectura. Por lección: `usos` (planes de este clon que la anclan; un ancla a una lección fusionada cuenta para su destino), `ultimo_uso`, `rutas_ausentes` (rutas de la señal y la lección que no coinciden por sufijo con nada de `git ls-files`; `null` sin git), `fallas`, `implementada`; y `ultima_curacion` |
+| `record-curacion --archivo <propuesta>` | Valida la propuesta del curador y la guarda en `.harness/curacion.json` (+ `curacion.md`). Rechaza refs fuera de `entradas/` (diciendo adónde fueron si se retiraron), una ref en dos acciones y fusiones que mezclan implementadas con no implementadas. Reemplaza las acciones `propuesto` anteriores, conserva las resueltas; los ids `cN` nunca se reutilizan. No exige ticket |
+| `resolver-curacion --id <cN> --decision ok\|no\|editar [--texto] [--senal] [--quitar <ref>]... [--motivo]` | Aplica, corrige y aplica, o rechaza una acción. `no` exige `--motivo` y lo agrega a `biblioteca/curacion-rechazada.md`. `editar`: en una fusión `--texto`, `--senal` y `--quitar` (no el destino, y deben quedar 2 refs); en una retirada, `--motivo`. Falla sin escribir si una ref ya no está en `entradas/` o la ancla el plan del ticket de `current.json` mientras alguna de sus fases no esté aprobada |
 | `report [--json]` | Reporte de solo lectura del proyecto: lecciones, hallazgos y fases. Sin `.harness/` ni biblioteca sale con 0 y cada sección dice que no hay datos. Cómo leerlo: [Cómo leer el reporte](../README.md#cómo-leer-el-reporte) |
 
 ## Estado en disco y contratos
@@ -93,7 +96,26 @@ se indica, se usa el proyecto del directorio actual.
 ```
 
 La biblioteca (`<proyecto>/.claude/biblioteca/`) es estado de proyecto, no de ticket:
-`entradas/` (aprobadas), `rechazados/` e `INDEX.md`, derivado de las entradas.
+`entradas/` (aprobadas), `rechazados/`, `retiradas/` (salieron por una curación),
+`curacion-rechazada.md` (curaciones rechazadas, una línea cada una) e `INDEX.md`,
+derivado de las entradas. El estado de una curación en curso vive en
+`.harness/curacion.json`, que no se versiona.
+
+### Contrato de curación
+
+La propuesta del curador (`contracts.validate_propuesta_curacion`) es
+`{"acciones": [...]}`, lista que puede ir vacía. Cada acción es
+`{"tipo": "retirar", "ref", "motivo"}` o
+`{"tipo": "fusionar", "refs" (2 o más, sin repetir), "destino" (una de refs), "leccion", "senal"?, "motivo"}`.
+En `.harness/curacion.json` (`contracts.validate_curacion`) cada acción suma `id`
+(`cN`), `estado` (`propuesto`, `aprobado`, `rechazado`), `fecha_propuesta`,
+`fecha_resuelta` al resolverse y `motivo_rechazo` si se rechazó.
+
+Aplicar una **retirada** mueve la entrada a `retiradas/` y le agrega la línea
+`retirada`. Aplicar una **fusión** reemplaza la `lección` (y la `señal`, si viene) del
+destino, guarda la anterior como `lección original` si no tenía una, copia las líneas
+`falló` de las absorbidas y les agrega una línea `fusionada` a cada una; después las
+absorbidas se retiran con motivo `fusionada en <destino>`.
 
 ### Contrato de hallazgos y `reincide`
 
@@ -125,6 +147,8 @@ lleva líneas que escribe solo el CLI (`harness/hooks/lib/biblioteca.py`):
 | `- **aprobada**: <fecha>` | `resolver-hallazgo` y `hallazgo`, al crear la entrada | Cuándo se aprobó. Las entradas anteriores a esta versión no la tienen y siguen siendo válidas |
 | `- **implementada**: <fecha> · <nota>` | `hallazgo-hecho` | La pieza que pedía la lección ya existe. Una sola línea: marcar de nuevo la reemplaza |
 | `- **falló**: <fecha> · <ref nueva> · implementada\|sin pieza — <lección>` | `resolver-hallazgo` al aprobar una reincidencia | La lección volvió a fallar. Guarda su estado **en ese momento**, así "falló estando implementada" no depende de fechas ni del estado de hoy. Puede haber varias |
+| `- **fusionada**: <fecha> · <ref absorbida>[ · implementada <fecha> · <nota>]` | `resolver-curacion`, en el destino de una fusión | Esa lección se fusionó en esta. Una por absorbida; las señales siguen esta línea para contar los usos |
+| `- **retirada**: <fecha> · <motivo>` | `resolver-curacion`, al retirar o al absorber | La lección salió de `entradas/`. Va en el archivo de `retiradas/` |
 
 Las líneas que el código no conoce (agregadas a mano, o con CRLF tras un checkout de
 git) se conservan intactas. `INDEX.md` marca cada lección con `(implementada <fecha>)` y
@@ -179,7 +203,23 @@ decide si importa. Un check nuevo conviene que entre como `warning` y se promuev
 `run(project_root, archivos_modificados, ctx) -> list[dict]`. Cada resultado es
 `{"id", "resultado": "ok"|"fallo", "severidad": "error"|"warning", "detalle"}`. Si el
 check revienta, se registra como `error_check` y no bloquea la fase: un bug del
-harness no debe parecer un bug del código. Ejemplos: `profiles/editornotificaciones/checks/`.
+harness no debe parecer un bug del código. Un check que `rules.json` declara pero cuyo
+`.py` no existe también es `error_check`: pasar en silencio haría creer que se verificó.
+
+Al escribir uno:
+
+- Se ejecuta dentro de `cli.py`, así que puede hacer `from lib import gitdiff, harness`.
+  Lee los archivos con `gitdiff.read_text` (respeta el BOM, UTF-8 → cp1252) y limita
+  lo que reporta a `gitdiff.added_lines`, igual que los checks declarativos.
+- El módulo se carga sin registrarse en `sys.modules`: `@dataclass` falla ahí; usa una
+  clase normal.
+- Su configuración va en `rules.json` bajo una clave propia, no en el código. Por
+  ejemplo, `sp_params` de `reviewsystemgfs` lee `sp_params.carpetas_sp`: dónde están
+  los SPs, en orden de prioridad, con rutas relativas a la raíz del proyecto, absolutas
+  o con `%VARIABLES%` de entorno.
+
+Ejemplos: `profiles/editornotificaciones/checks/` (build y contraste) y
+`profiles/reviewsystemgfs/checks/` (estructurales, sin compilador).
 
 **Agente ejecutor**: un `.md` con frontmatter `name` y `description` que conoce los
 patrones del stack. Si el perfil tiene varios, cada fase del plan dice cuál la
@@ -334,8 +374,9 @@ Documentos de diseño:
 
 ```
 ├── harness/                  harness genérico → ~/.claude/
-│   ├── agents/               skeptic.md, reflector.md
-│   ├── commands/             /ticket-abrir, /fase, /fase-pausa, /fase-ok, /fase-fallo, /hallazgo*, /hallazgo-hecho
+│   ├── agents/               skeptic.md, reflector.md, curador.md
+│   ├── commands/             /ticket-abrir, /fase, /fase-pausa, /fase-ok, /fase-fallo, /hallazgo*, /hallazgo-hecho,
+│   │                         /biblioteca-curar, /curacion-ok, /curacion-no, /curacion-editar
 │   ├── hooks/                check_rules.py (PostToolUse), gate_phase.py (Stop), cli.py, report.py, lib/
 │   └── skills/               ticket-loop, task-planner
 ├── profiles/                 un perfil por proyecto → <proyecto>/.claude/
@@ -366,14 +407,26 @@ Menores abiertos:
   razones del escéptico van sin recortar y "reglas más violadas" mezcla warnings con
   errores.
 
-Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; y el
-paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
-y el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`):
+Límites conocidos de los checks y del diff (revisión del paso 4, 03-11-2026):
 
-4. **Tareas 17 a 19 del plan original**: los checks estructurales de `reviewsystemgfs`
-   (`designer_sync`, `sp_params`, `xhtml_selfclose`). Hoy ese perfil no tiene carpeta
-   `checks/` y es el de verificación más débil.
-5. **Curación de la biblioteca**: caducidad, deduplicación y detección de
-   contradicciones entre lecciones. Hoy solo crece.
+- `sp_params` no ve las llamadas que llevan el SP en la cadena (`|VN=Sp|V0=n|...`),
+  que se despachan con `LlenaCombos`/`LlenaGrid` → `EjecutarSp(Sp, Validar, ...)`: son
+  cerca de la mitad de las llamadas reales (unas 23 en `Scripts/*.js` y 2 en VB). Un
+  `|V27=` que el SP no parsea ahí pasa sin aviso.
+- `sp_params` da `error` para `IF @Validar = 1 ... ELSE ...` llamado con otro valor; en
+  el corpus actual solo aparece en SPs sin `@Parametros`.
+- `gitdiff`: un archivo renombrado con `git mv` cuenta todas sus líneas como agregadas,
+  y las rutas con acentos (que git cita en octal) no llegan a `archivos_modificados`:
+  ese archivo no se revisa.
+
+Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; el
+paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
+el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`; el paso 4, los
+checks estructurales de `reviewsystemgfs`, ajustados contra el repo real: el plan
+original ponía en `error` un caso que compila y buscaba los SPs en una carpeta
+congelada desde 2016; y el paso 5, la curación de la biblioteca con señales, curador y
+aprobación humana. Sin caducidad por fecha, a propósito: la señal es el uso, y la
+decisión, humana):
+
 6. **Backlog**: escéptico con otro modelo (vía gateway) y tickets en paralelo (hoy hay
    un solo `current.json` por proyecto).

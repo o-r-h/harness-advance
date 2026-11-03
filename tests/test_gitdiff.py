@@ -89,6 +89,66 @@ class TestDecodificacionConRespaldoCp1252(unittest.TestCase):
         self.assertFalse(any("�" in texto for texto in textos))
 
 
+class TestDecodificacionConBom(unittest.TestCase):
+    """Los scripts que exporta SQL Server Management Studio salen en UTF-16 con BOM:
+    leídos como cp1252 cada carácter queda separado por un NUL y ningún regex acierta."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        _git(self.root, "init")
+        _git(self.root, "config", "user.email", "t@t.t")
+        _git(self.root, "config", "user.name", "t")
+
+    def test_read_text_decodifica_utf16_le_con_bom(self):
+        archivo = self.root / "sp.sql"
+        archivo.write_bytes("CREATE Proc revisión\r\n".encode("utf-16"))
+        self.assertEqual(gitdiff.read_text(archivo), "CREATE Proc revisión\r\n")
+
+    def test_read_text_decodifica_utf16_be_con_bom(self):
+        archivo = self.root / "sp.sql"
+        archivo.write_bytes(b"\xfe\xff" + "año".encode("utf-16-be"))
+        self.assertEqual(gitdiff.read_text(archivo), "año")
+
+    def test_read_text_quita_el_bom_de_utf8(self):
+        archivo = self.root / "frm.aspx"
+        archivo.write_bytes("<%@ Page %>".encode("utf-8-sig"))
+        self.assertEqual(gitdiff.read_text(archivo), "<%@ Page %>")
+
+    def test_added_lines_de_un_utf16_modificado_no_se_pierde_como_binario(self):
+        archivo = self.root / "sp.sql"
+        archivo.write_bytes("uno\r\ndos\r\n".encode("utf-16"))
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+        archivo.write_bytes("uno\r\nnueva línea\r\ndos\r\n".encode("utf-16"))
+        self.assertEqual(gitdiff.added_lines(self.root, archivo), [(2, "nueva línea")])
+
+    def test_utf16_con_el_proyecto_en_una_subcarpeta_del_repo(self):
+        # git show HEAD:<ruta> se resuelve desde el toplevel; el proyecto no lo es.
+        sub = self.root / "proyecto"
+        sub.mkdir()
+        archivo = sub / "sp.sql"
+        archivo.write_bytes("uno\r\ndos\r\n".encode("utf-16"))
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+        archivo.write_bytes("uno\r\nnueva\r\ndos\r\n".encode("utf-16"))
+        self.assertEqual(gitdiff.added_lines(sub, archivo), [(2, "nueva")])
+
+    def test_un_utf16_guardado_sin_bom_no_pasa_sin_verificar(self):
+        archivo = self.root / "sp.sql"
+        archivo.write_bytes("uno\r\ndos\r\n".encode("utf-16"))
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+        archivo.write_bytes("uno\r\nnueva\r\ndos\r\n".encode("utf-8"))
+        self.assertEqual(gitdiff.added_lines(self.root, archivo), [(2, "nueva")])
+
+    def test_added_lines_de_un_utf16_sin_rastrear_devuelve_todo(self):
+        archivo = self.root / "nuevo.sql"
+        archivo.write_bytes("a\r\nb\r\n".encode("utf-16"))
+        self.assertEqual(gitdiff.added_lines(self.root, archivo), [(1, "a"), (2, "b")])
+
+
 class TestArchivosModificados(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

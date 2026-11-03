@@ -22,6 +22,7 @@ checks) es Python puro, así que también se puede usar con otros modelos (ver
 - [Qué trae la versión harness advance](#qué-trae-la-versión-harness-advance)
 - [El ciclo de un ticket](#el-ciclo-de-un-ticket)
 - [Hallazgos y biblioteca de lecciones](#hallazgos-y-biblioteca-de-lecciones)
+  - [Curar la biblioteca](#curar-la-biblioteca)
 - [Instalación y despliegue](#instalación-y-despliegue)
 - [Uso diario](#uso-diario)
   - [Los comandos de hallazgos, uno por uno](#los-comandos-de-hallazgos-uno-por-uno)
@@ -152,7 +153,9 @@ Cada hallazgo tiene:
 <proyecto>/.claude/biblioteca/
 ├── INDEX.md                          derivado: se reconstruye desde las entradas
 ├── entradas/ISR-110722-fase_1-h1.md  lecciones aprobadas
-└── rechazados/ISR-110722-fase_1-h3.md
+├── rechazados/ISR-110722-fase_1-h3.md
+├── retiradas/ISR-110722-fase_2-h1.md lecciones que salieron por una curación
+└── curacion-rechazada.md             curaciones que rechazaste
 ```
 
 - **Versiónala con el proyecto**: haz commit de `.claude/biblioteca/` después de
@@ -186,6 +189,35 @@ que ya falló pesa más al planear, y el reflector sabe cuáles tienen pieza. El
 [docs/tecnico.md](docs/tecnico.md#líneas-de-una-entrada-de-la-biblioteca).
 
 
+### Curar la biblioteca
+
+La biblioteca solo crece con cada fase, y el planner la lee entera en cada ticket.
+Con el tiempo se juntan lecciones que dicen lo mismo, otras que contradicen una regla
+del perfil y otras que hablan de código que ya no existe. `/biblioteca-curar` corre
+un **curador** (solo lectura, como el reflector) que propone dos tipos de acción:
+
+- **Fusionar** lecciones que dicen lo mismo en una sola, que conserva las fallas de
+  todas.
+- **Retirar** una lección que ya no vale, con el motivo.
+
+Cada acción la decides tú con `/curacion-ok cN`, `/curacion-editar cN ...` o
+`/curacion-no cN "<motivo>"`. **Nada se borra:** lo retirado pasa a `retiradas/` con
+su motivo y sus fallas, `INDEX.md` lo lista en "Retiradas — no aplicar", y una
+referencia vieja a una lección fusionada te dice cuál usar. Tus rechazos quedan en
+`curacion-rechazada.md`, que se versiona, para que el curador no los vuelva a
+proponer en ningún clon.
+
+**Cuándo correrla:** cuando el [reporte](#cómo-leer-el-reporte) lo sugiere en su
+sección Curación, o cuando la biblioteca creció varios tickets sin revisarse. No hace
+falta un ticket abierto, pero una lección que ancla el ticket en curso no se toca hasta
+que todas sus fases estén aprobadas.
+
+**Cómo decidir:** las señales (`cli.py senales-biblioteca`) son pistas, no motivos.
+`usos` cuenta los planes de **tu** clon, así que "sin uso" no basta para retirar; una
+ruta ausente puede ser un archivo generado que git no rastrea, o algo que no es una
+ruta (un endpoint).
+
+
 ## Instalación y despliegue
 
 Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude Code.
@@ -213,8 +245,14 @@ Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude 
    estaban abiertas no cargan los agentes ni los comandos nuevos.
 
 Perfiles incluidos en este repo: `reviewsystemgfs` (VB.NET, Web Forms, .NET 3.5,
-sin build desde línea de comandos) y `editornotificaciones` (.NET + Vue 2, con build,
-pruebas y un check de contraste WCAG).
+sin build desde línea de comandos; checks estructurales `designer_sync`, `sp_params` y
+`xhtml_selfclose` en lugar del compilador) y `editornotificaciones` (.NET + Vue 2, con
+build, pruebas y un check de contraste WCAG).
+
+`sp_params` necesita saber dónde están los SPs: `sp_params.carpetas_sp` en el
+`rules.json` del perfil. Viene con `../../ProjectSQL/MSSQL/PrimusGFS/Procedimiento`
+(relativa a la raíz del proyecto) y `ReviewSystem/Sps` de respaldo; si tus carpetas
+están en otro lado, cambia esa lista. Una carpeta que no existe se avisa y se omite.
 
 
 ## Uso diario
@@ -231,6 +269,10 @@ pruebas y un check de contraste WCAG).
 | `/hallazgo-no <ref> "<motivo>"` | Rechazar un hallazgo |
 | `/hallazgo "<lección>"` | Agregar una lección propia (entra aprobada) |
 | `/hallazgo-hecho <ref> "<nota>"` | Avisar que ya construiste la pieza que pedía una lección aprobada |
+| `/biblioteca-curar` | Correr el curador sobre la biblioteca (ver [Curar la biblioteca](#curar-la-biblioteca)) |
+| `/curacion-ok <cN>` | Aplicar una acción de curación |
+| `/curacion-editar <cN> [--texto] [--senal] [--quitar <ref>] [--motivo]` | Corregir y aplicar una acción de curación |
+| `/curacion-no <cN> "<motivo>"` | Rechazar una acción de curación |
 
 El orquestador es la skill `ticket-loop`, que los comandos invocan. Si la sesión se
 corta, se retoma desde el estado en `.harness/`: el CLI y el hook `Stop` saben en qué
@@ -391,6 +433,12 @@ grupo). Dentro de cada grupo van primero las que **volvieron sin pieza**, con
 `costó otra vez N×` y, por cada vez, fecha, ticket y lo que debió hacerse. Ese N× es
 tu orden de trabajo: **construye primero la pieza de la lección que más veces costó**.
 Al terminar una, márcala con `/hallazgo-hecho`: sale de la deuda.
+
+**Curación.** Las lecciones que ningún plan de este clon ancló, las que mencionan
+rutas que git ya no rastrea, cuántas acciones de curación esperan tu decisión, cuándo
+fue la última curación y cuántas lecciones se retiraron. Si hay alguna señal o
+pendiente, sugiere `/biblioteca-curar`. Son pistas: ver
+[Curar la biblioteca](#curar-la-biblioteca).
 
 **Hallazgos.** Cuántos se aprobaron tal cual, cuántos con edición, cuántos eran
 reincidencias y cuántos son tuyos; los **propuestos sin resolver**, con su referencia
