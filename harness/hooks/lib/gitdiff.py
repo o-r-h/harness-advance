@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import codecs
 import difflib
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -86,11 +87,16 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     if dentro is None or dentro.returncode != 0 or dentro.stdout.strip() != "true":
         return None
 
-    estado = _git(raiz, "status", "--porcelain", "--", relativo)
-    if estado is not None and estado.returncode == 0 and estado.stdout.startswith("??"):
+    entrada = next((e for e in _estado(raiz) or [] if _misma(e[1], archivo)), None)
+    if entrada is not None and entrada[0] == "??":
         return [(i, linea) for i, linea in enumerate(read_text(archivo).splitlines(), start=1)]
 
     actual = archivo.read_bytes()
+    if entrada is not None and entrada[2] is not None:
+        # Renombrado (git mv): lo agregado es contra el archivo de origen en HEAD, no
+        # todo el archivo como si fuera nuevo.
+        origen = Path(os.path.relpath(entrada[2], raiz)).as_posix()
+        return _agregadas_por_comparacion(raiz, origen, actual)
     if actual.startswith(BOMS_ANCHOS):
         return _agregadas_por_comparacion(raiz, relativo, actual)
 
@@ -147,19 +153,47 @@ def archivos_rastreados(project_root: Path) -> list[str] | None:
     return [_decodificar_con_respaldo(r) for r in salida.stdout.split(b"\0") if r]
 
 
+def _misma(a: Path, b: Path) -> bool:
+    return os.path.normcase(str(Path(a).resolve())) == os.path.normcase(str(Path(b).resolve()))
+
+
+def _estado(raiz: Path) -> list[tuple[str, Path, Path | None]] | None:
+    """(XY, ruta, origen si es renombrado o copia) de `git status --porcelain -z`.
+
+    Con -z git no cita las rutas: sin él, una ruta con acentos o espacios sale entre
+    comillas y en octal, no coincide con ningún archivo y se queda sin revisar.
+    Las rutas vienen relativas a la raíz del repo; se devuelven absolutas."""
+    tope = _git(raiz, "rev-parse", "--show-toplevel")
+    estado = _git(raiz, "status", "--porcelain", "-z", "--untracked-files=all", crudo=True)
+    if tope is None or tope.returncode != 0 or estado is None or estado.returncode != 0:
+        return None
+    base = Path(tope.stdout.strip())
+    partes = [_decodificar_con_respaldo(p) for p in estado.stdout.split(b"\0")]
+    entradas: list[tuple[str, Path, Path | None]] = []
+    i = 0
+    while i < len(partes):
+        parte = partes[i]
+        i += 1
+        if len(parte) < 4:
+            continue
+        xy, ruta = parte[:2], base / parte[3:]
+        origen = None
+        if "R" in xy or "C" in xy:  # en -z el origen viene en el campo siguiente
+            origen = base / partes[i]
+            i += 1
+        entradas.append((xy, ruta, origen))
+    return entradas
+
+
 def archivos_modificados(project_root: Path) -> list[Path]:
     """Archivos con cambios respecto a HEAD, incluidos los sin rastrear."""
     raiz = Path(project_root).resolve()
-    estado = _git(raiz, "status", "--porcelain", "--untracked-files=all")
-    if estado is None or estado.returncode != 0:
-        return []
     rutas: list[Path] = []
-    for linea in estado.stdout.splitlines():
-        if len(linea) < 4:
-            continue
-        relativo = linea[3:].strip().strip('"')
-        if " -> " in relativo:  # renombrado: interesa el destino
-            relativo = relativo.split(" -> ", 1)[1]
+    for _, ruta, _ in _estado(raiz) or []:
+        try:
+            relativo = ruta.resolve().relative_to(raiz)
+        except ValueError:
+            continue  # fuera del proyecto
         candidato = raiz / relativo
         if candidato.is_file():
             rutas.append(candidato)

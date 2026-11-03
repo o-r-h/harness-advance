@@ -149,6 +149,44 @@ class TestDecodificacionConBom(unittest.TestCase):
         self.assertEqual(gitdiff.added_lines(self.root, archivo), [(1, "a"), (2, "b")])
 
 
+class TestRutasRarasYRenombrados(unittest.TestCase):
+    """Backlog: git cita en octal las rutas con acentos, y un git mv no es un archivo nuevo."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        _git(self.root, "init")
+        _git(self.root, "config", "user.email", "t@t.t")
+        _git(self.root, "config", "user.name", "t")
+        self.acento = self.root / "Catálogo de revisión.aspx"
+        self.acento.write_text("uno\n", encoding="utf-8")
+        (self.root / "a.vb").write_text("l1\nl2\nl3\n", encoding="utf-8")
+        _git(self.root, "add", ".")
+        _git(self.root, "commit", "-m", "base")
+
+    def test_una_ruta_con_acentos_y_espacios_se_lista(self):
+        self.acento.write_text("uno\ndos\n", encoding="utf-8")
+        nuevo = self.root / "Señal nueva.vb"
+        nuevo.write_text("x\n", encoding="utf-8")
+        self.assertEqual(sorted(p.name for p in gitdiff.archivos_modificados(self.root)),
+                         sorted([self.acento.name, nuevo.name]))
+        self.assertEqual(gitdiff.added_lines(self.root, self.acento), [(2, "dos")])
+
+    def test_un_git_mv_solo_cuenta_lo_agregado(self):
+        _git(self.root, "mv", "a.vb", "b.vb")
+        destino = self.root / "b.vb"
+        destino.write_text("l1\nl2\nl3\nnueva\n", encoding="utf-8")
+        self.assertEqual(gitdiff.added_lines(self.root, destino), [(4, "nueva")])
+        self.assertEqual([p.name for p in gitdiff.archivos_modificados(self.root)], ["b.vb"])
+
+    def test_un_git_mv_a_una_ruta_con_acentos(self):
+        _git(self.root, "mv", "a.vb", "Módulo.vb")
+        destino = self.root / "Módulo.vb"
+        destino.write_text("l1\nl2\nl3\nnueva\n", encoding="utf-8")
+        self.assertEqual(gitdiff.added_lines(self.root, destino), [(4, "nueva")])
+
+
 class TestArchivosModificados(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
