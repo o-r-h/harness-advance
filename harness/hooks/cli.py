@@ -237,6 +237,11 @@ def cmd_run_checks(args) -> int:
     for nombre in resueltos:
         if nombre in estructurales:
             hallazgos += plugins.ejecutar(nombre, estructurales[nombre], raiz, archivos, ctx)
+        elif nombre in (reglas.get("checks_estructurales") or []):
+            hallazgos.append({"id": nombre, "resultado": "error_check", "severidad": "error",
+                              "detalle": f"rules.json declara el check estructural "
+                                         f"'{nombre}' pero no existe .claude/checks/"
+                                         f"{nombre}.py: no se verificó"})
 
     bloqueantes = [h for h in hallazgos
                    if h.get("resultado") == "fallo" and h.get("severidad") == "error"]

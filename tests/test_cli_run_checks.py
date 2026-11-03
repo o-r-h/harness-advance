@@ -116,6 +116,20 @@ class TestRunChecks(unittest.TestCase):
         self.assertEqual(datos["resultado"], "ok")
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
 
+    def test_un_check_estructural_declarado_sin_archivo_es_error_check_y_no_silencio(self):
+        # El perfil lo declara y la fase lo pide, pero nadie desplegó el .py:
+        # pasar en silencio haría creer que se verificó.
+        reglas = dict(REGLAS, checks_estructurales=["designer_sync"])
+        harness.write_json(self.root / ".claude" / "rules.json", reglas)
+        plan = json.loads(json.dumps(PLAN))
+        plan["fases"][0]["checks_deterministas"] = ["designer_sync"]
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json", plan)
+        (self.root / "frm.js").write_text("var a = 1;\nvar b = 2;\n", encoding="utf-8")
+        correr("run-checks", "--project", str(self.root))
+        hallazgo = next(c for c in self.leer_checks()["checks"] if c["id"] == "designer_sync")
+        self.assertEqual(hallazgo["resultado"], "error_check")
+        self.assertIn("designer_sync.py", hallazgo["detalle"])
+
     def test_un_check_estructural_valido_se_ejecuta(self):
         destino = self.root / ".claude" / "checks"
         destino.mkdir()
