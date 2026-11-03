@@ -135,3 +135,75 @@ class TestBiblioteca(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMarcasDeLaEntrada(Base):
+    REF = "ISR-1/fase_1/h1"
+
+    def setUp(self):
+        super().setUp()
+        self.ruta = biblioteca.escribir_entrada(
+            self.root, "ISR-1", "fase_1", _h(estado="aprobado"), fecha="02-11-2026")
+
+    def test_la_aprobada_lleva_fecha(self):
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.REF)["aprobada"], "02-11-2026")
+
+    def test_sin_fecha_no_escribe_aprobada(self):
+        biblioteca.escribir_entrada(self.root, "ISR-1", "fase_1", _h(estado="aprobado"))
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.REF)["aprobada"], "")
+
+    def test_leer_entrada_inexistente(self):
+        self.assertIsNone(biblioteca.leer_entrada(self.root, "ISR-9/fase_1/h1"))
+
+    def test_falla_sin_pieza(self):
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-2/fase_3/h1",
+                                   "Usar curl.exe", "03-11-2026")
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.REF)["fallas"],
+                         [{"fecha": "03-11-2026", "ref": "ISR-2/fase_3/h1",
+                           "tipo": "sin pieza", "leccion": "Usar curl.exe"}])
+
+    def test_falla_estando_implementada(self):
+        biblioteca.marcar_implementada(self.root, self.REF, "check curl", "04-11-2026")
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-2/fase_3/h1",
+                                   "Usar curl.exe", "05-11-2026")
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.REF)["fallas"][0]["tipo"],
+                         "implementada")
+
+    def test_varias_fallas_se_acumulan(self):
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-2/fase_3/h1", "Uno", "03-11-2026")
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-3/fase_1/h2", "Dos", "04-11-2026")
+        fallas = biblioteca.leer_entrada(self.root, self.REF)["fallas"]
+        self.assertEqual([f["ref"] for f in fallas], ["ISR-2/fase_3/h1", "ISR-3/fase_1/h2"])
+
+    def test_marcar_implementada_devuelve_la_anterior(self):
+        self.assertIsNone(biblioteca.marcar_implementada(self.root, self.REF, "check curl",
+                                                         "04-11-2026"))
+        self.assertEqual(biblioteca.marcar_implementada(self.root, self.REF, "otra", "05-11-2026"),
+                         "04-11-2026 · check curl")
+        self.assertEqual(biblioteca.leer_entrada(self.root, self.REF)["implementada"],
+                         "05-11-2026 · otra")
+
+    def test_falla_o_marca_sobre_rechazada_o_inexistente(self):
+        biblioteca.escribir_entrada(self.root, "ISR-1", "fase_1", _h(id="h2", estado="rechazado"))
+        for ref in ("ISR-1/fase_1/h2", "ISR-9/fase_1/h1"):
+            with self.assertRaises(ValueError):
+                biblioteca.registrar_falla(self.root, ref, "ISR-2/fase_3/h1", "x", "03-11-2026")
+            with self.assertRaises(ValueError):
+                biblioteca.marcar_implementada(self.root, ref, "x", "03-11-2026")
+
+    def test_conserva_lineas_ajenas(self):
+        with open(self.ruta, "a", encoding="utf-8", newline="") as f:
+            f.write("\r\n- **nota**: puesta a mano\r\n")
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-2/fase_3/h1", "Uno", "03-11-2026")
+        biblioteca.marcar_implementada(self.root, self.REF, "check", "04-11-2026")
+        texto = self.ruta.read_text(encoding="utf-8")
+        self.assertIn("- **nota**: puesta a mano", texto)
+        self.assertIn("- **falló**: 03-11-2026 · ISR-2/fase_3/h1 · sin pieza — Uno", texto)
+
+    def test_indice_muestra_las_marcas(self):
+        biblioteca.marcar_implementada(self.root, self.REF, "check", "04-11-2026")
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-2/fase_3/h1", "Uno", "05-11-2026")
+        biblioteca.registrar_falla(self.root, self.REF, "ISR-3/fase_1/h2", "Dos", "06-11-2026")
+        indice = (self.root / ".claude" / "biblioteca" / "INDEX.md").read_text(encoding="utf-8")
+        linea = next(l for l in indice.splitlines() if "entradas/ISR-1-fase_1-h1.md" in l)
+        self.assertTrue(linea.endswith("(implementada 04-11-2026) (falló 2×)"), linea)
