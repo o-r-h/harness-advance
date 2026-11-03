@@ -78,7 +78,7 @@ Por cada entrada aprobada:
 |---|---|
 | `usos` | Número de `plan.json` en `.harness/tickets/*/` cuyos `anclajes` traen `ref` igual a la ruta de la entrada (`.claude/biblioteca/entradas/<archivo>.md`). |
 | `ultimo_uso` | El ticket más reciente que la ancló (por fecha de `ticket_context.json`; sin fecha, por nombre). |
-| `rutas_ausentes` | Rutas que menciona el texto de la entrada (en backticks, o tokens con `/` y extensión de archivo) y que no existen bajo la raíz del proyecto. Solo rutas relativas; las que no parecen ruta no cuentan. |
+| `rutas_ausentes` | Rutas que mencionan la `señal` y la `lección` (no la `evidencia`, que cita artefactos de `.harness/` como `intento_1/veredicto.json`) y que no coinciden con ningún archivo ni carpeta rastreados por git (`git ls-files`). Coincidir es **por sufijo de segmentos completos**: `components/global/document-tooltip.vue` coincide con `AzzuleSite/Assets/components/global/document-tooltip.vue`, porque las lecciones escriben rutas relativas a un subproyecto. Un token cuenta como ruta si tiene al menos un `/` y no tiene espacios (`src/scss` cuenta; `global.api` y `§4.1` no). |
 | `fallas`, `implementada` | Ya existen. |
 
 `report.py` agrega una sección **Curación** con: lecciones sin uso desde que se
@@ -86,15 +86,23 @@ aprobaron, lecciones con rutas ausentes, y cuándo se curó por última vez. Es
 información, no acción. *Decisión de Claude:* no hay umbral que dispare nada; el
 reporte sugiere `/biblioteca-curar` cuando hay al menos una señal.
 
-**Límite aceptado:** los planes anteriores a la v3 del planner no anclan; para ellos
-`usos` es 0 aunque la lección se haya leído. El reporte lo dice.
+**Límites aceptados**, que el reporte y el curador conocen:
+
+- Los planes anteriores a la v3 del planner no anclan: para ellos `usos` es 0 aunque la
+  lección se haya leído.
+- `.harness/` no se versiona, así que `usos` cuenta los planes **de este clon**. Otro
+  desarrollador ve otros números. Por eso **"sin uso" nunca basta para retirar**: es
+  una pista para el curador, no un motivo.
+- Un archivo que existe en disco pero git no rastrea (por ejemplo un `.min.css`
+  generado) cuenta como ausente. *Decisión de Claude:* se prefiere eso a recorrer el
+  disco, que incluye `node_modules` y artefactos.
 
 ### 2. El curador (`harness/agents/curador.md`)
 
 Agente de solo lectura (`Read, Grep, Glob`), como el reflector. Recibe:
 
 - `INDEX.md` y **todas** las entradas aprobadas completas.
-- Las rechazadas con su motivo.
+- Las rechazadas con su motivo, y `curacion-rechazada.md`.
 - Las señales del punto 1 (las calcula el CLI y se las pasa la skill o el comando).
 - Los `agents/*.md` y el `rules.json` del perfil, para detectar contradicciones con
   las reglas del proyecto.
@@ -120,16 +128,33 @@ Igual que los hallazgos, para no enseñar un segundo patrón:
 - `cli.py senales-biblioteca [--json]`: imprime las señales (lo usa la skill para
   armar la entrada del curador, y sirve sola).
 - `cli.py record-curacion --archivo <propuesta.json>`: valida contra un contrato nuevo
-  (`contracts.validate_curacion`) y guarda las acciones como `c1`, `c2`... en
-  `.harness/curacion/<fecha>/curacion.json`, con estado `propuesto`. Rechaza: refs que
-  no existen en `entradas/`, un `destino` fuera de `refs`, una ref en dos acciones de la
-  misma propuesta.
+  (`contracts.validate_curacion`) y guarda las acciones en `.harness/curacion.json`,
+  con estado `propuesto`. Rechaza:
+  - refs que no existen en `entradas/`;
+  - un `destino` fuera de `refs`;
+  - una ref en dos acciones de la misma propuesta;
+  - una fusión que mezcla lecciones implementadas con no implementadas (ver punto 4).
+
+  *Decisión de Claude:* hay **una sola curación viva**. Los ids son globales y
+  crecientes (`c1`, `c2`...; nunca se reutilizan). Una propuesta nueva reemplaza las
+  acciones todavía `propuesto` de la anterior, igual que `record-hallazgos` con las del
+  reflector, y conserva las ya resueltas como historia.
 - `cli.py resolver-curacion --id <cN> --decision ok|no|editar [--texto] [--motivo]`:
   - `ok`: aplica la acción.
-  - `editar`: aplica con el texto corregido por el humano (`--texto` reemplaza la
-    `lección` fusionada; en `retirar` reemplaza el motivo).
-  - `no`: la marca rechazada con su motivo; queda en `curacion.json` para que el
-    curador no la vuelva a proponer.
+  - `editar`: aplica con lo corregido por el humano. En `fusionar`: `--texto`
+    reemplaza la `lección`, `--senal` la `señal` (es lo que muestra `INDEX.md` y lo que
+    el planner compara con el ticket), y `--quitar <ref>` (repetible) saca refs de la
+    fusión sin tocar el destino; si queda una sola ref, no hay fusión y se rechaza con
+    error claro. En `retirar`: `--motivo` reemplaza el motivo.
+  - `no`: la rechaza con su motivo. *Decisión de Claude:* el rechazo se escribe en la
+    biblioteca versionada, `biblioteca/curacion-rechazada.md` (una línea por acción:
+    tipo, refs, motivo, fecha), para que viaje con el repo como `rechazados/` y el
+    curador de otro clon tampoco la vuelva a proponer.
+  - Si la acción toca una lección **anclada por el plan del ticket abierto**
+    (`current.json`), `resolver-curacion` la rechaza con un mensaje que dice qué
+    ticket la ancla: retirarla a mitad de fase haría que el escéptico vea un ancla sin
+    resolver y tumbe el intento. Se resuelve después de cerrar el ticket. *Decisión de
+    Claude.*
 - Comandos: `/biblioteca-curar` (corre el curador y `record-curacion`, y termina el
   turno mostrando las acciones), `/curacion-ok <cN>`, `/curacion-no <cN> "<motivo>"`,
   `/curacion-editar <cN> "<texto>"`.
@@ -149,6 +174,11 @@ fase activa ni ticket abierto. Las propuestas pendientes no bloquean nada.
   `fusionada en <A>`.
 - `INDEX.md` gana una sección **Retiradas — no aplicar** con una línea por entrada y su
   motivo. El planner no las aplica; el reflector no las vuelve a proponer.
+- **Implementadas:** solo se fusionan lecciones con el mismo estado (todas implementadas
+  o ninguna). Fusionar una implementada con una que no lo es haría que sus `falló`
+  copiadas desaparezcan de las dos secciones del reporte, que las clasifica por ese
+  estado. Si son todas implementadas, el destino conserva su línea `implementada` y
+  recibe las notas de las otras en su línea `fusionada`. *Decisión de Claude.*
 - **Referencias viejas:** `record-hallazgos` con `reincide` a una lección retirada
   sigue rechazando, pero el error dice adónde fue ("fusionada en X: usa esa ref"). Un
   ancla en un plan cerrado a `entradas/B.md` deja de resolver; las señales cuentan sus
