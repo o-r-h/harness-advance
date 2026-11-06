@@ -154,7 +154,7 @@ Estado nuevo en el proyecto:
 La skill `ticket-loop` ya invoca `task-planner`, pero la skill no existe. El test de
 referencias de la Tarea 2 fallaría por eso, así que esta tarea va primero.
 
-- [ ] **Paso 1: Ejecutar la Task 16 de `docs/superpowers/plans/2026-07-28-ia-harness.md`**
+- [ ] **Paso 1: Task 16 del plan original (ya ejecutada; el registro se retiró del repo)**
   tal como está escrita: crea `harness/skills/task-planner/SKILL.md` a partir de
   `task-plannerv2.md`, y crea `tests/test_planner_v3.py`.
 - [ ] **Paso 2: Verificar**

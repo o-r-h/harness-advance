@@ -11,12 +11,12 @@ CONTEXTO_OK = {
     "nroticket": "110722",
     "desarrollador": "OMAR RODRIGUEZ",
     "fecha": "28-07-2026",
-    "perfil": "reviewsystemgfs",
+    "perfil": "perfil-demo",
 }
 
 PLAN_OK = {
     "ticket_id": "ISR-110722",
-    "perfil": "reviewsystemgfs",
+    "perfil": "perfil-demo",
     "generado_por": "task-planner-v3",
     "fases": [{
         "id": "fase_1",
@@ -34,7 +34,7 @@ PLAN_OK = {
 }
 
 REGLAS_OK = {
-    "perfil": "reviewsystemgfs",
+    "perfil": "perfil-demo",
     "prohibido": [{"id": "no_async", "archivos": [".vb"], "severidad": "error",
                    "patron": r"\b(Async|Await)\b", "mensaje": "FW 3.5 no soporta async/await"}],
     "audit_comments": {"requerido": True, "severidad": "error"},
@@ -63,7 +63,7 @@ class TestPlan(unittest.TestCase):
 
     def test_acepta_agente_ejecutor_opcional_bien_formado(self):
         plan = copy.deepcopy(PLAN_OK)
-        plan["fases"][0]["agente_ejecutor"] = "agent-notif-api"
+        plan["fases"][0]["agente_ejecutor"] = "agent-crud"
         self.assertEqual(contracts.validate_plan(plan, REGLAS_OK), [])
 
     def test_rechaza_agente_ejecutor_vacio_o_que_no_es_texto(self):
@@ -84,15 +84,15 @@ class TestPlan(unittest.TestCase):
 
     def test_rechaza_agente_ejecutor_que_no_existe_en_el_proyecto(self):
         plan = copy.deepcopy(PLAN_OK)
-        plan["fases"][0]["agente_ejecutor"] = "agent-notif-api"
-        errores = contracts.validate_plan(plan, REGLAS_OK, agentes={"agent-notif-web"})
-        self.assertTrue(any("agent-notif-api" in e and ".claude/agents" in e for e in errores))
+        plan["fases"][0]["agente_ejecutor"] = "agent-crud"
+        errores = contracts.validate_plan(plan, REGLAS_OK, agentes={"agent-otro"})
+        self.assertTrue(any("agent-crud" in e and ".claude/agents" in e for e in errores))
 
     def test_acepta_agente_ejecutor_que_existe_en_el_proyecto(self):
         plan = copy.deepcopy(PLAN_OK)
-        plan["fases"][0]["agente_ejecutor"] = "agent-notif-api"
+        plan["fases"][0]["agente_ejecutor"] = "agent-crud"
         self.assertEqual(
-            contracts.validate_plan(plan, REGLAS_OK, agentes={"agent-notif-api"}), [])
+            contracts.validate_plan(plan, REGLAS_OK, agentes={"agent-crud"}), [])
 
     def test_rechaza_lista_de_fases_vacia(self):
         malo = dict(PLAN_OK, fases=[])

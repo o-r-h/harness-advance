@@ -219,13 +219,12 @@ Al escribir uno:
   lo que reporta a `gitdiff.added_lines`, igual que los checks declarativos.
 - El módulo se carga sin registrarse en `sys.modules`: `@dataclass` falla ahí; usa una
   clase normal.
-- Su configuración va en `rules.json` bajo una clave propia, no en el código. Por
-  ejemplo, `sp_params` de `reviewsystemgfs` lee `sp_params.carpetas_sp`: dónde están
-  los SPs, en orden de prioridad, con rutas relativas a la raíz del proyecto, absolutas
-  o con `%VARIABLES%` de entorno.
+- Su configuración va en `rules.json` bajo una clave propia, no en el código: rutas,
+  carpetas o umbrales, en orden de prioridad, con rutas relativas a la raíz del
+  proyecto, absolutas o con `%VARIABLES%` de entorno.
 
-Ejemplos: `profiles/editornotificaciones/checks/` (build y contraste) y
-`profiles/reviewsystemgfs/checks/` (estructurales, sin compilador).
+Ejemplo: `profiles/crud-api/checks/dotnet_build.py` (compila y corre las pruebas
+de la solución si la fase tocó el backend).
 
 **Agente ejecutor**: un `.md` con frontmatter `name` y `description` que conoce los
 patrones del stack. Si el perfil tiene varios, cada fase del plan dice cuál la
@@ -370,7 +369,6 @@ Documentos de diseño:
 | Documento | Contenido |
 |---|---|
 | `docs/superpowers/specs/2026-07-28-ia-harness-engineering-design.md` | La spec: decisiones D1–D13, contratos, ciclo, verificación |
-| `docs/superpowers/plans/2026-07-28-ia-harness.md` | Plan original (tareas 1–20) |
 | `docs/superpowers/plans/harness-advance.md` | Plan de esta versión: origen en Harness² y decisiones DA1–DA9 |
 | `docs/hook-payloads.md` | Payloads reales de los hooks, capturados con una sonda |
 | `docs/superpowers/specs/2026-11-02-reporte-y-aprendizaje-design.md` | Reincidencia, lección implementada y reporte: qué se decidió y por qué |
@@ -386,8 +384,7 @@ Documentos de diseño:
 │   ├── hooks/                check_rules.py (PostToolUse), gate_phase.py (Stop), cli.py, report.py, lib/
 │   └── skills/               ticket-loop, task-planner
 ├── profiles/                 un perfil por proyecto → <proyecto>/.claude/
-│   ├── reviewsystemgfs/
-│   └── editornotificaciones/
+│   └── crud-api/
 ├── tests/                    suite unittest del harness
 ├── docs/                     spec, planes y payloads de hooks
 ├── historico/                archivos de partida, ya migrados
@@ -406,24 +403,16 @@ Menores abiertos:
 
 Límites conocidos de los checks y del diff (revisión del paso 4, 03-11-2026):
 
-- `sp_params` revisa la convención `"VN=<SP>|V0=<n>|..."` (que despachan
-  `LlenaCombos`/`LlenaGrid`) en `.vb` y `.js`, pero en JS por línea física: una cadena
-  que se arma en varias líneas o con `p += ...` más abajo solo aporta los Vn de la línea
-  del `VN=`. En el repo, las 23 están en una sola línea.
-- `sp_params` da `error` para `IF @Validar = 1 ... ELSE ...` llamado con otro valor; en
-  el corpus actual solo aparece en SPs sin `@Parametros`.
-
 Orden acordado de lo que sigue (hechos: el paso 1, el reporte y las reincidencias; el
 paso 2, el test de punta a punta, que destapó que `run-checks` no registraba sus fallos;
 el paso 3, el registro de hooks por `deploy.ps1` y `HARNESS_STOP=off`; el paso 4, los
-checks estructurales de `reviewsystemgfs`, ajustados contra el repo real: el plan
-original ponía en `error` un caso que compila y buscaba los SPs en una carpeta
-congelada desde 2016; y el paso 5, la curación de la biblioteca con señales, curador y
+checks estructurales del primer perfil de proyecto, ajustados contra su repo real; y
+el paso 5, la curación de la biblioteca con señales, curador y
 aprobación humana. Sin caducidad por fecha, a propósito: la señal es el uso, y la
 decisión, humana):
 
-6. **Backlog** (03-11-2026): hechos los menores que afectaban la verificación, la
-   convención `VN=` en `sp_params` y el escéptico con otro modelo de Claude (solo hay
+6. **Backlog** (03-11-2026): hechos los menores que afectaban la verificación y el
+   escéptico con otro modelo de Claude (solo hay
    Claude: Sonnet por defecto, Opus si el ejecutor es Sonnet). Tickets en paralelo se
    descartó por ahora: no ocurre en el trabajo diario (hay un solo `current.json` por
    proyecto).

@@ -8,7 +8,7 @@ from lib import checks  # noqa: E402
 
 CTX = {"ticket_id": "ISR-110722", "nroticket": "110722",
        "desarrollador": "OMAR RODRIGUEZ", "fecha": "28-07-2026",
-       "perfil": "reviewsystemgfs"}
+       "perfil": "perfil-demo"}
 CFG = {"requerido": True, "severidad": "error", "aplica_a": [".vb", ".js", ".sql", ".aspx"]}
 
 VB_CORRECTO = """Public Class Reporte

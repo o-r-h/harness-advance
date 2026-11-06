@@ -11,7 +11,7 @@ sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
 from lib import harness  # noqa: E402
 
 PLAN = {
-    "ticket_id": "ISR-110722", "perfil": "reviewsystemgfs",
+    "ticket_id": "ISR-110722", "perfil": "perfil-demo",
     "generado_por": "task-planner-v3",
     "fases": [{
         "id": "fase_1", "titulo": "Agregar campo", "pasos": ["uno"],
@@ -33,7 +33,7 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / ".claude").mkdir()
         (self.root / ".claude" / "rules.json").write_text(
-            json.dumps({"perfil": "reviewsystemgfs",
+            json.dumps({"perfil": "perfil-demo",
                         "audit_comments": {"requerido": True, "severidad": "error"}}),
             encoding="utf-8")
 
@@ -44,7 +44,7 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
         return correr("open-ticket", "--project", str(self.root),
                       "--ticket-id", "ISR-110722", "--nroticket", "110722",
                       "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "28-07-2026",
-                      "--perfil", "reviewsystemgfs")
+                      "--perfil", "perfil-demo")
 
     def test_open_ticket_crea_contexto_y_puntero(self):
         resultado = self.abrir_ticket()
@@ -62,7 +62,7 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
                 resultado = correr("open-ticket", "--project", str(self.root),
                                    "--ticket-id", ticket, "--nroticket", "1",
                                    "--desarrollador", "OMAR RODRIGUEZ", "--fecha",
-                                   "28-07-2026", "--perfil", "reviewsystemgfs")
+                                   "28-07-2026", "--perfil", "perfil-demo")
                 self.assertEqual(resultado.returncode, 1)
                 self.assertIn("letras, dígitos, '-' o '_'", resultado.stderr)
                 self.assertFalse(harness.ticket_dir(self.root, ticket).exists())
@@ -71,7 +71,7 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
         resultado = correr("open-ticket", "--project", str(self.root),
                            "--ticket-id", "ISR-1", "--nroticket", "1",
                            "--desarrollador", "OMAR RODRIGUEZ", "--fecha", "2026-07-28",
-                           "--perfil", "reviewsystemgfs")
+                           "--perfil", "perfil-demo")
         self.assertEqual(resultado.returncode, 1)
         self.assertIn("DD-MM-YYYY", resultado.stderr)
 
@@ -122,13 +122,13 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
     def test_open_fase_informa_el_agente_ejecutor_de_la_fase(self):
         self.abrir_ticket()
         (self.root / ".claude" / "agents").mkdir()
-        (self.root / ".claude" / "agents" / "agent-notif-api.md").write_text(
-            "---\nname: agent-notif-api\n---\n", encoding="utf-8")
+        (self.root / ".claude" / "agents" / "agent-crud.md").write_text(
+            "---\nname: agent-crud\n---\n", encoding="utf-8")
         harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json",
-                           self._plan_con_agente("agent-notif-api"))
+                           self._plan_con_agente("agent-crud"))
         resultado = correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
         self.assertEqual(resultado.returncode, 0, resultado.stderr)
-        self.assertIn("agent-notif-api", resultado.stdout)
+        self.assertIn("agent-crud", resultado.stdout)
 
     def test_open_fase_rechaza_un_agente_ejecutor_que_no_existe(self):
         self.abrir_ticket()

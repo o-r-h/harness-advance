@@ -11,7 +11,7 @@ sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
 from lib import harness, state  # noqa: E402
 
 REGLAS = {
-    "perfil": "reviewsystemgfs",
+    "perfil": "perfil-demo",
     "audit_comments": {"requerido": True, "severidad": "error",
                        "aplica_a": [".vb", ".js"]},
     "prohibido": [{"id": "no_fetch", "archivos": [".js"], "severidad": "error",
@@ -23,7 +23,7 @@ REGLAS = {
 }
 
 PLAN = {
-    "ticket_id": "ISR-110722", "perfil": "reviewsystemgfs",
+    "ticket_id": "ISR-110722", "perfil": "perfil-demo",
     "fases": [{"id": "fase_1", "titulo": "t", "pasos": ["p"], "anclajes": [],
                "criterio_exito": "c", "checks_deterministas": ["audit_comments", "ie11_syntax"],
                "prueba_manual": {"requerida": True}, "herramientas_permitidas": ["edit"],
@@ -54,7 +54,7 @@ class TestRunChecks(unittest.TestCase):
         harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json", PLAN)
         correr("open-ticket", "--project", str(self.root), "--ticket-id", "ISR-110722",
                "--nroticket", "110722", "--desarrollador", "OMAR RODRIGUEZ",
-               "--fecha", "28-07-2026", "--perfil", "reviewsystemgfs")
+               "--fecha", "28-07-2026", "--perfil", "perfil-demo")
         correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
 
     def tearDown(self):

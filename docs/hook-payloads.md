@@ -13,8 +13,8 @@
 ```json
 {
   "session_id": "80ff9241-df53-46db-9660-bff846460605",
-  "transcript_path": "C:\\Users\\Omarj\\.claude\\projects\\C--AZZULE-IA-harness\\<session>.jsonl",
-  "cwd": "C:\\AZZULE\\IA harness",
+  "transcript_path": "C:\\Users\\<usuario>\\.claude\\projects\\<proyecto>\\<session>.jsonl",
+  "cwd": "C:\\ruta\\al\\IA harness",
   "prompt_id": "2c14db29-7597-4918-b9fd-f9e8d89db210",
   "permission_mode": "acceptEdits",
   "effort": { "level": "medium" },
@@ -62,8 +62,8 @@ Notas:
 ```json
 {
   "session_id": "80ff9241-df53-46db-9660-bff846460605",
-  "transcript_path": "C:\\Users\\Omarj\\.claude\\projects\\...\\<session>.jsonl",
-  "cwd": "C:\\AZZULE\\IA harness",
+  "transcript_path": "C:\\Users\\<usuario>\\.claude\\projects\\...\\<session>.jsonl",
+  "cwd": "C:\\ruta\\al\\IA harness",
   "prompt_id": "2c14db29-7597-4918-b9fd-f9e8d89db210",
   "permission_mode": "acceptEdits",
   "effort": { "level": "medium" },
@@ -98,7 +98,7 @@ Notas:
 El plan proponía `payload.get("cwd") or Path(file_path).parent`. La captura muestra
 que **`cwd` es el directorio de la sesión, no el del archivo editado**: en la prueba
 se editó un archivo bajo el scratchpad de temporales y `cwd` seguía siendo
-`C:\AZZULE\IA harness`.
+la carpeta del repo del harness.
 
 Con el orden del plan, un archivo de otro proyecto —o de fuera de todo proyecto— se
 juzgaría con las reglas del proyecto donde arrancó la sesión: falsos positivos, o

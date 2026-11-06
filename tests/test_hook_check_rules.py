@@ -11,7 +11,7 @@ sys.path.insert(0, str(RAIZ / "harness" / "hooks"))
 from lib import harness  # noqa: E402
 
 REGLAS = {
-    "perfil": "reviewsystemgfs",
+    "perfil": "perfil-demo",
     "audit_comments": {"requerido": True, "severidad": "error",
                        "aplica_a": [".vb", ".js", ".sql", ".aspx"]},
     "prohibido": [{"id": "no_fetch", "archivos": [".js"], "severidad": "error",
@@ -47,7 +47,7 @@ class TestHookCheckRules(unittest.TestCase):
             harness.ticket_dir(self.root, "ISR-110722") / "ticket_context.json",
             {"ticket_id": "ISR-110722", "nroticket": "110722",
              "desarrollador": "OMAR RODRIGUEZ", "fecha": "28-07-2026",
-             "perfil": "reviewsystemgfs"})
+             "perfil": "perfil-demo"})
 
     def tearDown(self):
         self.tmp.cleanup()

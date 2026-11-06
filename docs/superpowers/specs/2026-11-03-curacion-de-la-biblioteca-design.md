@@ -13,11 +13,11 @@ fase. Hoy no hay forma de sacar, fusionar ni corregir una lección: lo único qu
 hacer el humano es editar el `.md` a mano o borrarlo, y entonces se pierde la historia
 (las líneas `falló`) y se rompen las referencias `TICKET/fase_N/hN` que la apuntan.
 
-Lo que muestra la biblioteca real de NAS (03-11-2026, solo lectura), 13 tickets después:
+Lo que mostraba la biblioteca de un proyecto real (03-11-2026, solo lectura), 13 tickets después:
 
 - **18 aprobadas, 0 implementadas, 0 con `falló`.** 3 rechazadas: dos como "duplicado
   de X, que quedó aprobada con el texto fusionado" y una porque "contradice
-  agent-nas.md §4.1". La curación ya ocurre, pero solo en el momento de aprobar y solo
+  el agente del perfil §4.1". La curación ya ocurre, pero solo en el momento de aprobar y solo
   contra lo que el humano recuerda.
 - **Los duplicados se cuelan igual.** Cuatro aprobadas giran alrededor de "comentarios
   de 'por qué' (sin prefijo --)" con alcances que se pisan (`P12/fase_1/h1`,
@@ -27,7 +27,7 @@ Lo que muestra la biblioteca real de NAS (03-11-2026, solo lectura), 13 tickets 
   `{"ref": ".claude/biblioteca/entradas/...", "confianza": "por_confirmar"}`. De las
   otras 12 no hay evidencia de uso desde que se aprobaron.
 - **Muchas lecciones nombran rutas concretas** (`components/global/document-tooltip.vue`,
-  `src/scss`, `global.api`, `agent-nas.md §4.1`). Si el código cambia, la lección puede
+  `src/scss`, `global.api`, `el agente del perfil §4.1`). Si el código cambia, la lección puede
   quedar hablando de algo que ya no existe, y nadie se entera.
 
 El costo de no curar no es el disco: es que el planner aplica como hipótesis lecciones
@@ -78,7 +78,7 @@ Por cada entrada aprobada:
 |---|---|
 | `usos` | Número de `plan.json` en `.harness/tickets/*/` cuyos `anclajes` traen `ref` igual a la ruta de la entrada (`.claude/biblioteca/entradas/<archivo>.md`). |
 | `ultimo_uso` | El ticket más reciente que la ancló (por fecha de `ticket_context.json`; sin fecha, por nombre). |
-| `rutas_ausentes` | Rutas que mencionan la `señal` y la `lección` (no la `evidencia`, que cita artefactos de `.harness/` como `intento_1/veredicto.json`) y que no coinciden con ningún archivo ni carpeta rastreados por git (`git ls-files`). Coincidir es **por sufijo de segmentos completos**: `components/global/document-tooltip.vue` coincide con `AzzuleSite/Assets/components/global/document-tooltip.vue`, porque las lecciones escriben rutas relativas a un subproyecto. Un token cuenta como ruta si tiene al menos un `/` y no tiene espacios (`src/scss` cuenta; `global.api` y `§4.1` no). |
+| `rutas_ausentes` | Rutas que mencionan la `señal` y la `lección` (no la `evidencia`, que cita artefactos de `.harness/` como `intento_1/veredicto.json`) y que no coinciden con ningún archivo ni carpeta rastreados por git (`git ls-files`). Coincidir es **por sufijo de segmentos completos**: `components/global/document-tooltip.vue` coincide con `proyecto/Assets/components/global/document-tooltip.vue`, porque las lecciones escriben rutas relativas a un subproyecto. Un token cuenta como ruta si tiene al menos un `/` y no tiene espacios (`src/scss` cuenta; `global.api` y `§4.1` no). |
 | `fallas`, `implementada` | Ya existen. |
 
 `report.py` agrega una sección **Curación** con: lecciones sin uso desde que se
@@ -209,5 +209,5 @@ Todo cambio pasa por el CLI y `reconstruir_indice`, como hoy.
 - El formato exacto del JSON de propuesta y de `curacion.json` (seguir el de
   `hallazgos.json`).
 - La heurística exacta de "parece ruta" para `rutas_ausentes`, validada contra la
-  biblioteca real de NAS en solo lectura: no debe marcar `global.api` ni `§4.1`.
+  biblioteca de un proyecto real en solo lectura: no debe marcar `global.api` ni `§4.1`.
 - Cómo se muestran las acciones al terminar `/biblioteca-curar` (como `hallazgos.md`).

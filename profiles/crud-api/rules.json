@@ -1,0 +1,30 @@
+{
+  "perfil": "crud-api",
+  "audit_comments": {
+    "requerido": false,
+    "severidad": "warning",
+    "nota": "Ejercicio con repositorio nuevo: no hay comentarios de auditoría heredados"
+  },
+  "prohibido": [
+    { "id": "no_sql_exec", "archivos": [".cs"], "severidad": "error",
+      "patron": "\\b(ExecuteNonQuery|ExecuteScalar)(Async)?\\s*\\(|\\.Execute(Async)?\\s*\\(|\\bSqlBulkCopy\\b",
+      "mensaje": "El acceso a datos va por EF Core (DbContext y SaveChangesAsync): nada de ADO.NET ejecutando SQL a mano ni SqlBulkCopy" },
+    { "id": "no_credenciales", "archivos": [".cs", ".json"], "severidad": "error",
+      "patron": "(?i)((^|[;\"'\\s])(password|pwd)=[^;\"'\\s{]|\"(password|pwd)\"\\s*:\\s*\"[^\"$]+\")",
+      "mensaje": "Credenciales y cadenas de conexión solo desde configuración del entorno o variables, nunca escritas en el código ni en appsettings" },
+    { "id": "no_guid_cliente", "archivos": [".cs"], "severidad": "warning",
+      "patron": "Guid\\.NewGuid\\(\\s*\\)",
+      "mensaje": "El identificador lo genera la base (autoincremental); Guid.NewGuid en el servidor es un valor innecesario salvo que la fase lo pida" }
+  ],
+  "no_new_deps": {
+    "severidad": "warning",
+    "vigilar": ["src/NotasApi/NotasApi.csproj", "tests/NotasApi.Tests/NotasApi.Tests.csproj"],
+    "patron": "(<PackageReference\\s|<PackageVersion\\s|^\\s*\"(?!version\"|node\"|npm\")[@a-z0-9][@a-z0-9._/-]*\"\\s*:\\s*\"[\\^~>=<]*\\d)",
+    "mensaje": "Dependencia nueva de NuGet: requiere aprobación humana explícita"
+  },
+  "checks_estructurales": ["dotnet_build"],
+  "grupos": {
+    "api_reglas": ["no_sql_exec", "no_credenciales", "no_guid_cliente"],
+    "build": ["dotnet_build"]
+  }
+}

@@ -46,8 +46,8 @@ class Base(unittest.TestCase):
         _git(self.raiz, "init")
         _git(self.raiz, "config", "user.email", "t@t.t")
         _git(self.raiz, "config", "user.name", "t")
-        for ruta in ("AzzuleSite/Assets/components/global/x.vue",
-                     "AzzuleSite/Assets/src/scss/base.scss", "archivo.vue"):
+        for ruta in ("proyecto/Assets/components/global/x.vue",
+                     "proyecto/Assets/src/scss/base.scss", "archivo.vue"):
             (self.raiz / ruta).parent.mkdir(parents=True, exist_ok=True)
             (self.raiz / ruta).write_text("x\n", encoding="utf-8")
         _git(self.raiz, "add", ".")
@@ -140,7 +140,7 @@ class TestRutasAusentes(Base):
         self.assertEqual(self.ausentes(texto), [])
 
     def test_una_ruta_relativa_con_puntos_se_compara_sin_ellos(self):
-        # Caso real de NAS: "import ... from '../../global/modal.vue'".
+        # Caso real: "import ... from '../../global/modal.vue'".
         self.assertEqual(self.ausentes("importa '../../global/x.vue' y ./src/scss"), [])
 
     def test_el_numero_de_linea_no_es_parte_de_la_ruta(self):

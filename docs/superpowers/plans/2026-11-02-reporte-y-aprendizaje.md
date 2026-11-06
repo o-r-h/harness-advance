@@ -231,9 +231,9 @@ Encabezados exactos, en este orden: `HARNESS · reporte`, `Resumen`, `Fallaron e
 - [ ] **Step 2: Correr** `python -m unittest tests.test_report -v`. Esperado: FAIL.
 - [ ] **Step 3: Implementar** `render` y el subcomando (`import report` después de los imports de `lib`).
 - [ ] **Step 4: Correr** la suite completa. Esperado: todo PASS.
-- [ ] **Step 5: Aceptación de solo lectura.** Antes y después, `git -C C:\AZZULE\DesarrolloSCP\NAS status --short` y el mismo snapshot de tamaños y mtimes de `.harness` y `.claude\biblioteca` deben ser iguales.
-  - `python harness/hooks/cli.py report --project C:\AZZULE\DesarrolloSCP\NAS --json`. Esperado: `lecciones_aprobadas == 18` e `implementadas == 0`. `rechazados` con 3 entradas y `propuestos` con 4, salvo que NAS haya cambiado desde el 02-11-2026; en ese caso, anota los números reales.
-  - Lo mismo sin `--json`, y sobre `C:\AZZULE\EditorNotificaciones`. Esperado: código 0 y, en la biblioteca, `Sin datos todavía.`.
+- [ ] **Step 5: Aceptación de solo lectura.** Antes y después, `git -C <ruta del proyecto de prueba> status --short` y el mismo snapshot de tamaños y mtimes de `.harness` y `.claude\biblioteca` deben ser iguales.
+  - `python harness/hooks/cli.py report --project <ruta del proyecto de prueba> --json`. Esperado: `lecciones_aprobadas == 18` e `implementadas == 0`. `rechazados` con 3 entradas y `propuestos` con 4, salvo que el proyecto de prueba haya cambiado desde el 02-11-2026; en ese caso, anota los números reales.
+  - Lo mismo sin `--json`, y sobre otro proyecto sin datos del harness. Esperado: código 0 y, en la biblioteca, `Sin datos todavía.`.
   - Si `ilegibles` no está vacío, revisa cada archivo antes de cerrar: o es un dato roto de verdad (anótalo), o el reporte lee mal un formato válido (corrígelo).
 - [ ] **Step 6: Commit** `feat(cli): subcomando report, en texto y JSON`.
 

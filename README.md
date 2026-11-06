@@ -1,7 +1,7 @@
 # IA Harness — versión *harness advance*
 
-Harness de ingeniería para desarrollar con agentes de IA sobre proyectos reales de
-Azzule. Corre de forma nativa en **Claude Code**, y su núcleo (CLI, contratos y
+Harness de ingeniería para desarrollar con agentes de IA sobre proyectos reales.
+Corre de forma nativa en **Claude Code**, y su núcleo (CLI, contratos y
 checks) es Python puro, así que también se puede usar con otros modelos (ver
 [Usarlo con otro modelo](docs/tecnico.md#usarlo-con-otro-modelo-que-no-sea-claude)).
 
@@ -244,15 +244,10 @@ Requisitos: Windows con PowerShell 5.1, Python 3.12 (solo stdlib), Git y Claude 
 2. **Abrir una sesión nueva** de Claude Code en el proyecto. Las sesiones que ya
    estaban abiertas no cargan los agentes ni los comandos nuevos.
 
-Perfiles incluidos en este repo: `reviewsystemgfs` (VB.NET, Web Forms, .NET 3.5,
-sin build desde línea de comandos; checks estructurales `designer_sync`, `sp_params` y
-`xhtml_selfclose` en lugar del compilador) y `editornotificaciones` (.NET + Vue 2, con
-build, pruebas y un check de contraste WCAG).
-
-`sp_params` necesita saber dónde están los SPs: `sp_params.carpetas_sp` en el
-`rules.json` del perfil. Viene con `../../ProjectSQL/MSSQL/PrimusGFS/Procedimiento`
-(relativa a la raíz del proyecto) y `ReviewSystem/Sps` de respaldo; si tus carpetas
-están en otro lado, cambia esa lista. Una carpeta que no existe se avisa y se omite.
+Perfil incluido en este repo: `crud-api` (ejercicio de una API CRUD de notas,
+.NET 10 + EF Core + SQLite, con build y pruebas vía `dotnet_build`). Adoptar otro
+proyecto es crearle su perfil:
+ver [Crear el perfil de un proyecto nuevo](docs/tecnico.md#crear-el-perfil-de-un-proyecto-nuevo).
 
 
 ## Uso diario

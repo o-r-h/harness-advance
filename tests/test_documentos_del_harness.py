@@ -139,17 +139,13 @@ class TestComandoFaseFallo(unittest.TestCase):
 
 class TestAgenteDelPerfil(unittest.TestCase):
     def setUp(self):
-        self.texto = leer("profiles", "reviewsystemgfs", "agents", "agent-rsgfs.md")
+        self.texto = leer("profiles", "crud-api", "agents", "agent-api.md")
 
     def test_tiene_frontmatter_con_el_nombre_esperado(self):
-        self.assertEqual(frontmatter(self.texto).get("name"), "agent-rsgfs")
-
-    def test_conserva_la_regla_de_comentarios_de_auditoria(self):
-        self.assertIn("[B]", self.texto)
-        self.assertIn("[E]", self.texto)
+        self.assertEqual(frontmatter(self.texto).get("name"), "agent-api")
 
     def test_conserva_los_patrones_del_stack(self):
-        for patron in ("EjecutarSp", "InstanciarConsulta", "__doPostBack"):
+        for patron in (".NET 10", "EF Core", "SQLite"):
             with self.subTest(patron=patron):
                 self.assertIn(patron, self.texto)
 

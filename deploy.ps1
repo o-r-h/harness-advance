@@ -2,14 +2,14 @@
 .SYNOPSIS
   Despliega el harness genérico a ~/.claude y el perfil al proyecto destino.
 .EXAMPLE
-  .\deploy.ps1 -Proyecto "C:\ruta\a\ReviewSystemGFS" -Perfil reviewsystemgfs
+  .\deploy.ps1 -Proyecto "C:\ruta\al\proyecto" -Perfil crud-api
 .EXAMPLE
-  .\deploy.ps1 -Proyecto "C:\ruta\a\ReviewSystemGFS" -SinHooks
+  .\deploy.ps1 -Proyecto "C:\ruta\al\proyecto" -SinHooks
   # no toca settings.json: imprime el bloque de hooks para pegarlo a mano
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Proyecto,
-  [string]$Perfil = "reviewsystemgfs",
+  [string]$Perfil = "crud-api",
   [switch]$SinHooks
 )
 

@@ -98,7 +98,7 @@
 - [ ] **Step 1: Tests que fallan:**
   - `test_cuenta_los_anclajes_de_los_planes` (dos tickets, uno ancla A dos veces en fases distintas → `usos` 2) y `test_ultimo_uso_es_el_ticket_mas_reciente_por_fecha`.
   - `test_un_ancla_a_una_absorbida_cuenta_para_el_destino`.
-  - `test_ruta_que_coincide_por_sufijo_no_es_ausente`: repo con `AzzuleSite/Assets/components/global/x.vue` rastreado; lección que dice `` `components/global/x.vue` `` → `rutas_ausentes == []`.
+  - `test_ruta_que_coincide_por_sufijo_no_es_ausente`: repo con `proyecto/Assets/components/global/x.vue` rastreado; lección que dice `` `components/global/x.vue` `` → `rutas_ausentes == []`.
   - `test_carpeta_rastreada_cuenta`: `src/scss` con un archivo dentro rastreado → no ausente.
   - `test_ruta_inexistente_es_ausente`: `components/global/borrado.vue` → `["components/global/borrado.vue"]`.
   - `test_no_toma_como_ruta_lo_que_no_lo_es`: lección con `global.api`, `§4.1`, `[B]/[E]`, `y/o`, `ok/no`, `https://x.y/z` y `archivo.vue:31-47` (este último se compara sin el `:31-47`) → ninguno aparece como ausente salvo que el archivo falte.
@@ -108,7 +108,7 @@
 - [ ] **Step 2: Correr y ver que fallan.**
 - [ ] **Step 3: Implementar `lib/senales.py` y el subcomando.** `git ls-files -z` con `gitdiff._git` (o un helper público nuevo `gitdiff.archivos_rastreados(raiz) -> list[str] | None`); índice de sufijos en minúsculas con cada archivo y cada carpeta ancestro.
 - [ ] **Step 4: Correr** → PASS.
-- [ ] **Step 5: Validar contra NAS en solo lectura:** `python harness/hooks/cli.py senales-biblioteca --project "C:\AZZULE\DesarrolloSCP\NAS"`. Esperado: 6 lecciones con `usos` ≥ 1 (las que ancla `ISR-113646`), ninguna con `[B]/[E]`, `global.api` o `intento_1/veredicto.json` como ruta ausente, y `components/global/document-tooltip.vue` no ausente. Anotar el resultado en el mensaje del commit.
+- [ ] **Step 5: Validar contra un proyecto real en solo lectura:** `python harness/hooks/cli.py senales-biblioteca --project "<ruta del proyecto de prueba>"`. Esperado: 6 lecciones con `usos` ≥ 1 (las que ancla el plan más reciente), ninguna con `[B]/[E]`, `global.api` o `intento_1/veredicto.json` como ruta ausente, y `components/global/document-tooltip.vue` no ausente. Anotar el resultado en el mensaje del commit.
 - [ ] **Step 6: Commit** — `feat(senales): usos, ultimo uso y rutas ausentes por leccion`
 
 ### Task 4: Contrato y registro de la propuesta del curador

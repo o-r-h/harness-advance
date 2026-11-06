@@ -2,7 +2,7 @@
 
 Fecha: 02-11-2026 · Autor: Omar Rodriguez · Estado: borrador para aprobación
 
-Amplía la Task 20 del plan original (`docs/superpowers/plans/2026-07-28-ia-harness.md`)
+Amplía la Task 20 del plan original (ya ejecutada; el registro se retiró del repo)
 y agrega la separación de la documentación. Es el paso 1 del orden acordado tras la
 revisión externa del 02-11-2026 (registrada en `.superpowers/sdd/progress.md`).
 
@@ -17,12 +17,12 @@ cerrar el ticket salió un hallazgo, se aprobó y se guardó en la biblioteca, y
 ticket siguiente el agente usó `curl.exe`.
 
 Hoy el harness no puede ver ni ese éxito ni su contrario. Los datos reales de
-`DesarrolloSCP/NAS` (13 tickets, 18 lecciones aprobadas y 3 rechazadas) muestran tres
+un proyecto real (13 tickets, 18 lecciones aprobadas y 3 rechazadas) muestran tres
 cosas que el reporte tiene que hacer visibles:
 
 1. **Nada registra si una lección falló.** Si el error vuelve, el reflector propone
    una lección nueva parecida y la biblioteca crece con duplicados. Las 3 rechazadas
-   de NAS son duplicados.
+   de ese proyecto son duplicados.
 2. **Casi todas las lecciones son pedidos de arreglar el harness**, no consejos para
    el agente: 11 de las 18 tienen `componente: check`. Una incluso es un bug del propio
    harness (`ISR-109204-P5/fase_1/h2`: el runner compara contra HEAD). La biblioteca no
@@ -128,7 +128,7 @@ Así, "falló estando implementada" no depende del estado actual ni de ordenar f
 del mismo día.
 
 **Fecha de aprobación** *(decisión de Claude)*: las entradas nuevas llevan
-`- **aprobada**: <fecha>`. Las 18 entradas de NAS no la tienen y siguen siendo
+`- **aprobada**: <fecha>`. Las 18 entradas de ese proyecto no la tienen y siguen siendo
 válidas. No se bloquea automáticamente una reincidencia contra una lección aprobada
 después de la fase: el reflector y el humano lo juzgan, como hoy con todo hallazgo.
 
@@ -179,7 +179,7 @@ que menos:
    aprobados con edición (los que traen `leccion_original`) y rechazados, con sus
    motivos.
 5. **Fases**: lo de la Task 20 original, con un cambio *(decisión de Claude)*. La
-   Task 20 agrupaba los fallos del escéptico por texto exacto de `razon`, y en NAS
+   Task 20 agrupaba los fallos del escéptico por texto exacto de `razon`, y en ese proyecto
    las 11 razones son distintas, así que la sección saldría siempre vacía. Se agrupa
    por fase: una fase que el escéptico rechazó en dos o más intentos es candidata a
    check determinista, y se muestran sus razones.
@@ -215,7 +215,7 @@ en silencio.
 - Una prueba que confirma que el reporte no escribe nada en el proyecto.
 - Una prueba que recorre datos viejos o mal formados sin reventar.
 - Prueba de aceptación manual, solo lectura: correr el reporte sobre
-  `C:\AZZULE\DesarrolloSCP\NAS` (debe contar 18 aprobadas, 0 implementadas y 3
-  rechazadas) y sobre `C:\AZZULE\EditorNotificaciones` (tickets sin hallazgos).
+  un proyecto real con datos (debe contar sus lecciones aprobadas, implementadas
+  y rechazadas) y sobre otro proyecto sin datos (tickets sin hallazgos).
 - Los tests de referencias y de documentos del harness siguen pasando con el comando
   nuevo y con la documentación separada.

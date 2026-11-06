@@ -37,8 +37,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
    CLI lo rechaza — respeta ese orden, no lo saltes. Si la fase estaba `pausada`, `open-fase` la reanuda.
 2. **Ejecutar:** delega el trabajo al subagente indicado en el campo
    **`agente_ejecutor`** de la fase (`open-fase` lo imprime en la línea `Ejecutor:`).
-   Si la fase no lo trae, al **subagente ejecutor del perfil** (para ReviewSystemGFS,
-   `agent-rsgfs`). Pásale:
+   Si la fase no lo trae, al **subagente ejecutor del perfil** (el agente
+   del perfil). Pásale:
    - la fase completa de `plan.json` (pasos, criterio de éxito, anclajes);
    - `ticket_context.json`, para que los comentarios de auditoría lleven los valores
      correctos;

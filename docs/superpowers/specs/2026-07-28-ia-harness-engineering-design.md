@@ -1,7 +1,7 @@
 # Diseño: IA Harness Engineering — Ecosistema de desarrollo con IA
 
 > Fecha: 2026-07-28 · Autor: Omar Rodriguez · Estado: aprobado para planificación
-> Repo fuente: `C:\AZZULE\IA harness` · Primer proyecto objetivo: ReviewSystemGFS
+> Repo fuente: `IA harness` · Primer proyecto objetivo: ReviewSystem
 > Antecedente: `historico/conversacion-inicial.txt` (conceptos y esquemas iniciales)
 
 ## 1. Resumen
@@ -28,9 +28,9 @@ Estas restricciones determinan el diseño y no son negociables:
 
 | Restricción | Origen | Implicación de diseño |
 |---|---|---|
-| ReviewSystemGFS solo compila con **VS2008**, fuertemente enlazado | Constatado por el usuario | **No existe verificación funcional automatizable.** La prueba real es hacer los pasos en la web |
-| Stack legacy: VB.NET, ASP.NET Web Forms, .NET FW 3.5, jQuery 1.7.2, IE11 parcial | `historico/agente-rsfgfs-modelo-inicial.md` §2, §12 | Las reglas prohibidas son estáticas y verificables por regex |
-| Regla de negocio: comentarios de auditoría `[B]`/`[E]` obligatorios | `historico/agente-rsfgfs-modelo-inicial.md` §4 | Verificable al 100% por script; `error` desde el día uno |
+| ReviewSystem solo compila con **VS2008**, fuertemente enlazado | Constatado por el usuario | **No existe verificación funcional automatizable.** La prueba real es hacer los pasos en la web |
+| Stack legacy: VB.NET, ASP.NET Web Forms, .NET FW 3.5, jQuery 1.7.2, IE11 parcial | el antecedente del agente del perfil (histórico), §2 y §12 | Las reglas prohibidas son estáticas y verificables por regex |
+| Regla de negocio: comentarios de auditoría `[B]`/`[E]` obligatorios | el antecedente del agente del perfil (histórico), §4 | Verificable al 100% por script; `error` desde el día uno |
 | Los tickets llegan pegados a mano (no hay integración de origen) | Decisión del usuario | `nroticket` se pregunta una vez y se persiste |
 | Runtimes disponibles: Python 3.12, Node 16, Git 2.54, Windows PowerShell 5.1 | Verificado en el entorno | Hooks y checks en **Python 3.12**; deploy en PowerShell |
 | MCPs de Postman y DB no garantizados en sesión | Solo Plane conectado al diseñar | El diseño no depende de ellos; son opcionales y aditivos |
@@ -58,7 +58,7 @@ Estas restricciones determinan el diseño y no son negociables:
 Separados por frecuencia de cambio:
 
 1. **Harness genérico** (cambia raro, sirve en todo proyecto) → se despliega a `~/.claude/`.
-   No contiene ningún conocimiento de VB.NET ni de ReviewSystemGFS.
+   No contiene ningún conocimiento de VB.NET ni de ReviewSystem.
 2. **Perfil de proyecto** (uno por repo) → se despliega a `<proyecto>/.claude/`.
    Todo lo específico del stack: agente, reglas, checks.
 3. **Estado de ejecución** (crece por ticket) → vive en `<proyecto>/.harness/tickets/`.
@@ -71,7 +71,7 @@ sale con código 0 en silencio. Adoptar un proyecto nuevo = crear su perfil.
 ### 5.1. Estructura del repo fuente
 
 ```
-C:\AZZULE\IA harness\
+IA harness\
 ├── harness/                        → deploy a ~/.claude/
 │   ├── skills/
 │   │   ├── ticket-loop/SKILL.md    orquestadora: abre ticket, corre fases, escala
@@ -85,8 +85,8 @@ C:\AZZULE\IA harness\
 │       ├── report.py               `harness report`: observabilidad
 │       └── lib/harness.py          estado, perfil activo, resolución de rutas, diff
 ├── profiles/
-│   └── reviewsystemgfs/            → deploy a <ReviewSystemGFS>/.claude/
-│       ├── agents/agent-rsgfs.md   el agente actual, cirugía mínima
+│   └── reviewsystem/            → deploy a <ReviewSystem>/.claude/
+│       ├── agents/agent-rs.md   el agente actual, cirugía mínima
 │       ├── rules.json              reglas declarativas del stack
 │       └── checks/
 │           ├── designer_sync.py    .aspx ↔ .designer.vb ↔ .aspx.vb
@@ -147,7 +147,7 @@ El hook verifica coincidencia exacta contra este archivo, no solo "forma de fech
   "nroticket": "110722",
   "desarrollador": "OMAR RODRIGUEZ",
   "fecha": "28-07-2026",
-  "perfil": "reviewsystemgfs"
+  "perfil": "reviewsystem"
 }
 ```
 
@@ -159,7 +159,7 @@ v2 son los que habilitan las capas de guardrails y de reintentos.
 ```json
 {
   "ticket_id": "ISR-110722",
-  "perfil": "reviewsystemgfs",
+  "perfil": "reviewsystem",
   "generado_por": "task-planner-v3",
   "fases": [
     {
@@ -333,7 +333,7 @@ Reglas del **guardado**:
 
 ```
 1. Abrir fase          fase_state.json → intento 1, estado en_ejecucion
-2. Ejecutar            subagente del perfil (agent-rsgfs), recibe:
+2. Ejecutar            subagente del perfil (agent-rs), recibe:
                        la fase de plan.json + ticket_context + historial_fallos
                        + herramientas_permitidas
    └─ en vivo          hook PostToolUse valida cada archivo tocado y devuelve el
@@ -361,12 +361,12 @@ donde el executor se convenció de que su trabajo estaba bien.
 
 ### 8.1. Reglas declarativas — `rules.json` del perfil
 
-Lo que hoy son viñetas de "PROHIBIDO" en `historico/agente-rsfgfs-modelo-inicial.md` §3.1 pasa a ser datos.
+Lo que hoy son viñetas de "PROHIBIDO" en el antecedente del agente del perfil (histórico, §3.1) pasa a ser datos.
 Añadir una regla no requiere tocar código.
 
 ```json
 {
-  "perfil": "reviewsystemgfs",
+  "perfil": "reviewsystem",
   "audit_comments": {
     "requerido": true,
     "formatos": {
@@ -385,7 +385,7 @@ Añadir una regla no requiere tocar código.
       "mensaje": "FW 3.5 no soporta async/await" },
     { "id": "no_fetch",   "archivos": [".js"], "severidad": "error",
       "patron": "\\bfetch\\s*\\(",
-      "mensaje": "IE11: usar Azzule.ConsultarDatos()" },
+      "mensaje": "IE11: usar el wrapper AJAX del proyecto (ConsultarDatos)" },
     { "id": "no_raw_sql", "archivos": [".vb"], "severidad": "error",
       "patron": "SqlCommand\\(\\s*\"(SELECT|INSERT|UPDATE|DELETE)",
       "mensaje": "El acceso a datos va por Global_asax.InstanciarConsulta() + EjecutarSp()" },
@@ -599,8 +599,8 @@ siguientes, así que el desarrollador la revisa antes, igual que revisa la fase 
 | Archivo actual | Cambio | Magnitud |
 |---|---|---|
 | `task-plannerv2.md` | → **v3**: emite `plan.json` junto al `.md`; cada fase declara `checks_deterministas`, `prueba_manual`, `herramientas_permitidas`, `max_reintentos`, `anclajes` estructurados | Menor. La Fase 0 de anclaje es su mayor valor y no se toca |
-| `historico/agente-esceptico-modelo-inicial.md` | Se **parte en dos**: escéptico genérico (exige evidencia, emite `veredicto.json`) + reglas de proyecto que ahora vienen de `rules.json`. Se elimina todo lo heredado de otro proyecto: "Kilo Code", `.kilocode/**/*.md`, "actor system", prohibiciones de TypeScript | Reescritura. Es el archivo con más deuda: hoy juzga ReviewSystemGFS contra reglas que no son suyas |
-| `historico/agente-rsfgfs-modelo-inicial.md` | Cirugía mínima: leer `ticket_context.json` para los `[B]/[E]`, respetar `herramientas_permitidas`, consumir `historial_fallos`. Su checklist de §10 pasa a ejecutarse por hooks en vez de por memoria | Mínima. Es el archivo más sólido de los tres |
+| `historico/agente-esceptico-modelo-inicial.md` | Se **parte en dos**: escéptico genérico (exige evidencia, emite `veredicto.json`) + reglas de proyecto que ahora vienen de `rules.json`. Se elimina todo lo heredado de otro proyecto: "Kilo Code", `.kilocode/**/*.md`, "actor system", prohibiciones de TypeScript | Reescritura. Es el archivo con más deuda: hoy juzga ReviewSystem contra reglas que no son suyas |
+| el antecedente del agente del perfil (histórico) | Cirugía mínima: leer `ticket_context.json` para los `[B]/[E]`, respetar `herramientas_permitidas`, consumir `historial_fallos`. Su checklist de §10 pasa a ejecutarse por hooks en vez de por memoria | Mínima. Es el archivo más sólido de los tres |
 
 ## 12. Manejo de errores
 
@@ -622,11 +622,11 @@ El harness es código y también necesita verificarse:
   regla y otros que la cumplen. Cada check debe atrapar el caso malo y no marcar el
   bueno — un check con falsos positivos es peor que no tenerlo (D9).
 - **`sp_params` y `designer_sync`**: fixtures tomados del código real de
-  ReviewSystemGFS, incluyendo un caso conocido de `Vn` no parseado.
+  ReviewSystem, incluyendo un caso conocido de `Vn` no parseado.
 - **Contratos**: validación de esquema con ejemplos válidos e inválidos de cada JSON.
 - **Máquina de estados**: transiciones de `fase_state.json` — que el contador nunca
   se pase de `max_reintentos`, que un `warning` no bloquee, que un `error` sí.
-- **Ciclo completo**: un ticket real de ReviewSystemGFS de punta a punta. Esta es la
+- **Ciclo completo**: un ticket real de ReviewSystem de punta a punta. Esta es la
   prueba que decide si el diseño sirve; el resto solo evita regresiones.
 
 ## 14. Alcance y orden de construcción
@@ -637,7 +637,7 @@ primero al ciclo mínimo funcionando sobre un ticket real:
 1. **Contratos + estado**: esquemas JSON, `lib/harness.py`, `validate_contracts.py`.
 2. **Ciclo mínimo**: skill `ticket-loop` + escéptico limpio + `check_rules.py` con
    solo `audit_comments` y `no_new_deps`, y el gate humano con `/fase-ok` / `/fase-fallo`.
-3. **Validar con un ticket ISR real** de ReviewSystemGFS. Aquí se decide si el
+3. **Validar con un ticket ISR real** de ReviewSystem. Aquí se decide si el
    diseño aguanta; ajustar antes de seguir.
 4. **Planner v3**: emisión de `plan.json`.
 5. **Checks estructurales**: `designer_sync`, `sp_params`, `xhtml_selfclose`.
@@ -645,7 +645,7 @@ primero al ciclo mínimo funcionando sobre un ticket real:
 
 Fuera de alcance en esta iteración, explícitamente: automatización con Playwright,
 dependencia de los MCPs de DB/Postman, integración con Plane u otro origen de
-tickets, y perfiles para proyectos distintos de ReviewSystemGFS.
+tickets, y perfiles para proyectos distintos de ReviewSystem.
 
 ## 15. Criterios de aceptación
 
@@ -666,7 +666,7 @@ tickets, y perfiles para proyectos distintos de ReviewSystemGFS.
 
 ## 16. Observaciones
 
-- El remoto del proyecto objetivo es `http://10.10.50.37:3000/AzzuleNew/ReviewSystemGFS`.
+- El remoto del proyecto objetivo es `http://servidor-git:3000/proyecto/ReviewSystem`.
   El diseño no depende de la ruta local: el perfil se resuelve por directorio de
   trabajo y `deploy.ps1` recibe la ruta como parámetro.
 - En Windows, enlazar en lugar de copiar requiere junctions (`mklink /J`) o modo
