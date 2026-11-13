@@ -36,6 +36,11 @@ checks) es Python puro, así que también se puede usar con otros modelos (ver
 Toma un requerimiento (un ticket) y lo lleva hasta código aprobado, en fases, con
 verificación escalonada de menor a mayor costo:
 
+<p align="center">
+  <img src="./Verificación_escalonada_de_código_IA.png" alt="Descripción" width="90%">
+</p>
+
+
 | Nivel | Quién verifica | Costo | Qué atrapa |
 |---|---|---|---|
 | 1. Hook en vivo | `check_rules.py`, en cada archivo que el agente guarda | milisegundos | Reglas del stack: sintaxis prohibida, comentarios de auditoría, dependencias nuevas |
