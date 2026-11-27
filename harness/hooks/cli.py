@@ -378,10 +378,6 @@ def cmd_generar_prueba(args) -> int:
         return _error("; ".join(errores))
     n_agente, n_humano = prueba_manual.contar(pasos)
     config, _ = prueba_asistida.estado(raiz)
-    if n_agente and config is not None and config.get("navegador") is None:
-        return _error(f"el proyecto no tiene navegador automatizado "
-                      f"({prueba_asistida.ARCHIVO}): marca los {n_agente} pasos 'agente' "
-                      f"como 'humano', con su motivo")
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     destino.mkdir(parents=True, exist_ok=True)
     archivo = destino / "prueba_manual.md"
@@ -394,6 +390,9 @@ def cmd_generar_prueba(args) -> int:
     if n_agente and config is None:
         print("Aviso: la prueba asistida no está configurada (/harness-setup): el "
               "probador no sabe qué base usar ni qué herramientas tiene prohibidas.")
+    elif n_agente and config.get("navegador") is None:
+        print("Aviso: proyecto sin navegador: el probador corre solo los pasos de "
+              "consulta o de API y marca 'no ejecutado' los que necesiten navegador.")
     if n_agente:
         print(f"Siguiente: invoca al subagente 'probador' con {destino} y "
               f"{prueba_asistida.ruta(raiz)}")

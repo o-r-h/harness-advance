@@ -163,13 +163,16 @@ class TestAvisos(ConProyecto):
         return correr("generar-prueba", "--project", str(self.root),
                       "--pasos-json", str(entrada))
 
-    def test_sin_navegador_configurado_no_acepta_pasos_del_agente(self):
+    def test_sin_navegador_acepta_pasos_del_agente_y_avisa(self):
+        # Un repo sin pantalla (una API) igual tiene pasos de consulta o de API que
+        # el probador corre sin navegador; los que lo necesiten los marca él.
         self.preparar_fase()
         harness.write_json(self.root / ".claude" / "prueba_asistida.json",
-                           {"navegador": None, "base": None})
+                           {"navegador": None, "base": {"servidor": "b", "prohibidas": []}})
         resultado = self.generar([{"paso": "x", "esperado": "y", "quien": "agente"}])
-        self.assertEqual(resultado.returncode, 1)
-        self.assertIn("humano", resultado.stderr)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn("sin navegador", resultado.stdout)
+        self.assertIn("probador", resultado.stdout)
 
     def test_con_navegador_apunta_al_probador_y_a_la_configuracion(self):
         self.preparar_fase()

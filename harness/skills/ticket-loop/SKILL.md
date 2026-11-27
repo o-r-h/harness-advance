@@ -87,7 +87,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
    cerrar el navegador y volver), comparar contra el mockup, o datos que el agente no
    puede preparar. Recargar (F5) sí es `agente`: para la página es lo mismo. Si la
    sesión no tiene navegador automatizado, o `.claude/prueba_asistida.json` dice
-   `"navegador": null`, todos son `humano` (el CLI rechaza un paso `agente` sin navegador).
+   `"navegador": null`, solo son `agente` los pasos que no lo necesitan: consultas de
+   solo lectura y llamadas a la API.
    Si la fase **no** requiere prueba manual y el escéptico aprobó, la fase ya quedó
    `aprobada`: ejecuta "Al cerrar una fase".
 6b. **Prueba asistida:** si `generar-prueba` contó pasos del probador, invoca al

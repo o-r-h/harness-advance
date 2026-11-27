@@ -132,7 +132,9 @@ herramientas de la base quedan prohibidas (las que cambian de ambiente o escribe
 lo guarda en `<proyecto>/.claude/prueba_asistida.json`. `/ticket-abrir` avisa si
 falta, sin bloquear.
 
-- **Sin navegador** todos los pasos son `humano`, y el CLI rechaza un paso `agente`.
+- **Sin navegador** (por ejemplo, una API sin pantalla) el probador corre igual los
+  pasos de consulta o de API, y marca `no ejecutado` los que necesiten navegador.
+  Sin navegador ni base, todos los pasos quedan para ti.
 - **No instala nada ni pide credenciales.** Conectar el navegador o la base (su
   versión, su configuración, su login) es tuyo; el setup solo registra lo que ya hay.
 - **Las prohibidas son una instrucción, no un bloqueo técnico**: el probador las
