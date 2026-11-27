@@ -20,6 +20,8 @@ checks) is pure Python, so it can also be used with other models (see
 - [What it does](#what-it-does)
 - [What the harness advance version includes](#what-the-harness-advance-version-includes)
 - [The ticket cycle](#the-ticket-cycle)
+- [Assisted test](#assisted-test)
+  - [Project setup: `/harness-setup`](#project-setup-harness-setup)
 - [Findings and lessons library](#findings-and-lessons-library)
   - [Curate the library](#curate-the-library)
 - [Installation and deployment](#installation-and-deployment)
@@ -105,6 +107,48 @@ rejection, or manual test failure is saved in `historial_fallos` with its
 origin (`check`, `esceptico`, or `humano`), and the next attempt receives the
 full history. Corrections demanded by the live hook don't count as attempts:
 they're self-correction.
+
+---
+
+## Assisted test
+
+The manual test script marks each step with `quien`: `agente` (agent) or `humano`
+(human). Before your turn, the `probador` (tester) subagent runs the `agente` steps
+with the session's automated browser and read-only queries, and leaves
+`prueba_asistida.md` and `evidencia/` (screenshots, queries before and after) in the
+attempt. **It does not give the verdict**: you do, with `/fase-ok` or `/fase-fallo`,
+after reviewing the evidence and running the `humano` steps. A step the tester marks
+`simulado` (simulated) or `no ejecutado` (not run) does not count as passed.
+
+`humano` steps are those that need a login, paying or charging, something the browser
+does rather than the page (reopening a closed tab), or comparing against the mockup.
+The tester never types credentials: if it hits a login, it stops, you sign in in that
+window, and it is invoked again.
+
+### Project setup: `/harness-setup`
+
+The harness knows no browser and no database: each project decides that, once, with
+`/harness-setup`. The agent checks which tools the session has, asks you which one is
+the browser, which one is the database, which environment to query, and which database
+tools are forbidden (those that switch environment or write), and saves it in
+`<project>/.claude/prueba_asistida.json`. `/ticket-abrir` warns if it is missing,
+without blocking.
+
+- **Without a browser** (for example, an API with no UI) the tester still runs the
+  query and API steps, and marks `no ejecutado` the ones that need a browser. With no
+  browser and no database, every step is yours.
+- **It installs nothing and asks for no credentials.** Connecting the browser or the
+  database (its version, its configuration, its login) is up to you; setup only
+  records what is already there.
+- **Forbidden tools are an instruction, not a technical block**: the tester receives
+  them and does not use them. If you need a hard block, configure it in your agent tool.
+- No profile ships that file, so redeploying does not overwrite it.
+
+One browser that works: the Playwright MCP (`@playwright/mcp`), with a pinned version
+and its own `--output-dir`. Two things seen in real use: if the site keeps the session
+in a session cookie, the browser's persistent profile does not keep it and you sign in
+on every run; and screenshots the server saves on its own go to its `--output-dir`,
+not to `evidencia/`.
 
 ---
 
@@ -260,6 +304,7 @@ see [Create a new project profile](docs/tecnico.md#crear-el-perfil-de-un-proyect
 
 | Command | When |
 |---|---|
+| `/harness-setup` | Once per project: which browser and which database the tester uses (see [Assisted test](#assisted-test)) |
 | `/ticket-abrir <requirement or .md path>` | Start a ticket: asks for number, developer, and date, and generates the plan |
 | `/fase fase_N` | Run a phase's full cycle; ends at the manual test script |
 | `/fase-pausa ["<reason>"]` | Pause the active phase to discuss something else or end the day. Resumes with `/fase fase_N` without spending an attempt. If you opened another ticket meanwhile, reopen it first with the same id and its `ticket_context.json` data, without replanning |

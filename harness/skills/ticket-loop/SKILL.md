@@ -22,6 +22,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
 2. Pregunta **una sola vez**: número de ticket ISR, nombre del desarrollador y fecha
    (`DD-MM-YYYY`). No los inventes ni los deduzcas del sistema.
 3. `CLI open-ticket --ticket-id ISR-<nro> --nroticket <nro> --desarrollador "<NOMBRE>" --fecha <DD-MM-YYYY> --perfil <perfil>`
+   Si avisa que la prueba asistida no está configurada, ofrécele `/harness-setup`
+   **una vez** y sigue: no bloquea, sin setup todos los pasos del guion son `humano`.
 4. Invoca la skill `task-planner` para producir `plan.md` y `plan.json`. Si existe
    `.claude/biblioteca/INDEX.md`, pásaselo: una lección de la biblioteca es
    hipótesis, y si el plan la usa, la ancla como `por_confirmar`. Si el perfil
@@ -78,14 +80,33 @@ sientes tentado a hacerlo, es que falta un subcomando.
    deriva del `criterio_exito` una lista de pasos concretos —clic por clic, con qué
    debería verse en cada uno— y córrela:
    `CLI generar-prueba --pasos-json <archivo>`.
-   Los pasos deben ser ejecutables por alguien que no leyó el código.
+   Los pasos deben ser ejecutables por alguien que no leyó el código. Cada paso lleva
+   `quien`: `agente` si se puede correr con el navegador automatizado de la sesión y
+   consultas de solo lectura; `humano`, con su `motivo`, si exige login, pagar o
+   cobrar, algo que hace el navegador y no la página (reabrir una pestaña cerrada,
+   cerrar el navegador y volver), comparar contra el mockup, o datos que el agente no
+   puede preparar. Recargar (F5) sí es `agente`: para la página es lo mismo. Si la
+   sesión no tiene navegador automatizado, o `.claude/prueba_asistida.json` dice
+   `"navegador": null`, solo son `agente` los pasos que no lo necesitan: consultas de
+   solo lectura y llamadas a la API.
    Si la fase **no** requiere prueba manual y el escéptico aprobó, la fase ya quedó
    `aprobada`: ejecuta "Al cerrar una fase".
-7. **Detente.** Muestra el contenido de `prueba_manual.md` y espera. El humano
-   responde `/fase-ok` o `/fase-fallo`. **No aproximes, no supongas, no cierres la
-   fase por tu cuenta:** aunque el perfil tenga build y pruebas automáticas (que
-   corren como checks estructurales), la prueba en el navegador es la única
-   verificación funcional de punta a punta.
+6b. **Prueba asistida:** si `generar-prueba` contó pasos del probador, invoca al
+   **subagente `probador`, con contexto aislado**. Dale la carpeta del intento, el
+   `criterio_exito`, la URL, los datos y el contenido de `.claude/prueba_asistida.json`
+   (qué navegador, qué base y qué herramientas tiene prohibidas). **No le pases tu conversación con el
+   ejecutor ni el veredicto del escéptico.** Deja `prueba_asistida.md` y
+   `evidencia/` en el intento.
+   - Si reporta `bloqueado: falta login`, pídele al humano que inicie sesión en la
+     ventana del navegador automatizado y vuelve a invocarlo. No teclees
+     credenciales tú tampoco.
+   - Si algún paso `falla`, no corrijas ni reintentes: el humano decide si es
+     `/fase-fallo`.
+7. **Detente.** Muestra `prueba_manual.md` y, si existe, el resumen de
+   `prueba_asistida.md` con lo que le queda al humano. El humano responde
+   `/fase-ok` o `/fase-fallo`. **No aproximes, no supongas, no cierres la fase por
+   tu cuenta:** ni los checks ni el probador sustituyen al humano. Un paso del
+   probador `simulado` o `no ejecutado` no cuenta como pasado.
 
 ## Pausar una fase
 
@@ -130,7 +151,8 @@ propuesta igual, indicando la fase cerrada:
 
 1. Invoca al **subagente `reflector`, con contexto aislado**. Dale: la fase de
    `plan.json`; el `historial_fallos` completo; el `checks.json` y el
-   `veredicto.json` de **cada** `intento_N`; el resultado de la prueba manual; y
+   `veredicto.json` de **cada** `intento_N`; el resultado de la prueba manual y, si
+   existe, el `prueba_asistida.md` de cada intento; y
    `.claude/biblioteca/INDEX.md` si existe. **No le pases tu conversación con el
    ejecutor**: igual que el escéptico, un reflector que leyó el razonamiento ya
    está contaminado.

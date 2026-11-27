@@ -42,6 +42,44 @@ class TestRender(unittest.TestCase):
     def test_incluye_el_criterio_de_exito_de_la_fase(self):
         self.assertIn("se relee", prueba_manual.render(FASE, 1, PASOS))
 
+    def test_sin_quien_todo_es_del_humano_y_no_menciona_al_probador(self):
+        texto = prueba_manual.render(FASE, 1, PASOS)
+        self.assertEqual(prueba_manual.contar(PASOS), (0, 3))
+        self.assertNotIn("probador", texto)
+
+    def test_marca_quien_ejecuta_y_avisa_de_la_prueba_asistida(self):
+        texto = prueba_manual.render(FASE, 1, PASOS_MIXTOS)
+        self.assertIn("| 1 | agente |", texto)
+        self.assertIn("| 2 | humano: cobra de verdad |", texto)
+        self.assertIn("probador", texto)
+        self.assertIn("simulado", texto)
+
+    def test_escapa_la_barra_vertical_para_no_romper_la_tabla(self):
+        texto = prueba_manual.render(FASE, 1, [{"paso": "a | b", "esperado": "c"}])
+        self.assertIn("a \\| b", texto)
+
+
+PASOS_MIXTOS = [{"paso": "Abrir la review y guardar", "esperado": "Mensaje", "quien": "agente"},
+                {"paso": "Pagar con tarjeta", "esperado": "Recibo", "quien": "humano",
+                 "motivo": "cobra de verdad"}]
+
+
+class TestValidarPasos(unittest.TestCase):
+    def test_acepta_pasos_sin_quien(self):
+        self.assertEqual(prueba_manual.validar_pasos(PASOS), [])
+
+    def test_rechaza_un_quien_desconocido(self):
+        errores = prueba_manual.validar_pasos([{"paso": "x", "quien": "robot"}])
+        self.assertIn("robot", errores[0])
+
+    def test_un_paso_humano_explicito_exige_motivo(self):
+        errores = prueba_manual.validar_pasos([{"paso": "x", "quien": "humano"}])
+        self.assertIn("motivo", errores[0])
+
+    def test_rechaza_lista_vacia_y_paso_sin_texto(self):
+        self.assertTrue(prueba_manual.validar_pasos([]))
+        self.assertIn("paso 1", prueba_manual.validar_pasos([{"esperado": "y"}])[0])
+
 
 class TestRecordManual(unittest.TestCase):
     def preparar(self):
@@ -118,6 +156,26 @@ class TestRecordManual(unittest.TestCase):
         destino = (harness.intento_dir(self.root, "ISR-110722", "fase_1", 1)
                    / "prueba_manual.md")
         self.assertIn("review 4471", destino.read_text(encoding="utf-8"))
+
+    def test_generar_prueba_deja_los_pasos_para_el_probador(self):
+        self.preparar()
+        entrada = self.root / "pasos.json"
+        entrada.write_text(json.dumps(PASOS_MIXTOS), encoding="utf-8")
+        resultado = correr("generar-prueba", "--project", str(self.root),
+                           "--pasos-json", str(entrada))
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn("1 del probador, 1 del humano", resultado.stdout)
+        copia = harness.intento_dir(self.root, "ISR-110722", "fase_1", 1) / "prueba_pasos.json"
+        self.assertEqual(harness.read_json(copia), PASOS_MIXTOS)
+
+    def test_generar_prueba_rechaza_pasos_invalidos(self):
+        self.preparar()
+        entrada = self.root / "pasos.json"
+        entrada.write_text(json.dumps([{"paso": "x", "quien": "robot"}]), encoding="utf-8")
+        resultado = correr("generar-prueba", "--project", str(self.root),
+                           "--pasos-json", str(entrada))
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("robot", resultado.stderr)
 
 
 if __name__ == "__main__":

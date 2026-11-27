@@ -17,11 +17,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import (biblioteca, checks, contracts, curacion as lib_curacion, gitdiff,
                  hallazgos as lib_hallazgos,  # noqa: E402
-                 harness, plugins, prueba_manual, senales, state)
+                 harness, plugins, prueba_asistida, prueba_manual, senales, state)
 import report  # noqa: E402
 
 VALIDADORES = {
     "ticket_context": contracts.validate_ticket_context,
+    "prueba_asistida": contracts.validate_prueba_asistida,
     "plan": contracts.validate_plan,
     "checks": contracts.validate_checks_result,
     "veredicto": contracts.validate_veredicto,
@@ -113,7 +114,19 @@ def cmd_open_ticket(args) -> int:
                             "fases_aprobadas": []})
     harness.write_current(raiz, args.ticket_id, None)
     print(f"Ticket {args.ticket_id} abierto en {carpeta}")
+    _avisar_setup_de_prueba(raiz)
     return 0
+
+
+def _avisar_setup_de_prueba(raiz: Path) -> None:
+    """Aviso, nunca bloqueo: sin setup el guion funciona igual, todo para el humano."""
+    config, errores = prueba_asistida.estado(raiz)
+    if errores:
+        print(f"Aviso: {prueba_asistida.ARCHIVO} inválido ({'; '.join(errores)}). "
+              f"Corre /harness-setup para rehacerlo.")
+    elif config is None:
+        print("Aviso: la prueba asistida no está configurada en este proyecto. Corre "
+              "/harness-setup una vez; sin eso, todos los pasos del guion son del humano.")
 
 
 def cmd_open_fase(args) -> int:
@@ -360,15 +373,64 @@ def cmd_generar_prueba(args) -> int:
         return _error(f"la fase '{fase['id']}' está pausada: reanúdala con "
                       f"/fase {fase['id']}")
     pasos = harness.read_json(Path(args.pasos_json))
-    if not isinstance(pasos, list) or not pasos:
-        return _error("--pasos-json debe contener una lista no vacía de "
-                      "objetos {paso, esperado}")
+    errores = prueba_manual.validar_pasos(pasos)
+    if errores:
+        return _error("; ".join(errores))
+    n_agente, n_humano = prueba_manual.contar(pasos)
+    config, _ = prueba_asistida.estado(raiz)
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     destino.mkdir(parents=True, exist_ok=True)
     archivo = destino / "prueba_manual.md"
     archivo.write_text(prueba_manual.render(fase, estado["intento_actual"], pasos),
                        encoding="utf-8")
+    # Copia estructurada para el probador: los pasos con su 'quien', sin el markdown.
+    harness.write_json(destino / "prueba_pasos.json", pasos)
     print(f"Guion de prueba escrito en {archivo}")
+    print(f"Pasos: {n_agente} del probador, {n_humano} del humano.")
+    if n_agente and config is None:
+        print("Aviso: la prueba asistida no está configurada (/harness-setup): el "
+              "probador no sabe qué base usar ni qué herramientas tiene prohibidas.")
+    elif n_agente and config.get("navegador") is None:
+        print("Aviso: proyecto sin navegador: el probador corre solo los pasos de "
+              "consulta o de API y marca 'no ejecutado' los que necesiten navegador.")
+    if n_agente:
+        print(f"Siguiente: invoca al subagente 'probador' con {destino} y "
+              f"{prueba_asistida.ruta(raiz)}")
+    return 0
+
+
+def cmd_setup_prueba(args) -> int:
+    raiz = resolver_proyecto(args.project)
+    if not (raiz / ".claude" / harness.PROFILE_MARKER).is_file():
+        return _error(f"no hay .claude/{harness.PROFILE_MARKER} en {raiz}: despliega el "
+                      f"perfil del proyecto antes del setup")
+    decide_navegador = args.navegador is not None or args.sin_navegador
+    decide_base = args.base is not None or args.sin_base
+    if not decide_navegador and not decide_base:
+        config, errores = prueba_asistida.estado(raiz)
+        if errores:
+            return _error("; ".join(errores))
+        print(prueba_asistida.resumen(config) if config else
+              "Prueba asistida sin configurar.")
+        return 0
+    if not (decide_navegador and decide_base):
+        return _error("el setup decide las dos cosas: --navegador o --sin-navegador, "
+                      "y --base o --sin-base")
+    if args.base is None and (args.ambiente or args.prohibida):
+        return _error("--ambiente y --prohibida van con --base")
+    base = None
+    if args.base is not None:
+        base = {"servidor": args.base}
+        if args.ambiente:
+            base["ambiente"] = args.ambiente
+        base["prohibidas"] = list(args.prohibida or [])
+    config = {"navegador": args.navegador, "base": base}
+    errores = contracts.validate_prueba_asistida(config)
+    if errores:
+        return _error("; ".join(errores))
+    harness.write_json(prueba_asistida.ruta(raiz), config)
+    print(f"Prueba asistida guardada en {prueba_asistida.ruta(raiz)}")
+    print(prueba_asistida.resumen(config))
     return 0
 
 
@@ -932,6 +994,20 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument("--project")
     p.add_argument("--pasos-json", required=True)
     p.set_defaults(func=cmd_generar_prueba)
+
+    p = sub.add_parser("setup-prueba",
+                       help="Muestra o guarda qué navegador y qué base usa el probador")
+    p.add_argument("--project")
+    navegador = p.add_mutually_exclusive_group()
+    navegador.add_argument("--navegador", help="nombre del servidor del navegador automatizado")
+    navegador.add_argument("--sin-navegador", action="store_true")
+    base = p.add_mutually_exclusive_group()
+    base.add_argument("--base", help="nombre del servidor de la base (solo lectura)")
+    base.add_argument("--sin-base", action="store_true")
+    p.add_argument("--ambiente", help="con --base: el único ambiente en que consulta")
+    p.add_argument("--prohibida", action="append",
+                   help="con --base: herramienta que el probador no usa (repetible)")
+    p.set_defaults(func=cmd_setup_prueba)
 
     p = sub.add_parser("record-manual", help="Registra el resultado de la prueba manual")
     p.add_argument("--project")

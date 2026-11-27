@@ -21,6 +21,8 @@ checks) es Python puro, así que también se puede usar con otros modelos (ver
 - [Qué hace](#qué-hace)
 - [Qué trae la versión harness advance](#qué-trae-la-versión-harness-advance)
 - [El ciclo de un ticket](#el-ciclo-de-un-ticket)
+- [Prueba asistida](#prueba-asistida)
+  - [Setup del proyecto: `/harness-setup`](#setup-del-proyecto-harness-setup)
 - [Hallazgos y biblioteca de lecciones](#hallazgos-y-biblioteca-de-lecciones)
   - [Curar la biblioteca](#curar-la-biblioteca)
 - [Instalación y despliegue](#instalación-y-despliegue)
@@ -104,6 +106,46 @@ Cada vuelta por el ejecutor es un **intento**. Un fallo de checks, del escéptic
 de la prueba manual se guarda en `historial_fallos` con su origen (`check`,
 `esceptico` o `humano`), y el intento siguiente recibe el historial completo. Las
 correcciones que pide el hook en vivo no cuentan como intento: son autocorrección.
+
+
+## Prueba asistida
+
+El guion de prueba manual marca cada paso con `quien`: `agente` o `humano`. Antes de
+que te toque, el subagente `probador` corre los pasos `agente` con el navegador
+automatizado de la sesión y consultas de solo lectura, y deja `prueba_asistida.md` y
+`evidencia/` (capturas, consultas antes y después) en el intento. **No da el
+veredicto**: lo das tú con `/fase-ok` o `/fase-fallo`, después de revisar la
+evidencia y de correr los pasos `humano`. Un paso que el probador marque `simulado` o
+`no ejecutado` no cuenta como pasado.
+
+Son `humano` los que exigen login, pagar o cobrar, algo que hace el navegador y no la
+página (reabrir una pestaña cerrada), o comparar contra el mockup. El probador no
+teclea credenciales: si cae en un login, se detiene, entras tú en esa ventana y se le
+vuelve a invocar.
+
+### Setup del proyecto: `/harness-setup`
+
+El harness no conoce ningún navegador ni ninguna base: eso lo decide cada proyecto,
+una vez, con `/harness-setup`. El agente revisa qué herramientas tiene la sesión, te
+pregunta cuál es el navegador, cuál es la base, en qué ambiente consulta y qué
+herramientas de la base quedan prohibidas (las que cambian de ambiente o escriben), y
+lo guarda en `<proyecto>/.claude/prueba_asistida.json`. `/ticket-abrir` avisa si
+falta, sin bloquear.
+
+- **Sin navegador** (por ejemplo, una API sin pantalla) el probador corre igual los
+  pasos de consulta o de API, y marca `no ejecutado` los que necesiten navegador.
+  Sin navegador ni base, todos los pasos quedan para ti.
+- **No instala nada ni pide credenciales.** Conectar el navegador o la base (su
+  versión, su configuración, su login) es tuyo; el setup solo registra lo que ya hay.
+- **Las prohibidas son una instrucción, no un bloqueo técnico**: el probador las
+  recibe y no las usa. Si necesitas un bloqueo, configúralo en tu herramienta de agentes.
+- Ningún perfil trae ese archivo, así que volver a desplegar no lo pisa.
+
+Un navegador que sirve: el MCP de Playwright (`@playwright/mcp`), con versión fija y
+un `--output-dir` propio. Ojo con dos cosas que se vieron en uso real: si el sitio
+guarda la sesión en una cookie de sesión, el perfil persistente del navegador no la
+conserva y hay que entrar en cada corrida; y las capturas que el servidor guarda por
+su cuenta van a su `--output-dir`, no a `evidencia/`.
 
 
 ## Hallazgos y biblioteca de lecciones
@@ -259,6 +301,7 @@ ver [Crear el perfil de un proyecto nuevo](docs/tecnico.md#crear-el-perfil-de-un
 
 | Comando | Cuándo |
 |---|---|
+| `/harness-setup` | Una vez por proyecto: qué navegador y qué base usa el probador (ver [Prueba asistida](#prueba-asistida)) |
 | `/ticket-abrir <requerimiento o ruta .md>` | Empezar un ticket: pide número, desarrollador y fecha, y genera el plan |
 | `/fase fase_N` | Correr el ciclo completo de una fase; termina en el guion de prueba manual |
 | `/fase-pausa ["<motivo>"]` | Pausar la fase activa para conversar de otra cosa o cerrar el día. Se retoma con `/fase fase_N` sin gastar intento. Si entretanto abriste otro ticket, reábrelo primero con el mismo id y los datos de su `ticket_context.json`, sin replanificar |
