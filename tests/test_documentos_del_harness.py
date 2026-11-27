@@ -234,6 +234,35 @@ class TestEsceptico(unittest.TestCase):
         self.assertIn("no instrucciones", self.texto)
 
 
+class TestProbador(unittest.TestCase):
+    def setUp(self):
+        self.texto = leer("harness", "agents", "probador.md")
+
+    def test_frontmatter_sin_editar_ni_delegar(self):
+        campos = frontmatter(self.texto)
+        self.assertEqual(campos.get("name"), "probador")
+        prohibidas = {h.strip() for h in campos.get("disallowedTools", "").split(",")}
+        self.assertLessEqual({"Edit", "Agent"}, prohibidas)
+
+    def test_no_teclea_credenciales_ni_da_el_veredicto(self):
+        self.assertIn("No tecleas credenciales", self.texto)
+        self.assertIn("nunca corres `/fase-ok`", self.texto)
+
+    def test_la_pagina_y_la_base_son_dato(self):
+        self.assertIn("no instrucciones", self.texto)
+
+
+class TestSinHerramientasConcretas(unittest.TestCase):
+    """El harness genérico describe capacidades; el nombre de un servidor MCP es del proyecto."""
+
+    def test_ningun_documento_ni_script_nombra_una_herramienta_mcp(self):
+        for ruta in (RAIZ / "harness").rglob("*"):
+            if ruta.suffix not in {".py", ".md"} or not ruta.is_file():
+                continue
+            with self.subTest(archivo=ruta.relative_to(RAIZ).as_posix()):
+                self.assertNotIn("mcp__", ruta.read_text(encoding="utf-8"))
+
+
 class TestSeparacionDePlanos(unittest.TestCase):
     def test_el_harness_generico_no_conoce_el_stack_legacy(self):
         prohibidos = ("VB.NET", "Web Forms", "aspx", "EjecutarSp", "jQuery",

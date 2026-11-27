@@ -360,15 +360,21 @@ def cmd_generar_prueba(args) -> int:
         return _error(f"la fase '{fase['id']}' está pausada: reanúdala con "
                       f"/fase {fase['id']}")
     pasos = harness.read_json(Path(args.pasos_json))
-    if not isinstance(pasos, list) or not pasos:
-        return _error("--pasos-json debe contener una lista no vacía de "
-                      "objetos {paso, esperado}")
+    errores = prueba_manual.validar_pasos(pasos)
+    if errores:
+        return _error("; ".join(errores))
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     destino.mkdir(parents=True, exist_ok=True)
     archivo = destino / "prueba_manual.md"
     archivo.write_text(prueba_manual.render(fase, estado["intento_actual"], pasos),
                        encoding="utf-8")
+    # Copia estructurada para el probador: los pasos con su 'quien', sin el markdown.
+    harness.write_json(destino / "prueba_pasos.json", pasos)
+    n_agente, n_humano = prueba_manual.contar(pasos)
     print(f"Guion de prueba escrito en {archivo}")
+    print(f"Pasos: {n_agente} del probador, {n_humano} del humano.")
+    if n_agente:
+        print(f"Siguiente: invoca al subagente 'probador' con {destino}")
     return 0
 
 
