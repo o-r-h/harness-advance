@@ -57,6 +57,32 @@ def _lista(data: dict, campo: str, errores: list[str], prefijo: str = "",
         errores.append(f"{prefijo}{campo}: no puede estar vacía")
 
 
+def validate_prueba_asistida(data: dict) -> list[str]:
+    """Qué navegador y qué base usa el probador: null en cualquiera es "no hay"."""
+    if not isinstance(data, dict):
+        return ["prueba_asistida: requerido, objeto JSON"]
+    errores: list[str] = []
+    if "navegador" not in data:
+        errores.append("navegador: requerido (nombre del servidor, o null si no hay)")
+    elif data["navegador"] is not None:
+        _texto(data, "navegador", errores)
+    if "base" not in data:
+        errores.append("base: requerido (objeto, o null si no hay)")
+    elif data["base"] is not None:
+        base = data["base"]
+        if not isinstance(base, dict):
+            return errores + ["base: objeto o null"]
+        _texto(base, "servidor", errores, "base.")
+        if base.get("ambiente") is not None:
+            _texto(base, "ambiente", errores, "base.")
+        _lista(base, "prohibidas", errores, "base.")
+        prohibidas = base.get("prohibidas")
+        if isinstance(prohibidas, list) and not all(
+                isinstance(h, str) and h.strip() for h in prohibidas):
+            errores.append("base.prohibidas: cada una, string no vacío")
+    return errores
+
+
 def validate_ticket_context(data: dict) -> list[str]:
     if not isinstance(data, dict):
         return ["ticket_context: requerido, objeto JSON"]

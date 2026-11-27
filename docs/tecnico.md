@@ -57,14 +57,15 @@ se indica, se usa el proyecto del directorio actual.
 
 | Subcomando | Qué hace |
 |---|---|
-| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json`. Se rechaza si la fase activa está corriendo, incluso con el mismo id |
+| `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json`. Se rechaza si la fase activa está corriendo, incluso con el mismo id. Avisa, sin bloquear, si falta o es inválido `.claude/prueba_asistida.json` |
 | `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla) |
 | `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
-| `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`) |
+| `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`, `prueba_asistida`) |
 | `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
 | `record-veredicto --archivo [--modelo-esceptico]` | Registra el veredicto del escéptico; si rechaza, incrementa el intento. `--modelo-esceptico` guarda en `juicio_esceptico.modelo` qué modelo juzgó |
 | `modelo-esceptico --ejecutor <modelo\|desconocido>` | Imprime el modelo de Claude con el que debe juzgar el escéptico: `esceptico.modelo` de `rules.json` si está; si no, `sonnet`, salvo que el ejecutor ya sea Sonnet (entonces `opus`). Así quien juzga no comparte los puntos ciegos de quien hizo el trabajo |
-| `generar-prueba --pasos-json` | Escribe `prueba_manual.md` |
+| `generar-prueba --pasos-json` | Valida los pasos (`paso`, `esperado`, `quien` = `agente`\|`humano`; un `humano` explícito lleva `motivo`; sin `quien` es `humano`), escribe `prueba_manual.md` y `prueba_pasos.json`, y cuenta los pasos del probador. Rechaza pasos `agente` si `prueba_asistida.json` dice `"navegador": null` |
+| `setup-prueba [--navegador <s> \| --sin-navegador] [--base <s> \| --sin-base] [--ambiente] [--prohibida <h>]...` | Sin opciones, muestra la configuración de la prueba asistida. Con ellas, exige decidir navegador **y** base, valida y escribe `.claude/prueba_asistida.json`. `--ambiente` y `--prohibida` solo con `--base`. Rechaza un proyecto sin `.claude/rules.json` |
 | `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |
 | `record-hallazgos --archivo [--ticket --fase]` | Registra la propuesta del reflector. Solo sobre una fase `aprobada` o `escalado`; con `--ticket --fase`, sobre una fase ya cerrada |
 | `resolver-hallazgo --id <hN\|TICKET/fase_N/hN> --decision ok\|no\|editar [--texto] [--motivo] [--nueva \| --reincide <ref>]` | Resuelve un hallazgo y lo escribe en la biblioteca. `--nueva` ignora el `reincide` del reflector; `--reincide` fija la lección a la que reincide. Solo valen con `ok` o `editar`, y no juntos. Una reincidencia aprobada no crea entrada: agrega una línea `falló` a la original |
@@ -93,8 +94,24 @@ se indica, se usa el proyecto del directorio actual.
             ├── resultado.md           lo que hizo el ejecutor, con evidencia
             ├── checks.json            hechos de los scripts
             ├── prueba_manual.md       guion de clics
+            ├── prueba_pasos.json      los mismos pasos, con su quien, para el probador
+            ├── prueba_asistida.md     lo que corrió el probador, paso por paso
+            ├── evidencia/             capturas del probador (NN-descripcion.png)
             └── veredicto.json         escéptico + prueba manual
 ```
+
+`<proyecto>/.claude/prueba_asistida.json` (lo escribe `setup-prueba`,
+`contracts.validate_prueba_asistida`) dice qué usa el probador. Las dos claves son
+obligatorias y `null` significa "no hay":
+
+```json
+{ "navegador": "<servidor del navegador>",
+  "base": { "servidor": "<servidor de la base>", "ambiente": "dev",
+            "prohibidas": ["<herramienta que cambia de ambiente>"] } }
+```
+
+`ambiente` es opcional (sin él, el que esté activo). Ningún perfil trae el archivo:
+`deploy.ps1` copia el perfil con `-Force` y lo pisaría; lo vigila un test.
 
 La biblioteca (`<proyecto>/.claude/biblioteca/`) es estado de proyecto, no de ticket:
 `entradas/` (aprobadas), `rechazados/`, `retiradas/` (salieron por una curación),

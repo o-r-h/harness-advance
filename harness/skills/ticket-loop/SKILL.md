@@ -22,6 +22,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
 2. Pregunta **una sola vez**: número de ticket ISR, nombre del desarrollador y fecha
    (`DD-MM-YYYY`). No los inventes ni los deduzcas del sistema.
 3. `CLI open-ticket --ticket-id ISR-<nro> --nroticket <nro> --desarrollador "<NOMBRE>" --fecha <DD-MM-YYYY> --perfil <perfil>`
+   Si avisa que la prueba asistida no está configurada, ofrécele `/harness-setup`
+   **una vez** y sigue: no bloquea, sin setup todos los pasos del guion son `humano`.
 4. Invoca la skill `task-planner` para producir `plan.md` y `plan.json`. Si existe
    `.claude/biblioteca/INDEX.md`, pásaselo: una lección de la biblioteca es
    hipótesis, y si el plan la usa, la ancla como `por_confirmar`. Si el perfil
@@ -84,12 +86,14 @@ sientes tentado a hacerlo, es que falta un subcomando.
    cobrar, algo que hace el navegador y no la página (reabrir una pestaña cerrada,
    cerrar el navegador y volver), comparar contra el mockup, o datos que el agente no
    puede preparar. Recargar (F5) sí es `agente`: para la página es lo mismo. Si la
-   sesión no tiene navegador automatizado, todos son `humano`.
+   sesión no tiene navegador automatizado, o `.claude/prueba_asistida.json` dice
+   `"navegador": null`, todos son `humano` (el CLI rechaza un paso `agente` sin navegador).
    Si la fase **no** requiere prueba manual y el escéptico aprobó, la fase ya quedó
    `aprobada`: ejecuta "Al cerrar una fase".
 6b. **Prueba asistida:** si `generar-prueba` contó pasos del probador, invoca al
    **subagente `probador`, con contexto aislado**. Dale la carpeta del intento, el
-   `criterio_exito`, la URL y los datos. **No le pases tu conversación con el
+   `criterio_exito`, la URL, los datos y el contenido de `.claude/prueba_asistida.json`
+   (qué navegador, qué base y qué herramientas tiene prohibidas). **No le pases tu conversación con el
    ejecutor ni el veredicto del escéptico.** Deja `prueba_asistida.md` y
    `evidencia/` en el intento.
    - Si reporta `bloqueado: falta login`, pídele al humano que inicie sesión en la

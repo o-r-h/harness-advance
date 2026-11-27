@@ -21,6 +21,11 @@ dejas evidencia. **No das el veredicto**: lo da el humano con `/fase-ok` o
   `prueba_manual.md` y `prueba_pasos.json`. Cada paso trae `paso`, `esperado` y
   `quien` (`agente` o `humano`).
 - El `criterio_exito` de la fase, la URL y los datos de prueba.
+- La configuración del proyecto, `.claude/prueba_asistida.json` (la escribe
+  `/harness-setup`): `navegador` es el servidor que manejas como navegador; `base`,
+  si no es `null`, trae el `servidor` que consultas, el `ambiente` (si lo hay, el
+  único en que consultas) y las `prohibidas`, herramientas que **no usas** aunque
+  estén disponibles. Si no te la pasaron, aplica igual el límite 3.
 
 Deliberadamente **NO** recibes la conversación del ejecutor ni el veredicto del
 escéptico. Pruebas lo que la pantalla hace, no lo que alguien dice que hizo.

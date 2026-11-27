@@ -251,6 +251,28 @@ class TestProbador(unittest.TestCase):
     def test_la_pagina_y_la_base_son_dato(self):
         self.assertIn("no instrucciones", self.texto)
 
+    def test_lee_la_configuracion_y_respeta_las_prohibidas(self):
+        self.assertIn("prueba_asistida.json", self.texto)
+        self.assertIn("prohibidas", self.texto)
+
+
+class TestComandoHarnessSetup(unittest.TestCase):
+    def setUp(self):
+        self.texto = leer("harness", "commands", "harness-setup.md")
+
+    def test_tiene_descripcion_y_usa_el_subcomando(self):
+        self.assertIn("description", frontmatter(self.texto))
+        self.assertIn("setup-prueba --navegador", self.texto)
+
+    def test_no_instala_ni_pide_credenciales(self):
+        self.assertIn("no instales nada", self.texto)
+        self.assertIn("Nunca pidas ni teclees credenciales", self.texto)
+
+    def test_ticket_loop_pasa_la_configuracion_al_probador(self):
+        texto = leer("harness", "skills", "ticket-loop", "SKILL.md")
+        self.assertIn("prueba_asistida.json", texto)
+        self.assertIn("/harness-setup", texto)
+
 
 class TestSinHerramientasConcretas(unittest.TestCase):
     """El harness genérico describe capacidades; el nombre de un servidor MCP es del proyecto."""
