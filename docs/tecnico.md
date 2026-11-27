@@ -58,15 +58,16 @@ se indica, se usa el proyecto del directorio actual.
 | Subcomando | Qué hace |
 |---|---|
 | `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json`. Se rechaza si la fase activa está corriendo, incluso con el mismo id. Avisa, sin bloquear, si falta o es inválido `.claude/prueba_asistida.json` |
-| `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla) |
+| `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla). Valida el plan, incluidas las `citas` contra `ticket.md`, e imprime la ruta del requerimiento |
 | `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
-| `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`, `prueba_asistida`) |
-| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion` |
-| `record-veredicto --archivo [--modelo-esceptico]` | Registra el veredicto del escéptico; si rechaza, incrementa el intento. `--modelo-esceptico` guarda en `juicio_esceptico.modelo` qué modelo juzgó |
+| `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`, `prueba_asistida`). Con `plan`, si junto al archivo hay un `ticket.md`, cada cita de `fases[].citas` tiene que aparecer textual en él |
+| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion`. Guarda en `checks.json` la `huella_cambio` (qué archivos difieren de HEAD y el sha256 de cada uno) y agrega un `warning` `verificacion_tocada` por cada pieza de verificación que la fase tocó sin que el plan la nombre |
+| `record-veredicto --archivo [--modelo-esceptico]` | Registra el veredicto del escéptico; si rechaza, incrementa el intento. Solo en `en_verificacion` y con el `checks.json` del intento; si el código cambió desde `run-checks` lo rechaza nombrando los archivos, sin gastar intento. `--modelo-esceptico` guarda en `juicio_esceptico.modelo` qué modelo juzgó |
 | `modelo-esceptico --ejecutor <modelo\|desconocido>` | Imprime el modelo de Claude con el que debe juzgar el escéptico: `esceptico.modelo` de `rules.json` si está; si no, `sonnet`, salvo que el ejecutor ya sea Sonnet (entonces `opus`). Así quien juzga no comparte los puntos ciegos de quien hizo el trabajo |
-| `generar-prueba --pasos-json` | Valida los pasos (`paso`, `esperado`, `quien` = `agente`\|`humano`; un `humano` explícito lleva `motivo`; sin `quien` es `humano`), escribe `prueba_manual.md` y `prueba_pasos.json`, y cuenta los pasos del probador. Avisa, sin rechazar, si hay pasos `agente` y falta el setup o `prueba_asistida.json` dice `"navegador": null` (el probador corre entonces solo los de consulta o API) |
+| `generar-prueba --pasos-json` | Valida los pasos (`paso`, `esperado`, `quien` = `agente`\|`humano`; un `agente` lleva `esperado`; un `humano` explícito lleva `motivo`; sin `quien` es `humano`), escribe `prueba_manual.md` y `prueba_pasos.json`, y cuenta los pasos del probador. Avisa, sin rechazar, si hay pasos `agente` y falta el setup, el setup es inválido, o `prueba_asistida.json` dice `"navegador": null` (el probador corre entonces solo los de consulta o API) |
 | `setup-prueba [--navegador <s> \| --sin-navegador] [--base <s> \| --sin-base] [--ambiente] [--prohibida <h>]...` | Sin opciones, muestra la configuración de la prueba asistida. Con ellas, exige decidir navegador **y** base, valida y escribe `.claude/prueba_asistida.json`. `--ambiente` y `--prohibida` solo con `--base`. Rechaza un proyecto sin `.claude/rules.json` |
-| `record-manual --resultado ok\|fallo [--paso --observacion]` | Registra la prueba manual |
+| `record-manual --resultado ok\|fallo [--paso --observacion] [--aceptar-cambio <motivo>]` | Registra la prueba manual. Un `ok` se rechaza si el código cambió desde `run-checks`, salvo que el humano pase `--aceptar-cambio` con su motivo, que queda en `prueba_manual.cambio_posterior`. Un `fallo` entra siempre. Con `ok`, avisa sin rechazar si el guion tenía pasos del probador y falta `prueba_asistida.md`, o si ese reporte tiene pasos `falla` |
+| `doctor [--project] [--settings <ruta>] [--fuente <carpeta del harness>]` | Diagnóstico de solo lectura: Python, git, piezas instaladas, hooks en `settings.json`, perfil, checks estructurales declarados, git y `.gitignore` del proyecto, prueba asistida y fase activa. Con `--fuente`, compara lo instalado con el repositorio del harness. Cada línea es `ok`, `aviso` o `falla` con su remedio; sale con 1 si hay alguna `falla` |
 | `record-hallazgos --archivo [--ticket --fase]` | Registra la propuesta del reflector. Solo sobre una fase `aprobada` o `escalado`; con `--ticket --fase`, sobre una fase ya cerrada |
 | `resolver-hallazgo --id <hN\|TICKET/fase_N/hN> --decision ok\|no\|editar [--texto] [--motivo] [--nueva \| --reincide <ref>]` | Resuelve un hallazgo y lo escribe en la biblioteca. `--nueva` ignora el `reincide` del reflector; `--reincide` fija la lección a la que reincide. Solo valen con `ok` o `editar`, y no juntos. Una reincidencia aprobada no crea entrada: agrega una línea `falló` a la original |
 | `hallazgo --texto [--dimension] [--componente] [--ticket --fase]` | Hallazgo humano, en la fase activa; entre tickets, en la fase de `--ticket --fase` (que debe haberse abierto) |
@@ -112,6 +113,54 @@ obligatorias y `null` significa "no hay":
 
 `ambiente` es opcional (sin él, el que esté activo). Ningún perfil trae el archivo:
 `deploy.ps1` copia el perfil con `-Force` y lo pisaría; lo vigila un test.
+
+Las `prohibidas` son además un bloqueo técnico. `setup-prueba` genera
+`<proyecto>/.claude/agents/probador.md`: el probador genérico con las `prohibidas`
+sumadas a `disallowedTools` y una marca de generado. Claude Code prefiere el agente
+del proyecto al global del mismo nombre, así que el deploy, que pisa el global, no
+quita el bloqueo. `open-ticket` lo regenera si falta o quedó distinto del genérico
+(por ejemplo, tras un deploy). Sin `prohibidas` el archivo generado se borra. Un
+`probador.md` del proyecto sin la marca es del humano: no se toca y se avisa. Cada
+prohibida es un nombre de herramienta, sin comas ni espacios. Ningún perfil trae un
+`agents/probador.md`, por la misma razón que el JSON.
+
+### La evidencia va atada al cambio
+
+`run-checks` guarda en `checks.json` la `huella_cambio`: un objeto
+`{archivo: sha256}` con cada archivo que difiere de HEAD, incluidos los nuevos sin
+rastrear (`null` si el proyecto no tiene git; entonces no se compara nada).
+`record-veredicto` y `record-manual --resultado ok` la recalculan y rechazan si
+cambió, nombrando los archivos: lo que juzgó el escéptico y lo que probó el humano
+tiene que ser el mismo código que pasó los checks. No cuentan como cambio de la fase
+`.harness/`, `.claude/biblioteca/`, `.claude/prueba_asistida.json` ni
+`.claude/agents/probador.md`, que el harness escribe con la fase abierta. Por eso los
+archivos de trabajo del ciclo van dentro de `.harness/`. Un commit a mitad de fase
+cambia la huella: el ciclo espera que el commit se haga con la fase cerrada.
+
+### El requerimiento va por referencia
+
+`ticket.md` se guarda tal cual y el ejecutor y el escéptico reciben su ruta, no un
+resumen. Cada fase de `plan.json` puede llevar `citas`: frases del ticket copiadas
+literalmente (nombres, mensajes, valores, ejemplos). `validate` y `open-fase`
+rechazan el plan si una cita no aparece textual en `ticket.md`; solo se perdonan
+espacios y saltos de línea. El campo es opcional: los planes anteriores siguen
+siendo válidos.
+
+### Una fase no debilita lo que la verifica
+
+`run-checks` agrega un `warning` `verificacion_tocada` por cada archivo de
+verificación que la fase modificó sin que el plan lo nombre (en `titulo`, `pasos`,
+`anclajes` o `criterio_exito`, por ruta o por nombre de archivo). Siempre cuentan
+`.claude/rules.json` y `.claude/checks/*`. Los tests del proyecto los declara el
+perfil en `rules.json`, con patrones tipo glob relativos al proyecto:
+
+```json
+"rutas_de_verificacion": ["tests/*", "*.Tests/*"]
+```
+
+Es un aviso y no un bloqueo: un script no distingue un test corregido de uno
+debilitado. Lo decide el escéptico, que lo trata como rechazo salvo que el plan lo
+pida.
 
 La biblioteca (`<proyecto>/.claude/biblioteca/`) es estado de proyecto, no de ticket:
 `entradas/` (aprobadas), `rechazados/`, `retiradas/` (salieron por una curación),
@@ -371,6 +420,11 @@ Tests que protegen el diseño:
   de un proyecto.
 - `test_documentacion`: el README menciona cada comando de `harness/commands/`, este
   documento cada subcomando de `cli.py`, y ningún encabezado `## ` se repite entre los dos.
+- `test_presupuesto_de_prompts`: ninguna skill pasa de 200 líneas ni un agente de 230,
+  y todo archivo de `references/` existe y está nombrado en su `SKILL.md`. Lo que solo
+  hace falta en una situación (plantillas, ejemplos, el cierre de fase) vive en
+  `references/` y se lee cuando toca; si el test falla, se mueve texto, no se sube el
+  límite.
 - `test_registrar_hooks`: nada ajeno de `settings.json` cambia (hooks de otros, otras
   claves, orden, acentos) y un JSON roto no se escribe.
 - `test_report`: el reporte, con datos sembrados por sección; no escribe nada en el

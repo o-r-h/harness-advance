@@ -13,12 +13,29 @@ description: >-
 CLI.** No edites `fase_state.json`, `checks.json` ni `veredicto.json` a mano: si te
 sientes tentado a hacerlo, es que falta un subcomando.
 
+Los archivos de trabajo del ciclo (el veredicto del escéptico, los pasos del guion,
+la propuesta del reflector) van **dentro de `.harness/tickets/<id>/`**, nunca en el
+resto del proyecto: ahí contarían como cambio de la fase.
+
+## Qué leer en cada situación
+
+Estas partes del ciclo viven en archivos aparte, junto a esta skill. **Léelo
+entero antes de actuar** cuando llegues a esa situación; no las apliques de memoria.
+
+| Situación | Archivo |
+|---|---|
+| Vas a escribir el guion de prueba o a invocar al probador | `references/guion-de-prueba.md` |
+| La fase quedó `aprobada` o `escalado` ("Al cerrar una fase") | `references/cerrar-fase.md` |
+| La fase quedó `escalado` ("Cuando una fase escala") | `references/escalar-fase.md` |
+| El humano pausa, cambia de tema o retoma ("Pausar una fase") | `references/pausar-fase.md` |
+
 ## Al abrir un ticket
 
 0. `CLI hallazgos-pendientes`. Si hay hallazgos pendientes de fases anteriores,
    muéstralos antes de seguir y deja claro que **no bloquean**: el ticket se abre
    igual y el humano los resuelve cuando pueda.
-1. Pide el requerimiento (pegado o en `.md`) y guárdalo en `.harness/tickets/<id>/ticket.md`.
+1. Pide el requerimiento (pegado o en `.md`) y guárdalo **tal cual, sin resumir ni
+   corregir**, en `.harness/tickets/<id>/ticket.md`.
 2. Pregunta **una sola vez**: número de ticket ISR, nombre del desarrollador y fecha
    (`DD-MM-YYYY`). No los inventes ni los deduzcas del sistema.
 3. `CLI open-ticket --ticket-id ISR-<nro> --nroticket <nro> --desarrollador "<NOMBRE>" --fecha <DD-MM-YYYY> --perfil <perfil>`
@@ -31,7 +48,8 @@ sientes tentado a hacerlo, es que falta un subcomando.
    frontend), cada fase lleva `agente_ejecutor` con el nombre del que la ejecuta, y
    una fase no mezcla stacks: si toca los dos, se parte en dos fases con `depende_de`.
 5. `CLI validate --contrato plan --archivo .harness/tickets/<id>/plan.json`
-   Si falla, corrige el plan. **No abras ninguna fase con un plan inválido.**
+   Si falla, corrige el plan. **No abras ninguna fase con un plan inválido.** Si
+   rechaza una de las `citas`, es que no está copiada de `ticket.md`: cópiala.
 
 ## El ciclo de una fase
 
@@ -41,27 +59,42 @@ sientes tentado a hacerlo, es que falta un subcomando.
    **`agente_ejecutor`** de la fase (`open-fase` lo imprime en la línea `Ejecutor:`).
    Si la fase no lo trae, al **subagente ejecutor del perfil** (el agente
    del perfil). Pásale:
-   - la fase completa de `plan.json` (pasos, criterio de éxito, anclajes);
+   - la fase completa de `plan.json` (pasos, criterio de éxito, anclajes, `citas`);
+   - **la ruta de `ticket.md`** (la línea `Requerimiento:` de `open-fase`), para que
+     lea el pedido con las palabras del humano. **El requerimiento va por
+     referencia: no se lo resumas ni se lo cuentes con tus palabras.** Los nombres,
+     mensajes y ejemplos se copian de ahí, no de tu memoria;
    - `ticket_context.json`, para que los comentarios de auditoría lleven los valores
      correctos;
    - el **`historial_fallos` completo** si `intento_actual > 1` — todos los fallos, no
      solo el último: corregir el más reciente reintroduciendo uno viejo es una regresión;
-   - las `herramientas_permitidas` de la fase.
+   - las `herramientas_permitidas` de la fase;
+   - estas dos reglas, tal cual:
+     - **Un check no se pasa debilitándolo.** No relajes `rules.json`, no toques
+       `.claude/checks/` ni cambies, saltes o borres un test para que pase. Si crees
+       que la comprobación está mal, detente y dilo: lo decide el humano.
+     - **Si tras un arreglo real vuelve a fallar por la misma causa, detente** y
+       reporta qué intentaste y por qué no alcanzó, en vez de probar variantes.
 
    Mientras trabaja, el hook `PostToolUse` puede devolverle violaciones de reglas.
    **Eso es autocorrección, no un reintento:** que las corrija y siga.
 3. **Documentar:** el ejecutor escribe `intento_N/resultado.md` con lo que hizo y la
    evidencia (rutas, líneas, salidas de comando). Esto ya no se pide a mano.
-4. **Checks:** `CLI run-checks`.
+4. **Checks:** `CLI run-checks`. Guarda en `checks.json` la huella del cambio: desde
+   aquí, **nadie toca el código hasta el veredicto del humano**.
    - Exit 1 → hay errores bloqueantes. El CLI ya registró el fallo (origen `check`)
-     y sumó el intento: vuelve al paso 2 con el historial actualizado, o, si la fase
-     quedó `escalado`, ve a "Cuando una fase escala". **No invoques al escéptico**: es
+     y sumó el intento. Si la fase quedó `escalado`, lee
+     `references/escalar-fase.md`. Si no, mira la **regla de parada** de abajo y
+     vuelve al paso 2 con el historial actualizado. **No invoques al escéptico**: es
      más caro y estos fallos son hechos, no opiniones.
-   - Exit 0 → la fase pasa a `en_verificacion`. Lee los `warning` de `checks.json` y pásaselos al escéptico.
+   - Exit 0 → la fase pasa a `en_verificacion`. Lee los `warning` de `checks.json` y
+     pásaselos al escéptico. Un `verificacion_tocada` dice que la fase tocó algo que
+     la verifica sin que el plan lo pida: el escéptico tiene que mirarlo.
 5. **Escéptico:** `CLI` no lo invoca; lo invocas tú como **subagente `skeptic`, con
-   contexto aislado**. Dale el diff, el `criterio_exito`, los `anclajes`,
-   `checks.json` y el `historial_fallos`. **No le pases tu conversación con el
-   ejecutor** — un verificador que leyó el razonamiento ya está contaminado.
+   contexto aislado**. Dale el diff, el `criterio_exito`, los `anclajes`, las `citas`
+   y la ruta de `ticket.md`, `checks.json` y el `historial_fallos`. **No le pases tu
+   conversación con el ejecutor** — un verificador que leyó el razonamiento ya está
+   contaminado.
 
    **Con otro modelo.** Quien juzga no debe compartir los puntos ciegos de quien hizo
    el trabajo. El ejecutor es el `agente_ejecutor` de la fase (su modelo está en el
@@ -70,102 +103,34 @@ sientes tentado a hacerlo, es que falta un subcomando.
    cuál toca: `CLI modelo-esceptico --ejecutor <modelo del ejecutor, o desconocido>`.
    Invoca al subagente con ese valor en el parámetro `model`, y regístralo:
    `CLI record-veredicto --archivo <ruta> --modelo-esceptico <ese mismo valor>`.
-   Si rechazó, el CLI ya incrementó el intento: vuelve al paso 2.
+   Si rechazó, el CLI ya incrementó el intento: mira la regla de parada y vuelve al
+   paso 2. Si el CLI dice que **el código cambió después de `run-checks`**, nombra
+   los archivos: el veredicto no vale para ese código. Vuelve al paso 4 y al
+   escéptico; no se gasta intento.
 
    Lo que se escriba en `.claude/biblioteca/` mientras la fase está abierta (por
    ejemplo, un hallazgo resuelto a mitad de fase) aparece en el diff que ven
    `run-checks` y el escéptico, pero **no es parte del cambio de la fase**: díselo
    al escéptico para que no lo juzgue como tal.
-6. **Guion de prueba:** si el escéptico aprobó y la fase requiere prueba manual,
-   deriva del `criterio_exito` una lista de pasos concretos —clic por clic, con qué
-   debería verse en cada uno— y córrela:
-   `CLI generar-prueba --pasos-json <archivo>`.
-   Los pasos deben ser ejecutables por alguien que no leyó el código. Cada paso lleva
-   `quien`: `agente` si se puede correr con el navegador automatizado de la sesión y
-   consultas de solo lectura; `humano`, con su `motivo`, si exige login, pagar o
-   cobrar, algo que hace el navegador y no la página (reabrir una pestaña cerrada,
-   cerrar el navegador y volver), comparar contra el mockup, o datos que el agente no
-   puede preparar. Recargar (F5) sí es `agente`: para la página es lo mismo. Si la
-   sesión no tiene navegador automatizado, o `.claude/prueba_asistida.json` dice
-   `"navegador": null`, solo son `agente` los pasos que no lo necesitan: consultas de
-   solo lectura y llamadas a la API.
+6. **Guion de prueba:** si el escéptico aprobó y la fase requiere prueba manual, lee
+   `references/guion-de-prueba.md`. Deriva del `criterio_exito` y de las `citas` una
+   lista de pasos concretos —clic por clic, con qué debería verse en cada uno,
+   ejecutables por alguien que no leyó el código— y córrela:
+   `CLI generar-prueba --pasos-json <archivo>`. Si contó pasos del probador, invoca
+   al subagente `probador` como dice ese archivo.
    Si la fase **no** requiere prueba manual y el escéptico aprobó, la fase ya quedó
-   `aprobada`: ejecuta "Al cerrar una fase".
-6b. **Prueba asistida:** si `generar-prueba` contó pasos del probador, invoca al
-   **subagente `probador`, con contexto aislado**. Dale la carpeta del intento, el
-   `criterio_exito`, la URL, los datos y el contenido de `.claude/prueba_asistida.json`
-   (qué navegador, qué base y qué herramientas tiene prohibidas). **No le pases tu conversación con el
-   ejecutor ni el veredicto del escéptico.** Deja `prueba_asistida.md` y
-   `evidencia/` en el intento.
-   - Si reporta `bloqueado: falta login`, pídele al humano que inicie sesión en la
-     ventana del navegador automatizado y vuelve a invocarlo. No teclees
-     credenciales tú tampoco.
-   - Si algún paso `falla`, no corrijas ni reintentes: el humano decide si es
-     `/fase-fallo`.
+   `aprobada`: lee `references/cerrar-fase.md` y ejecútalo.
 7. **Detente.** Muestra `prueba_manual.md` y, si existe, el resumen de
    `prueba_asistida.md` con lo que le queda al humano. El humano responde
    `/fase-ok` o `/fase-fallo`. **No aproximes, no supongas, no cierres la fase por
    tu cuenta:** ni los checks ni el probador sustituyen al humano. Un paso del
    probador `simulado` o `no ejecutado` no cuenta como pasado.
 
-## Pausar una fase
+## Regla de parada
 
-- Solo el humano pausa, con `/fase-pausa`. Nunca corras `pausar-fase` por iniciativa
-  propia.
-- Si a mitad de fase el humano pregunta otra cosa o pide parar, respóndele,
-  recuérdale `/fase-pausa` y termina el turno sin retomar la fase.
-- Se retoma con `/fase fase_N`: `open-fase` reanuda en el mismo intento.
-- Si desde la pausa cambió el ticket activo (se abrió otro con `open-ticket`), `open-fase`
-  solo actúa sobre el activo. Reabre el ticket pausado con `CLI open-ticket`, con el
-  mismo id y los valores de su `ticket_context.json` (**sin invocar al task-planner ni
-  reescribir `plan.json`**), y luego `/fase fase_N`.
-- Al reanudar, sigue desde el paso que corresponde al estado impreso:
-  `en_ejecucion` o `en_correccion` → paso 2; `en_verificacion` → paso 5.
-- Mientras la fase activa corre, `open-fase` de otra fase y `open-ticket` se
-  rechazan.
-
-## Cuando una fase escala
-
-Al agotarse los reintentos, la fase queda en `escalado`. No arranques otro intento
-ni pases a la fase siguiente. Reporta al humano, en este orden:
-
-1. Qué se intentó en cada intento y qué falló, tomado del `historial_fallos`.
-2. Qué patrón se repite entre los fallos.
-3. Si el patrón es un fallo del escéptico que ya apareció más de una vez,
-   propón la corrección según la escalera *dónde va cada corrección*: la pieza más
-   barata que lo habría atrapado. Ese es el ciclo de mejora del harness: convertir
-   juicio caro en verificación barata.
-
-Haya o no patrón, después del reporte ejecuta siempre "Al cerrar una fase": la
-fase escalada es la que más enseña. Esto vale también cuando la fase escaló por un
-`/fase-fallo`.
-
-## Al cerrar una fase
-
-Aplica a toda fase que quede `aprobada` (tras `/fase-ok` o directamente tras
-`record-veredicto`) o `escalado`. Corre de inmediato, antes de cualquier
-`CLI open-fase` de la fase siguiente: sin más argumentos, `record-hallazgos`
-registra sobre la fase activa. Si la fase siguiente ya se abrió, registra la
-propuesta igual, indicando la fase cerrada:
-`CLI record-hallazgos --archivo <ruta> --ticket <id> --fase <fase>`.
-
-1. Invoca al **subagente `reflector`, con contexto aislado**. Dale: la fase de
-   `plan.json`; el `historial_fallos` completo; el `checks.json` y el
-   `veredicto.json` de **cada** `intento_N`; el resultado de la prueba manual y, si
-   existe, el `prueba_asistida.md` de cada intento; y
-   `.claude/biblioteca/INDEX.md` si existe. **No le pases tu conversación con el
-   ejecutor**: igual que el escéptico, un reflector que leyó el razonamiento ya
-   está contaminado.
-2. Guarda su JSON en `.harness/tickets/<id>/<fase>/propuesta_hallazgos.json` y
-   córrelo: `CLI record-hallazgos --archivo <ruta>`. Una propuesta vacía
-   (`"hallazgos": []`) también se registra. Si el CLI rechaza la propuesta,
-   devuélvele el error al reflector **una vez** para que la corrija y vuelve a
-   registrarla; si falla de nuevo, avisa al humano con el error tal cual y termina
-   el turno: no escribas `hallazgos.json` a mano.
-3. Muestra el contenido de `hallazgos.md` y explica al humano sus opciones, con la
-   referencia completa que trae cada hallazgo (`TICKET/fase_N/hN`):
-   `/hallazgo-ok <ref>`, `/hallazgo-editar <ref> "<lección>"`,
-   `/hallazgo-no <ref> "<motivo>"` y `/hallazgo "<lección>"` para proponer una
-   propia. Los hallazgos pendientes no bloquean la fase ni el ticket. Tras aprobar,
-   sugiere versionar `.claude/biblioteca/` con el proyecto.
-4. **El turno termina ahí.** No resuelvas hallazgos por tu cuenta.
+Antes de lanzar otro intento, compara el fallo nuevo con el `historial_fallos`. Si
+**la causa es la misma que la de un intento anterior** y el arreglo que se hizo era
+real, no gastes otro intento igual: detente y escala al humano con los dos fallos,
+qué se cambió entre uno y otro y por qué no alcanzó. Él decide si se sigue, se
+cambia el plan o se pausa con `/fase-pausa`. Insistir con variantes del mismo
+arreglo solo agota los reintentos.

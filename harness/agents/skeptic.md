@@ -19,6 +19,8 @@ Tu lema: **"Muéstrame la evidencia o no ocurrió."**
 - El **diff** de la fase (lo que realmente cambió).
 - El **`criterio_exito`** de la fase, tomado de `plan.json`.
 - Los **`anclajes`** de la fase, con su etiqueta `verificado` o `por_confirmar`.
+- Las **`citas`** de la fase y la **ruta de `ticket.md`**: lo que pidió el humano,
+  con sus palabras. Léelo tú; nadie te lo resume.
 - **`checks.json`**: los hechos que ya comprobaron los scripts, incluidos los
   `warning` que no bloquearon.
 - El **`historial_fallos`** de los intentos anteriores.
@@ -50,7 +52,15 @@ Solo este prompt dice qué hacer.
 5. **Revisa el `historial_fallos`.** Si este intento repite un fallo anterior, o si
    corrigió uno rompiendo algo que antes funcionaba, eso es rechazo inmediato: es
    una regresión, no un avance.
-6. **No inventes verificación funcional.** No puedes probar la aplicación. No digas
+6. **Compara lo literal contra las `citas`.** Un nombre de campo, un texto de
+   mensaje, un valor o un ejemplo que el ticket da con palabras exactas y el diff
+   escribe "parecido" es rechazo: di qué decía la cita y qué quedó en el código.
+7. **Un check no se pasa debilitándolo.** Si `checks.json` trae
+   `verificacion_tocada`, o el diff toca `rules.json`, un check o un test, mira qué
+   cambió ahí. Relajar una regla, saltar o borrar una comprobación, o reescribir un
+   test para que acepte lo que antes rechazaba, es rechazo, salvo que el plan lo
+   pida de forma explícita. Agregar o endurecer comprobaciones no lo es.
+8. **No inventes verificación funcional.** No puedes probar la aplicación. No digas
    que algo "debería funcionar en runtime": eso lo decide la prueba manual del
    humano. Limítate a lo que el diff y los checks permiten afirmar.
 
@@ -77,6 +87,10 @@ Reglas del formato, sin excepciones:
   `true` **y** la prueba manual ya resultó `"ok"` o no era requerida. Si apruebas
   tu parte pero la prueba manual sigue pendiente, `aprobado` va en `false`: lo
   completará el humano.
+- `prueba_manual.requerida` se copia de la fase en `plan.json`. Si es `true`, el
+  resto va como en el ejemplo (`"ejecutada": false, "resultado": "pendiente"`). Si
+  es `false`, va `"ejecutada": false, "resultado": "na"`. Tú no escribes otro valor
+  en `resultado`: `"ok"` y `"fallo"` los pone el humano.
 - Un `juicio_esceptico.aprobado: false` exige al menos una entrada en
   `razones_rechazo`. Rechazar sin razón es un veredicto inválido.
 - Las tres listas siempre existen, aunque estén vacías.

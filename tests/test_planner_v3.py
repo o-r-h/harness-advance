@@ -13,7 +13,10 @@ SKILL = RAIZ / "harness" / "skills" / "task-planner" / "SKILL.md"
 
 class TestPlannerV3(unittest.TestCase):
     def setUp(self):
-        self.texto = SKILL.read_text(encoding="utf-8")
+        # La skill es SKILL.md más sus references/ (plantillas y ejemplos).
+        self.texto = "\n\n".join(
+            p.read_text(encoding="utf-8")
+            for p in [SKILL, *sorted((SKILL.parent / "references").glob("*.md"))])
 
     def test_conserva_la_fase_0_de_anclaje(self):
         self.assertIn("Fase 0", self.texto)

@@ -82,6 +82,7 @@ class TestRecordVeredictoConModelo(Base):
                "--nroticket", "110722", "--desarrollador", "OMAR RODRIGUEZ",
                "--fecha", "28-07-2026", "--perfil", "p")
         correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
+        correr("run-checks", "--project", str(self.root))
         self.ruta = self.root / "v.json"
         self.ruta.write_text(json.dumps(_veredicto(True)), encoding="utf-8")
 

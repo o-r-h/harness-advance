@@ -140,8 +140,9 @@ without blocking.
 - **It installs nothing and asks for no credentials.** Connecting the browser or the
   database (its version, its configuration, its login) is up to you; setup only
   records what is already there.
-- **Forbidden tools are an instruction, not a technical block**: the tester receives
-  them and does not use them. If you need a hard block, configure it in your agent tool.
+- **Forbidden tools are a technical block**: the setup generates
+  `.claude/agents/probador.md` in the project, with those tools in `disallowedTools`.
+  It applies from the next session, and redeploying does not remove it.
 - No profile ships that file, so redeploying does not overwrite it.
 
 One browser that works: the Playwright MCP (`@playwright/mcp`), with a pinned version
@@ -305,6 +306,7 @@ see [Create a new project profile](docs/tecnico.md#crear-el-perfil-de-un-proyect
 | Command | When |
 |---|---|
 | `/harness-setup` | Once per project: which browser and which database the tester uses (see [Assisted test](#assisted-test)) |
+| `/harness-doctor` | Checks, without changing anything, whether the harness and the project are installed correctly: Python, git, registered hooks, profile, declared checks, assisted test and the active phase. Each failure comes with its fix |
 | `/ticket-abrir <requirement or .md path>` | Start a ticket: asks for number, developer, and date, and generates the plan |
 | `/fase fase_N` | Run a phase's full cycle; ends at the manual test script |
 | `/fase-pausa ["<reason>"]` | Pause the active phase to discuss something else or end the day. Resumes with `/fase fase_N` without spending an attempt. If you opened another ticket meanwhile, reopen it first with the same id and its `ticket_context.json` data, without replanning |
@@ -497,6 +499,10 @@ Debt
 
 | CLI Message | What happened |
 |---|---|
+| `el código cambió después de 'run-checks': <files>` | Code changed between the checks and the skeptic's verdict. Run the checks and the skeptic again; no attempt is spent |
+| `el código cambió después de la verificación: <files>` | `/fase-ok` on code that differs from what was verified. If the change does not matter, repeat `/fase-ok --aceptar-cambio "<reason>"` (it is recorded); if it does, use `/fase-fallo` |
+| `el veredicto se registra en 'en_verificacion'…` | A verdict was recorded without a clean `run-checks` in this attempt |
+| `citas[N]: no aparece textual en ticket.md` | The plan paraphrased the requirement: a quote is copied from `ticket.md`, not rewritten |
 | `el hallazgo '<ref>' no existe; ids válidos en …: h1, h2` | The id isn't in that phase. The message lists valid ids |
 | `el hallazgo <ref> ya está 'aprobado'` (o `'rechazado'`) | Already decided. Commands don't undo a decision |
 | `la fase '…' del ticket '…' no tiene hallazgos` | That phase doesn't have reflection recorded yet |

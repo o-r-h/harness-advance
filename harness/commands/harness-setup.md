@@ -26,6 +26,9 @@ directorio actual no está dentro del proyecto, agrega `--project <ruta del proy
    `CLI setup-prueba --navegador <servidor> | --sin-navegador --base <servidor> | --sin-base [--ambiente <ambiente>] [--prohibida <herramienta> ...]`
    y muéstrale el resumen que imprime.
 
-Las `prohibidas` las respeta el probador porque se las pasa `ticket-loop`; no son un
-bloqueo técnico. Si el humano necesita uno, va en la configuración de su
-herramienta de agentes, no en el harness.
+Las `prohibidas` son un bloqueo técnico: `setup-prueba` genera
+`<proyecto>/.claude/agents/probador.md`, una copia del probador con esas herramientas
+en `disallowedTools`, que el proyecto usa en lugar del global. Vale desde la próxima
+sesión: díselo al humano. Por eso cada nombre va completo y exacto, sin comas ni
+espacios. Si el proyecto ya tiene un probador propio, el setup no lo toca y avisa
+qué agregarle a mano.

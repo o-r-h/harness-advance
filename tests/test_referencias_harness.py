@@ -77,8 +77,9 @@ class TestReferenciasDelHarness(unittest.TestCase):
 
 
 def leer_ticket_loop() -> str:
-    return (RAIZ / "harness" / "skills" / "ticket-loop" / "SKILL.md").read_text(
-        encoding="utf-8")
+    carpeta = RAIZ / "harness" / "skills" / "ticket-loop"
+    return "\n\n".join(p.read_text(encoding="utf-8") for p in
+                       [carpeta / "SKILL.md", *sorted((carpeta / "references").glob("*.md"))])
 
 
 if __name__ == "__main__":

@@ -80,6 +80,11 @@ def validate_prueba_asistida(data: dict) -> list[str]:
         if isinstance(prohibidas, list) and not all(
                 isinstance(h, str) and h.strip() for h in prohibidas):
             errores.append("base.prohibidas: cada una, string no vacío")
+        elif isinstance(prohibidas, list) and any(
+                "," in h or len(h.split()) != 1 for h in prohibidas):
+            # Van tal cual a disallowedTools del probador, que separa por comas.
+            errores.append("base.prohibidas: cada una es el nombre de una herramienta, "
+                           "sin comas ni espacios")
     return errores
 
 
@@ -139,8 +144,36 @@ def _validar_agente_ejecutor(fase: dict, agentes: set[str] | None,
                        f".claude/agents/ del proyecto")
 
 
+def _sin_espacios_de_mas(texto: str) -> str:
+    return " ".join(texto.split())
+
+
+def _validar_citas(fase: dict, requerimiento: str | None,
+                   errores: list[str], prefijo: str) -> None:
+    """Campo opcional: frases del requerimiento copiadas tal cual, no parafraseadas.
+
+    Con el texto de ticket.md a la vista, cada cita tiene que aparecer en él
+    (solo se perdonan los espacios y saltos de línea): así el ejecutor y el
+    escéptico trabajan con las palabras del humano y no con un resumen.
+    """
+    if "citas" not in fase:
+        return
+    citas = fase.get("citas")
+    if not isinstance(citas, list) or not all(isinstance(c, str) and c.strip() for c in citas):
+        errores.append(f"{prefijo}citas: si se indica, lista de strings no vacíos")
+        return
+    if requerimiento is None:
+        return
+    original = _sin_espacios_de_mas(requerimiento)
+    for j, cita in enumerate(citas):
+        if _sin_espacios_de_mas(cita) not in original:
+            errores.append(f"{prefijo}citas[{j}]: no aparece textual en ticket.md — una "
+                           f"cita se copia, no se parafrasea: '{cita[:60]}'")
+
+
 def validate_plan(data: dict, rules: dict | None = None,
-                  agentes: set[str] | None = None) -> list[str]:
+                  agentes: set[str] | None = None,
+                  requerimiento: str | None = None) -> list[str]:
     if not isinstance(data, dict):
         return ["plan: requerido, objeto JSON"]
     errores: list[str] = []
@@ -190,6 +223,7 @@ def validate_plan(data: dict, rules: dict | None = None,
                 errores.append(f"{prefijo}depende_de: '{dependencia}' no es una fase del plan")
 
         _validar_agente_ejecutor(fase, agentes, errores, prefijo)
+        _validar_citas(fase, requerimiento, errores, prefijo)
 
         if rules is not None:
             _, desconocidos = resolve_check_names(
@@ -207,6 +241,10 @@ def validate_checks_result(data: dict) -> list[str]:
     _texto(data, "fase_id", errores)
     if not isinstance(data.get("intento"), int) or isinstance(data.get("intento"), bool):
         errores.append("intento: requerido, entero")
+    huella = data.get("huella_cambio")  # opcional: null sin git, ausente en los viejos
+    if huella is not None and not (isinstance(huella, dict) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in huella.items())):
+        errores.append("huella_cambio: objeto {archivo: sha256}, o null si no hay git")
     checks = data.get("checks")
     if not isinstance(checks, list):
         errores.append("checks: requerido, lista")

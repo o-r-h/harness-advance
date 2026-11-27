@@ -10,7 +10,13 @@ en los dos casos, lo da el humano con /fase-ok o /fase-fallo.
 """
 from __future__ import annotations
 
+import json
+import re
+from pathlib import Path
+
 QUIENES = ("agente", "humano")
+# Una celda de tabla cuyo contenido es solo "falla", con o sin énfasis de markdown.
+RE_CELDA_FALLA = re.compile(r"\|\s*[*_`]*falla[*_`]*\s*(?=\|)", re.IGNORECASE)
 
 PLANTILLA = """# Prueba manual — {fase_id} / intento_{intento}
 
@@ -54,6 +60,9 @@ def validar_pasos(pasos) -> list[str]:
         if quien not in QUIENES:
             errores.append(f"paso {numero}: 'quien' debe ser uno de {list(QUIENES)}, "
                            f"no '{quien}'")
+        elif quien == "agente" and not str(paso.get("esperado") or "").strip():
+            errores.append(f"paso {numero}: un paso 'agente' lleva 'esperado' (sin eso "
+                           f"el probador no tiene contra qué comparar)")
         elif quien == "humano" and paso.get("quien") and not paso.get("motivo"):
             errores.append(f"paso {numero}: un paso 'humano' explícito lleva 'motivo' "
                            f"(por qué el agente no puede correrlo)")
@@ -63,6 +72,32 @@ def validar_pasos(pasos) -> list[str]:
 def contar(pasos: list[dict]) -> tuple[int, int]:
     agente = sum(1 for paso in pasos if paso.get("quien", "humano") == "agente")
     return agente, len(pasos) - agente
+
+
+def aviso_del_probador(carpeta: Path) -> str | None:
+    """Lo que el humano debería saber del probador al dar un OK; None si no hay nada.
+
+    Es un aviso y no un rechazo: el veredicto es del humano, que pudo ver el fallo y
+    descartarlo. El reporte es markdown libre, así que solo se busca la celda 'falla'.
+    """
+    archivo_pasos = carpeta / "prueba_pasos.json"
+    if not archivo_pasos.is_file():
+        return None
+    try:
+        pasos = json.loads(archivo_pasos.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+    if not isinstance(pasos, list) or not contar([p for p in pasos if isinstance(p, dict)])[0]:
+        return None
+    reporte = carpeta / "prueba_asistida.md"
+    if not reporte.is_file():
+        return ("Aviso: el guion tenía pasos del probador y no hay prueba_asistida.md: "
+                "nadie dejó evidencia de esos pasos.")
+    fallas = len(RE_CELDA_FALLA.findall(reporte.read_text(encoding="utf-8")))
+    if fallas:
+        return (f"Aviso: el probador marcó {fallas} paso(s) como 'falla' en {reporte} "
+                f"y la prueba se registró como OK.")
+    return None
 
 
 def _celda(texto) -> str:
