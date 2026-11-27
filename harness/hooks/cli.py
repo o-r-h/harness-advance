@@ -15,9 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib import (biblioteca, checks, contracts, curacion as lib_curacion, gitdiff,
+from lib import (biblioteca, checks, contracts, curacion as lib_curacion, doctor, gitdiff,
                  hallazgos as lib_hallazgos,  # noqa: E402
-                 harness, plugins, prueba_asistida, prueba_manual, senales, state)
+                 harness, plugins, prueba_asistida, prueba_manual, senales, state,
+                 verificacion)
 import report  # noqa: E402
 
 VALIDADORES = {
@@ -127,6 +128,14 @@ def _avisar_setup_de_prueba(raiz: Path) -> None:
     elif config is None:
         print("Aviso: la prueba asistida no está configurada en este proyecto. Corre "
               "/harness-setup una vez; sin eso, todos los pasos del guion son del humano.")
+    else:
+        # Un deploy pudo traer un probador genérico nuevo: el del proyecto se pone al día.
+        _decir(prueba_asistida.sincronizar_agente(raiz, config))
+
+
+def _decir(mensaje: str | None) -> None:
+    if mensaje:
+        print(mensaje)
 
 
 def cmd_open_fase(args) -> int:
@@ -149,7 +158,7 @@ def cmd_open_fase(args) -> int:
     con_perfil = harness.find_project_root(raiz) is not None
     reglas = harness.load_rules(raiz) if con_perfil else None
     agentes = harness.list_agents(raiz) if con_perfil else None
-    errores = contracts.validate_plan(plan, reglas, agentes)
+    errores = contracts.validate_plan(plan, reglas, agentes, _requerimiento(ruta_plan))
     if errores:
         return _error("plan.json inválido: " + "; ".join(errores))
 
@@ -175,7 +184,25 @@ def cmd_open_fase(args) -> int:
     print(f"Fase {fase['id']} {resumen}, "
           f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
     print(f"Ejecutor: {fase.get('agente_ejecutor') or 'el agente del perfil'}")
+    if (ruta_plan.parent / "ticket.md").is_file():
+        print(f"Requerimiento: {ruta_plan.parent / 'ticket.md'} (se pasa la ruta, "
+              f"no un resumen)")
     return 0
+
+
+def cmd_doctor(args) -> int:
+    """Solo lectura: no pasa por resolver_proyecto para no inventar un proyecto."""
+    lineas = doctor.revisar(Path(args.project) if args.project else Path.cwd(),
+                            Path(args.settings) if args.settings else None,
+                            Path(args.fuente) if args.fuente else None)
+    print(doctor.render(lineas))
+    return 1 if any(nivel == doctor.FALLA for nivel, _, _ in lineas) else 0
+
+
+def _requerimiento(ruta_plan: Path) -> str | None:
+    """El texto de ticket.md, hermano de plan.json; None si no está."""
+    archivo = Path(ruta_plan).resolve().parent / "ticket.md"
+    return gitdiff.read_text(archivo) if archivo.is_file() else None
 
 
 def cmd_validate(args) -> int:
@@ -186,7 +213,7 @@ def cmd_validate(args) -> int:
         con_perfil = harness.find_project_root(raiz) is not None
         reglas = harness.load_rules(raiz) if con_perfil else None
         agentes = harness.list_agents(raiz) if con_perfil else None
-        errores = validador(datos, reglas, agentes)
+        errores = validador(datos, reglas, agentes, _requerimiento(Path(args.archivo)))
     else:
         errores = validador(datos)
     if errores:
@@ -227,6 +254,33 @@ def cmd_pausar_fase(args) -> int:
     return 0
 
 
+# Lo que el harness escribe en el proyecto mientras una fase está abierta: no es
+# parte del cambio de la fase, así que no mueve la huella.
+FUERA_DE_LA_HUELLA = (".harness/", ".claude/biblioteca/",
+                      f".claude/{prueba_asistida.ARCHIVO}",
+                      f".claude/agents/{prueba_asistida.AGENTE}")
+
+
+def _huella(raiz: Path) -> dict[str, str] | None:
+    return gitdiff.huella_cambio(raiz, FUERA_DE_LA_HUELLA)
+
+
+def _cambio_desde_los_checks(raiz: Path, carpeta: Path) -> str:
+    """Los archivos que ya no son los que vio `run-checks` en este intento; "" si ninguno.
+
+    Sin git, o con un checks.json anterior a la huella, no hay con qué comparar.
+    """
+    archivo = carpeta / "checks.json"
+    if not archivo.is_file():
+        return ""
+    guardada = harness.read_json(archivo).get("huella_cambio")
+    actual = _huella(raiz)
+    if not isinstance(guardada, dict) or actual is None:
+        return ""
+    cambios = gitdiff.diferencias_de_huella(guardada, actual)
+    return ", ".join(cambios[:8]) + (f" y {len(cambios) - 8} más" if len(cambios) > 8 else "")
+
+
 def cmd_run_checks(args) -> int:
     raiz = resolver_proyecto(args.project)
     activa = _fase_activa(raiz)
@@ -251,6 +305,8 @@ def cmd_run_checks(args) -> int:
     for archivo in archivos:
         hallazgos += checks.run_file_checks(raiz, archivo, reglas, ctx, solo=declarativos)
 
+    hallazgos += verificacion.hallazgos(raiz, archivos, fase, reglas)
+
     estructurales = plugins.cargar_checks_estructurales(raiz)
     for nombre in resueltos:
         if nombre in estructurales:
@@ -267,6 +323,7 @@ def cmd_run_checks(args) -> int:
         "fase_id": fase["id"],
         "intento": estado["intento_actual"],
         "resultado": "fallo" if bloqueantes else "ok",
+        "huella_cambio": _huella(raiz),
         "checks": hallazgos if hallazgos else [{"id": "sin_hallazgos", "resultado": "ok"}],
     }
     errores_contrato = contracts.validate_checks_result(resultado)
@@ -300,6 +357,22 @@ def cmd_record_veredicto(args) -> int:
     if estado["estado"] == "pausada":
         return _error(f"la fase '{fase['id']}' está pausada: reanúdala con "
                       f"/fase {fase['id']}")
+    # El veredicto juzga lo que pasó los checks: sin checks de este intento, o con
+    # el código cambiado después, no hay sobre qué juzgar.
+    if estado["estado"] != "en_verificacion":
+        return _error(f"la fase '{fase['id']}' está en estado '{estado['estado']}': el "
+                      f"veredicto se registra en 'en_verificacion', después de un "
+                      f"'run-checks' sin errores en este intento")
+    destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
+    if not (destino / "checks.json").is_file():
+        return _error(f"falta {destino / 'checks.json'}: corre 'run-checks' antes del "
+                      f"escéptico")
+    cambio = _cambio_desde_los_checks(raiz, destino)
+    if cambio:
+        return _error(f"el código cambió después de 'run-checks': {cambio}. El escéptico "
+                      f"juzgó un cambio que ya no es el actual. Vuelve a correr "
+                      f"'run-checks' y al escéptico; no se gastó ningún intento. (Los "
+                      f"archivos de trabajo del ciclo van dentro de .harness/)")
 
     veredicto = harness.read_json(Path(args.archivo))
     errores = contracts.validate_veredicto(veredicto)
@@ -311,7 +384,6 @@ def cmd_record_veredicto(args) -> int:
 
     if (args.modelo_esceptico or "").strip():  # en blanco se ignora: dejaría un veredicto inválido
         veredicto["juicio_esceptico"]["modelo"] = args.modelo_esceptico.strip()
-    destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     harness.write_json(destino / "veredicto.json", veredicto)
 
     if not veredicto["juicio_esceptico"]["aprobado"]:
@@ -377,7 +449,7 @@ def cmd_generar_prueba(args) -> int:
     if errores:
         return _error("; ".join(errores))
     n_agente, n_humano = prueba_manual.contar(pasos)
-    config, _ = prueba_asistida.estado(raiz)
+    config, errores_config = prueba_asistida.estado(raiz)
     destino = harness.intento_dir(raiz, ticket_id, fase["id"], estado["intento_actual"])
     destino.mkdir(parents=True, exist_ok=True)
     archivo = destino / "prueba_manual.md"
@@ -387,7 +459,11 @@ def cmd_generar_prueba(args) -> int:
     harness.write_json(destino / "prueba_pasos.json", pasos)
     print(f"Guion de prueba escrito en {archivo}")
     print(f"Pasos: {n_agente} del probador, {n_humano} del humano.")
-    if n_agente and config is None:
+    if n_agente and errores_config:
+        print(f"Aviso: {prueba_asistida.ARCHIVO} inválido ({'; '.join(errores_config)}). "
+              f"Corre /harness-setup para rehacerlo: el probador no sabe qué base usar "
+              f"ni qué herramientas tiene prohibidas.")
+    elif n_agente and config is None:
         print("Aviso: la prueba asistida no está configurada (/harness-setup): el "
               "probador no sabe qué base usar ni qué herramientas tiene prohibidas.")
     elif n_agente and config.get("navegador") is None:
@@ -431,6 +507,7 @@ def cmd_setup_prueba(args) -> int:
     harness.write_json(prueba_asistida.ruta(raiz), config)
     print(f"Prueba asistida guardada en {prueba_asistida.ruta(raiz)}")
     print(prueba_asistida.resumen(config))
+    _decir(prueba_asistida.sincronizar_agente(raiz, config))
     return 0
 
 
@@ -455,8 +532,21 @@ def cmd_record_manual(args) -> int:
                       f"de la prueba manual")
     veredicto = harness.read_json(ruta_veredicto)
 
+    motivo_cambio = (args.aceptar_cambio or "").strip()
+    cambio = _cambio_desde_los_checks(raiz, carpeta) if args.resultado == "ok" else ""
+    if cambio and not motivo_cambio:
+        return _error(f"el código cambió después de la verificación: {cambio}. Lo que "
+                      "probaste no "
+                      "es lo que revisaron los checks y el escéptico. Si el cambio no "
+                      "importa, el humano lo acepta con --aceptar-cambio \"<motivo>\" "
+                      "(queda registrado); si importa, es /fase-fallo")
+
     veredicto["prueba_manual"].update({
         "requerida": True, "ejecutada": True, "resultado": args.resultado})
+    veredicto["prueba_manual"].pop("cambio_posterior", None)
+    if cambio:
+        veredicto["prueba_manual"]["cambio_posterior"] = {"archivos": cambio,
+                                                          "motivo": motivo_cambio}
     if args.resultado == "fallo":
         veredicto["prueba_manual"]["fallo_en_paso"] = args.paso
         veredicto["prueba_manual"]["observacion"] = args.observacion
@@ -472,6 +562,7 @@ def cmd_record_manual(args) -> int:
     harness.write_json(ruta_veredicto, veredicto)
 
     if args.resultado == "ok":
+        _decir(prueba_manual.aviso_del_probador(carpeta))
         state.aprobar_fase(raiz, ticket_id, fase["id"])
         print(f"Prueba manual OK. Fase {fase['id']} aprobada.")
         return 0
@@ -1009,11 +1100,20 @@ def construir_parser() -> argparse.ArgumentParser:
                    help="con --base: herramienta que el probador no usa (repetible)")
     p.set_defaults(func=cmd_setup_prueba)
 
+    p = sub.add_parser("doctor", help="Diagnóstico de solo lectura de la instalación "
+                                      "y del proyecto")
+    p.add_argument("--project")
+    p.add_argument("--settings", help="settings.json a revisar (por defecto, el global)")
+    p.add_argument("--fuente", help="carpeta del harness: compara lo instalado con ella")
+    p.set_defaults(func=cmd_doctor)
+
     p = sub.add_parser("record-manual", help="Registra el resultado de la prueba manual")
     p.add_argument("--project")
     p.add_argument("--resultado", required=True, choices=["ok", "fallo"])
     p.add_argument("--paso", type=int)
     p.add_argument("--observacion")
+    p.add_argument("--aceptar-cambio", metavar="MOTIVO",
+                   help="con ok: el humano acepta que el código cambió tras la verificación")
     p.set_defaults(func=cmd_record_manual)
 
     p = sub.add_parser("record-hallazgos", help="Registra los hallazgos del reflector")

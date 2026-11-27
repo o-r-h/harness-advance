@@ -14,6 +14,13 @@ def leer(*partes: str) -> str:
     return (RAIZ.joinpath(*partes)).read_text(encoding="utf-8")
 
 
+def leer_skill(nombre: str) -> str:
+    """SKILL.md más sus references/: una skill es todo lo que el modelo puede llegar a leer."""
+    carpeta = RAIZ / "harness" / "skills" / nombre
+    partes = [carpeta / "SKILL.md", *sorted((carpeta / "references").glob("*.md"))]
+    return "\n\n".join(p.read_text(encoding="utf-8") for p in partes)
+
+
 def frontmatter(texto: str) -> dict:
     bloque = re.match(r"^---\n(.*?)\n---\n", texto, re.DOTALL)
     if not bloque:
@@ -28,7 +35,7 @@ def frontmatter(texto: str) -> dict:
 
 class TestSkillOrquestadora(unittest.TestCase):
     def setUp(self):
-        self.texto = leer("harness", "skills", "ticket-loop", "SKILL.md")
+        self.texto = leer_skill("ticket-loop")
 
     def test_tiene_frontmatter_con_nombre_y_descripcion(self):
         campos = frontmatter(self.texto)
@@ -222,7 +229,7 @@ class TestAgenteReflector(unittest.TestCase):
 
 class TestPlannerPesaLasQueFallaron(unittest.TestCase):
     def test_una_leccion_que_fallo_pesa_mas(self):
-        texto = leer("harness", "skills", "task-planner", "SKILL.md")
+        texto = leer_skill("task-planner")
         self.assertIn("(falló N×)", texto)
 
 
@@ -269,7 +276,7 @@ class TestComandoHarnessSetup(unittest.TestCase):
         self.assertIn("Nunca pidas ni teclees credenciales", self.texto)
 
     def test_ticket_loop_pasa_la_configuracion_al_probador(self):
-        texto = leer("harness", "skills", "ticket-loop", "SKILL.md")
+        texto = leer_skill("ticket-loop")
         self.assertIn("prueba_asistida.json", texto)
         self.assertIn("/harness-setup", texto)
 
@@ -378,7 +385,7 @@ class TestEscepticoConOtroModelo(unittest.TestCase):
                          "sonnet")
 
     def test_ticket_loop_elige_el_modelo_y_lo_registra(self):
-        texto = leer("harness", "skills", "ticket-loop", "SKILL.md")
+        texto = leer_skill("ticket-loop")
         self.assertIn("modelo-esceptico --ejecutor", texto)
         self.assertIn("--modelo-esceptico", texto)
         self.assertIn("parámetro `model`", texto)

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import codecs
 import difflib
+import hashlib
 import os
 import re
 import subprocess
@@ -198,6 +199,49 @@ def archivos_modificados(project_root: Path) -> list[Path]:
         if candidato.is_file():
             rutas.append(candidato)
     return rutas
+
+
+def huella_cambio(project_root: Path,
+                  excluir: tuple[str, ...] = ()) -> dict[str, str] | None:
+    """Huella del cambio respecto a HEAD: {archivo que difiere: sha256 de su contenido}.
+
+    Ata la evidencia (checks, veredicto, prueba manual) al código que se revisó: si
+    la huella ya no coincide, lo que se juzgó no es lo que hay. `excluir` son rutas
+    relativas al proyecto ('carpeta/' o un archivo) que no cuentan como cambio de la
+    fase. None si no hay git usable: sin huella no se compara nada.
+    """
+    raiz = Path(project_root).resolve()
+    entradas = _estado(raiz)
+    if entradas is None:
+        return None
+    huella: dict[str, str] = {}
+    for _, ruta, _ in entradas:
+        try:
+            relativo = ruta.resolve().relative_to(raiz).as_posix()
+        except ValueError:
+            continue  # fuera del proyecto
+        if any(relativo == e or (e.endswith("/") and relativo.startswith(e)) for e in excluir):
+            continue
+        archivo = raiz / relativo
+        try:
+            contenido = hashlib.sha256(archivo.read_bytes()).hexdigest()
+        except OSError:
+            contenido = "ausente"  # borrado, o un directorio (submódulo)
+        huella[relativo] = contenido
+    return dict(sorted(huella.items()))
+
+
+def diferencias_de_huella(antes: dict[str, str], ahora: dict[str, str]) -> list[str]:
+    """Archivos que distinguen dos huellas, cada uno con lo que le pasó."""
+    cambios = []
+    for ruta in sorted(set(antes) | set(ahora)):
+        if ruta not in antes:
+            cambios.append(f"{ruta} (nuevo en el cambio)")
+        elif ruta not in ahora:
+            cambios.append(f"{ruta} (volvió a como estaba en HEAD)")
+        elif antes[ruta] != ahora[ruta]:
+            cambios.append(f"{ruta} (modificado)")
+    return cambios
 
 
 def compress_line_numbers(numeros: list[int]) -> str:

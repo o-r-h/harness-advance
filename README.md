@@ -137,8 +137,9 @@ falta, sin bloquear.
   Sin navegador ni base, todos los pasos quedan para ti.
 - **No instala nada ni pide credenciales.** Conectar el navegador o la base (su
   versión, su configuración, su login) es tuyo; el setup solo registra lo que ya hay.
-- **Las prohibidas son una instrucción, no un bloqueo técnico**: el probador las
-  recibe y no las usa. Si necesitas un bloqueo, configúralo en tu herramienta de agentes.
+- **Las prohibidas son un bloqueo técnico**: el setup genera
+  `.claude/agents/probador.md` en el proyecto, con esas herramientas en
+  `disallowedTools`. Vale desde la próxima sesión, y volver a desplegar no lo quita.
 - Ningún perfil trae ese archivo, así que volver a desplegar no lo pisa.
 
 Un navegador que sirve: el MCP de Playwright (`@playwright/mcp`), con versión fija y
@@ -302,6 +303,7 @@ ver [Crear el perfil de un proyecto nuevo](docs/tecnico.md#crear-el-perfil-de-un
 | Comando | Cuándo |
 |---|---|
 | `/harness-setup` | Una vez por proyecto: qué navegador y qué base usa el probador (ver [Prueba asistida](#prueba-asistida)) |
+| `/harness-doctor` | Revisa, sin cambiar nada, si el harness y el proyecto están bien instalados: Python, git, hooks registrados, perfil, checks declarados, prueba asistida y la fase activa. Cada falla trae su remedio |
 | `/ticket-abrir <requerimiento o ruta .md>` | Empezar un ticket: pide número, desarrollador y fecha, y genera el plan |
 | `/fase fase_N` | Correr el ciclo completo de una fase; termina en el guion de prueba manual |
 | `/fase-pausa ["<motivo>"]` | Pausar la fase activa para conversar de otra cosa o cerrar el día. Se retoma con `/fase fase_N` sin gastar intento. Si entretanto abriste otro ticket, reábrelo primero con el mismo id y los datos de su `ticket_context.json`, sin replanificar |
@@ -531,6 +533,10 @@ Deuda
 | `rechazar un hallazgo exige --motivo …` | `/hallazgo-no` sin motivo |
 | `editar un hallazgo exige --texto …` | `/hallazgo-editar` sin la lección corregida |
 | `no hay fase activa: corre 'open-fase'` | `/hallazgo` fuera de una fase |
+| `el código cambió después de 'run-checks': <archivos>` | Alguien tocó el código entre los checks y el veredicto del escéptico. Se vuelven a correr los checks y el escéptico; no gasta intento |
+| `el código cambió después de la verificación: <archivos>` | `/fase-ok` con el código distinto del que se verificó. Si el cambio no importa, repite `/fase-ok --aceptar-cambio "<motivo>"` (queda registrado); si importa, es `/fase-fallo` |
+| `el veredicto se registra en 'en_verificacion'…` | Se quiso registrar el veredicto sin un `run-checks` limpio en este intento |
+| `citas[N]: no aparece textual en ticket.md` | El plan parafraseó el requerimiento: una cita se copia de `ticket.md`, no se reescribe |
 | `--nueva y --reincide se excluyen: elige una` | Pasaste las dos a `/hallazgo-ok` o `/hallazgo-editar` |
 | `--nueva y --reincide solo valen al aprobar …` | Las pasaste con `/hallazgo-no` |
 | `el hallazgo <ref> reincide en …` | La lección a la que reincide no está aprobada (rechazada, sin decidir o mal escrita). No se escribió nada |
