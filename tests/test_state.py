@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -77,6 +78,35 @@ class TestMaquinaDeEstados(unittest.TestCase):
         self.abrir()
         estado = state.aprobar_fase(self.root, "ISR-110722", "fase_1")
         self.assertEqual(estado["estado"], "aprobada")
+
+    def progreso(self):
+        ruta = self.root / ".harness" / "tickets" / "ISR-110722" / "ticket_state.json"
+        return json.loads(ruta.read_text(encoding="utf-8"))
+
+    def test_aprobar_fase_la_anota_en_el_progreso_del_ticket(self):
+        self.abrir()
+        state.marcar_fase_actual(self.root, "ISR-110722", "fase_1")
+        self.assertEqual(self.progreso()["fase_actual"], "fase_1")
+        self.assertEqual(self.progreso()["fases_aprobadas"], [])
+
+        state.aprobar_fase(self.root, "ISR-110722", "fase_1")
+        self.assertEqual(self.progreso(), {"ticket_id": "ISR-110722", "fase_actual": None,
+                                           "fases_aprobadas": ["fase_1"]})
+
+    def test_el_progreso_acumula_fases_sin_repetirlas(self):
+        for fase_id in ("fase_1", "fase_2"):
+            state.abrir_fase(self.root, "ISR-110722", dict(FASE, id=fase_id))
+            state.aprobar_fase(self.root, "ISR-110722", fase_id)
+        state.aprobar_fase(self.root, "ISR-110722", "fase_2")
+        self.assertEqual(self.progreso()["fases_aprobadas"], ["fase_1", "fase_2"])
+
+    def test_un_progreso_ilegible_se_rehace_sin_frenar_la_aprobacion(self):
+        self.abrir()
+        ruta = self.root / ".harness" / "tickets" / "ISR-110722" / "ticket_state.json"
+        ruta.write_text("{ roto", encoding="utf-8")
+        estado = state.aprobar_fase(self.root, "ISR-110722", "fase_1")
+        self.assertEqual(estado["estado"], "aprobada")
+        self.assertEqual(self.progreso()["fases_aprobadas"], ["fase_1"])
 
     def test_no_se_puede_aprobar_una_fase_escalada(self):
         self.abrir()

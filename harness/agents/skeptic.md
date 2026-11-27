@@ -87,6 +87,10 @@ Reglas del formato, sin excepciones:
   `true` **y** la prueba manual ya resultó `"ok"` o no era requerida. Si apruebas
   tu parte pero la prueba manual sigue pendiente, `aprobado` va en `false`: lo
   completará el humano.
+- `prueba_manual.requerida` se copia de la fase en `plan.json`. Si es `true`, el
+  resto va como en el ejemplo (`"ejecutada": false, "resultado": "pendiente"`). Si
+  es `false`, va `"ejecutada": false, "resultado": "na"`. Tú no escribes otro valor
+  en `resultado`: `"ok"` y `"fallo"` los pone el humano.
 - Un `juicio_esceptico.aprobado: false` exige al menos una entrada en
   `razones_rechazo`. Rechazar sin razón es un veredicto inválido.
 - Las tres listas siempre existen, aunque estén vacías.

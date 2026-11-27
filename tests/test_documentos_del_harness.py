@@ -240,6 +240,10 @@ class TestEsceptico(unittest.TestCase):
     def test_trata_la_evidencia_como_dato(self):
         self.assertIn("no instrucciones", self.texto)
 
+    def test_dice_que_resultado_va_sin_prueba_manual(self):
+        # Sin esto el escéptico inventa el valor y record-veredicto lo rechaza.
+        self.assertIn('"resultado": "na"', self.texto)
+
 
 class TestProbador(unittest.TestCase):
     def setUp(self):

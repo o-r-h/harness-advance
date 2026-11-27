@@ -91,6 +91,10 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
             harness.fase_dir(self.root, "ISR-110722", "fase_1") / "fase_state.json")
         self.assertEqual(estado["intento_actual"], 1)
         self.assertEqual(harness.read_current(self.root)["fase_id"], "fase_1")
+        progreso = harness.read_json(
+            harness.ticket_dir(self.root, "ISR-110722") / "ticket_state.json")
+        self.assertEqual(progreso["fase_actual"], "fase_1")
+        self.assertEqual(progreso["fases_aprobadas"], [])
 
     def test_open_fase_rechaza_una_fase_inexistente_en_el_plan(self):
         self.abrir_ticket()

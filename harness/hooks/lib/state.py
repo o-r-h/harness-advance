@@ -99,7 +99,33 @@ def aprobar_fase(project_root: Path, ticket_id: str, fase_id: str) -> dict:
         raise TransicionInvalida(
             f"la fase {fase_id} está escalada: requiere intervención humana explícita")
     estado["estado"] = "aprobada"
-    return _guardar(project_root, ticket_id, estado)
+    guardado = _guardar(project_root, ticket_id, estado)
+    _anotar_ticket(project_root, ticket_id, fase_actual=None, aprobada=fase_id)
+    return guardado
+
+
+def marcar_fase_actual(project_root: Path, ticket_id: str, fase_id: str) -> None:
+    """Deja en ticket_state.json qué fase está abierta."""
+    _anotar_ticket(project_root, ticket_id, fase_actual=fase_id)
+
+
+def _anotar_ticket(project_root: Path, ticket_id: str, fase_actual: str | None,
+                   aprobada: str | None = None) -> None:
+    """Mantiene el progreso global del ticket. Es un resumen: la verdad de cada
+    fase sigue en su fase_state.json, así que un archivo ilegible se rehace."""
+    ruta = harness.ticket_dir(project_root, ticket_id) / "ticket_state.json"
+    try:
+        datos = harness.read_json(ruta) if ruta.is_file() else {}
+    except (OSError, ValueError):
+        datos = {}
+    if not isinstance(datos, dict):
+        datos = {}
+    aprobadas = [f for f in datos.get("fases_aprobadas") or [] if isinstance(f, str)]
+    if aprobada and aprobada not in aprobadas:
+        aprobadas.append(aprobada)
+    datos.update({"ticket_id": ticket_id, "fase_actual": fase_actual,
+                  "fases_aprobadas": aprobadas})
+    harness.write_json(ruta, datos)
 
 
 def pausar_fase(project_root: Path, ticket_id: str, fase_id: str, motivo: str,

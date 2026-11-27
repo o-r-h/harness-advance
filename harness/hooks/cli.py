@@ -181,6 +181,7 @@ def cmd_open_fase(args) -> int:
         estado = state.abrir_fase(raiz, ticket_id, fase)
         resumen = f"en estado '{estado['estado']}'"
     harness.write_current(raiz, ticket_id, fase["id"])
+    state.marcar_fase_actual(raiz, ticket_id, fase["id"])
     print(f"Fase {fase['id']} {resumen}, "
           f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
     print(f"Ejecutor: {fase.get('agente_ejecutor') or 'el agente del perfil'}")
