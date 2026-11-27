@@ -87,6 +87,13 @@ class TestSetupPrueba(ConProyecto):
         self.assertEqual(self.config(), {"navegador": None, "base": None})
         self.assertIn("humano", resultado.stdout)
 
+    def test_sin_navegador_con_base_no_dice_que_todo_es_del_humano(self):
+        resultado = correr("setup-prueba", "--project", str(self.root),
+                           "--sin-navegador", "--base", "base-y")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.assertIn("consulta o de API", resultado.stdout)
+        self.assertNotIn("todos los pasos son del humano", resultado.stdout)
+
     def test_exige_decidir_navegador_y_base_a_la_vez(self):
         resultado = correr("setup-prueba", "--project", str(self.root),
                            "--navegador", "navegador-x")

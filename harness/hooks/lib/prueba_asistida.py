@@ -36,8 +36,14 @@ def estado(raiz: Path) -> tuple[dict | None, list[str]]:
 
 
 def resumen(config: dict) -> str:
-    navegador = config.get("navegador") or "sin navegador: todos los pasos son del humano"
     base = config.get("base")
+    if config.get("navegador"):
+        navegador = config["navegador"]
+    elif base is None:
+        navegador = "sin navegador ni base: todos los pasos son del humano"
+    else:
+        navegador = ("sin navegador: el probador corre solo los pasos de consulta o de "
+                     "API; los de pantalla son del humano")
     if base is None:
         texto_base = "sin base: la columna SQL del probador queda pendiente"
     else:
