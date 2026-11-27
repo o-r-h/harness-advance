@@ -31,6 +31,21 @@ SIGUIENTE_PASO = {
 }
 
 
+def _subagente_en_vuelo(payload: dict) -> bool:
+    """El ejecutor, el escéptico o el probador siguen corriendo en segundo plano.
+
+    Ahí no hay siguiente paso que exigir: la sesión se reactiva sola cuando el
+    subagente termina, y el hook vuelve a mirar en ese turno. Un comando de shell
+    en segundo plano NO cuenta: una API levantada para la prueba puede quedar viva
+    toda la sesión y apagaría el gate.
+    """
+    tareas = payload.get("background_tasks")
+    if not isinstance(tareas, list):
+        return False
+    return any(isinstance(t, dict) and t.get("type") == "subagent"
+               and t.get("status") == "running" for t in tareas)
+
+
 def main() -> int:
     if os.environ.get("HARNESS_STOP", "").strip().lower() == "off":
         return 0
@@ -46,6 +61,8 @@ def main() -> int:
     except (json.JSONDecodeError, UnicodeDecodeError):
         return 0
     if not isinstance(payload, dict) or payload.get("stop_hook_active"):
+        return 0
+    if _subagente_en_vuelo(payload):
         return 0
 
     # El payload de Stop no trae ninguna ruta de archivo: cwd es la única vía

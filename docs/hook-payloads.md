@@ -81,8 +81,28 @@ Campos que usa `gate_phase.py`:
 |---|---|
 | `stop_hook_active` | Indicador de reentrada. **Confirmado**, y con ese nombre exacto. Si es `true`, salir con 0 de inmediato o se produce un bucle |
 | `cwd` | Único punto de partida disponible para resolver el proyecto: este payload **no** trae ninguna ruta de archivo |
+| `background_tasks` | Si trae un subagente con `status: "running"`, el hook no bloquea. Ver abajo |
+
+`background_tasks` con algo corriendo (capturado el 27-11-2026, una entrada por tarea):
+
+```json
+[
+  { "id": "a1c6734a796fdfbd9", "type": "subagent", "status": "running",
+    "description": "Espera de 90 segundos", "agent_type": "general-purpose" },
+  { "id": "b322jltpk", "type": "shell", "status": "running",
+    "description": "Wait 60 seconds", "command": "python -c \"import time; time.sleep(60)\"" }
+]
+```
 
 Notas:
+
+- Con un subagente en vuelo el turno termina igual y `Stop` se dispara, aunque el
+  agente no tenga nada que hacer salvo esperar. Bloquear ahí solo gasta un turno:
+  la sesión se reactiva sola cuando el subagente termina. Por eso `gate_phase.py`
+  sale con 0 si alguna tarea es `type: "subagent"` y `status: "running"`.
+- Una tarea `type: "shell"` **no** cuenta: una API levantada para la prueba puede
+  quedar viva toda la sesión y apagaría el gate. No se capturó ningún otro valor de
+  `status`; cualquier cosa distinta de `"running"` bloquea como siempre.
 
 - `last_assistant_message` viene completo. **No usarlo:** juzgar el texto del modelo
   es exactamente el tipo de verificación blanda que el harness reemplaza por estado
