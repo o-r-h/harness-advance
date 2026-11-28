@@ -46,6 +46,19 @@ def _subagente_en_vuelo(payload: dict) -> bool:
                and t.get("status") == "running" for t in tareas)
 
 
+def _es_de_otra_sesion(actual: dict, payload: dict) -> bool:
+    """La fase la conduce otra sesión de Claude Code abierta en el mismo proyecto.
+
+    Quien abrió una segunda sesión para consultar algo no tiene ciclo que cerrar, y
+    si corriera `run-checks` le pisaría la fase a la que sí lo tiene. Solo exime
+    cuando las dos sesiones se conocen y son distintas: sin ese dato bloquea, como
+    siempre.
+    """
+    duena, esta = actual.get("sesion"), payload.get("session_id")
+    return (isinstance(duena, str) and isinstance(esta, str)
+            and bool(duena) and bool(esta) and duena != esta)
+
+
 def main() -> int:
     if os.environ.get("HARNESS_STOP", "").strip().lower() == "off":
         return 0
@@ -73,6 +86,8 @@ def main() -> int:
 
     actual = harness.read_current(raiz)
     if not actual or not actual.get("ticket_id") or not actual.get("fase_id"):
+        return 0
+    if _es_de_otra_sesion(actual, payload):
         return 0
 
     try:

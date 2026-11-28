@@ -82,6 +82,18 @@ Campos que usa `gate_phase.py`:
 | `stop_hook_active` | Indicador de reentrada. **Confirmado**, y con ese nombre exacto. Si es `true`, salir con 0 de inmediato o se produce un bucle |
 | `cwd` | Único punto de partida disponible para resolver el proyecto: este payload **no** trae ninguna ruta de archivo |
 | `background_tasks` | Si trae un subagente con `status: "running"`, el hook no bloquea. Ver abajo |
+| `session_id` | Se compara con la sesión que conduce la fase (`sesion` en `.harness/current.json`). Si son distintas, el hook no bloquea. Ver abajo |
+
+**Qué sesión conduce la fase.** Claude Code le pone a cada comando de shell la
+variable `CLAUDE_CODE_SESSION_ID` (comprobado el 27-11-2026: su valor es el mismo
+`session_id` que trae el payload de `Stop` de esa sesión). `open-fase` y `run-checks`
+la anotan en `current.json`, así que conduce la fase la última sesión que corrió uno
+de los dos. El hook solo le exige cerrar el ciclo a esa sesión: una segunda sesión
+abierta en el mismo proyecto para consultar algo no tiene ciclo que cerrar, y si
+corriera `run-checks` le pisaría la fase a la otra. Si falta cualquiera de los dos
+datos (un CLI corrido fuera de Claude Code, un `current.json` anterior), bloquea como
+siempre. La variable no está documentada: si una versión futura la quita, el hook
+vuelve solo a ese comportamiento.
 
 `background_tasks` con algo corriendo (capturado el 27-11-2026, una entrada por tarea):
 

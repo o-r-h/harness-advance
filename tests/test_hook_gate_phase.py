@@ -146,6 +146,40 @@ class TestHookStop(unittest.TestCase):
             with self.subTest(tareas=tareas):
                 self.assertEqual(lanzar(self.con_tareas(tareas)).returncode, 2)
 
+    def con_duena(self, sesion: str | None) -> None:
+        datos = {"ticket_id": "ISR-110722", "fase_id": "fase_1"}
+        if sesion is not None:
+            datos["sesion"] = sesion
+        harness.write_json(harness.current_pointer_path(self.root), datos)
+
+    def desde(self, sesion: str | None) -> dict:
+        payload = self.payload()
+        if sesion is not None:
+            payload["session_id"] = sesion
+        return payload
+
+    def test_NO_bloquea_a_otra_sesion_abierta_en_el_mismo_proyecto(self):
+        for estado in ("en_ejecucion", "en_verificacion", "en_correccion"):
+            with self.subTest(estado=estado):
+                self.con_estado(estado)
+                self.con_duena("sesion-que-abrio-la-fase")
+                resultado = lanzar(self.desde("otra-sesion"))
+                self.assertEqual(resultado.returncode, 0, resultado.stderr)
+                self.assertEqual(resultado.stderr.strip(), "")
+
+    def test_bloquea_a_la_sesion_que_conduce_la_fase(self):
+        self.con_estado("en_ejecucion")
+        self.con_duena("sesion-que-abrio-la-fase")
+        self.assertEqual(lanzar(self.desde("sesion-que-abrio-la-fase")).returncode, 2)
+
+    def test_sin_saber_quien_conduce_bloquea_como_siempre(self):
+        self.con_estado("en_ejecucion")
+        for duena, esta in ((None, "otra-sesion"), ("sesion-a", None), ("", "otra-sesion"),
+                            ("sesion-a", ""), (None, None)):
+            with self.subTest(duena=duena, esta=esta):
+                self.con_duena(duena)
+                self.assertEqual(lanzar(self.desde(esta)).returncode, 2)
+
     def test_es_inerte_sin_perfil(self):
         with tempfile.TemporaryDirectory() as sin_perfil:
             resultado = lanzar({"hook_event_name": "Stop", "cwd": sin_perfil,

@@ -328,6 +328,7 @@ def cmd_run_checks(args) -> int:
     if estado["estado"] not in EN_CICLO:
         return _error(f"la fase '{fase['id']}' está en estado '{estado['estado']}': los "
                       f"checks se corren mientras la fase está en ejecución o en corrección")
+    harness.marcar_sesion(raiz)
     reglas = harness.load_rules(raiz)
 
     pedidos = [c for c in fase.get("checks_deterministas") or [] if isinstance(c, str)]

@@ -64,9 +64,33 @@ def read_current(project_root: Path) -> dict | None:
     return read_json(ruta) if ruta.is_file() else None
 
 
+# Claude Code le pone a cada comando de shell el id de la sesión que lo lanzó, y es
+# el mismo `session_id` que trae el payload de los hooks (docs/hook-payloads.md).
+VARIABLE_SESION = "CLAUDE_CODE_SESSION_ID"
+
+
+def sesion_actual() -> str | None:
+    """La sesión de Claude Code que corre este proceso; None fuera de Claude Code."""
+    return os.environ.get(VARIABLE_SESION, "").strip() or None
+
+
 def write_current(project_root: Path, ticket_id: str, fase_id: str | None = None) -> None:
-    write_json(current_pointer_path(project_root),
-               {"ticket_id": ticket_id, "fase_id": fase_id})
+    """Apunta al ticket y la fase activos, y anota qué sesión los conduce: el hook
+    Stop solo le exige cerrar el ciclo a esa sesión."""
+    datos = {"ticket_id": ticket_id, "fase_id": fase_id}
+    sesion = sesion_actual()
+    if sesion:
+        datos["sesion"] = sesion
+    write_json(current_pointer_path(project_root), datos)
+
+
+def marcar_sesion(project_root: Path) -> None:
+    """La sesión que corre un paso del ciclo pasa a ser la que lo conduce (por
+    ejemplo, tras cerrar Claude Code y retomar la fase en una sesión nueva)."""
+    actual = read_current(project_root)
+    sesion = sesion_actual()
+    if actual and sesion and actual.get("sesion") != sesion:
+        write_json(current_pointer_path(project_root), {**actual, "sesion": sesion})
 
 
 def read_json(path: Path) -> dict:

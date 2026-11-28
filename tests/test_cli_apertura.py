@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -22,8 +23,12 @@ PLAN = {
         "herramientas_permitidas": ["read", "edit"], "max_reintentos": 3, "depende_de": []}]}
 
 
-def correr(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(CLI), *args],
+def correr(*args: str, sesion: str | None = None) -> subprocess.CompletedProcess:
+    """`sesion` simula la sesión de Claude Code que lanza el comando; None, ninguna."""
+    entorno = {k: v for k, v in os.environ.items() if k != harness.VARIABLE_SESION}
+    if sesion is not None:
+        entorno[harness.VARIABLE_SESION] = sesion
+    return subprocess.run([sys.executable, str(CLI), *args], env=entorno,
                           capture_output=True, text=True, encoding="utf-8")
 
 
@@ -95,6 +100,34 @@ class TestAperturaDeTicketYFase(unittest.TestCase):
             harness.ticket_dir(self.root, "ISR-110722") / "ticket_state.json")
         self.assertEqual(progreso["fase_actual"], "fase_1")
         self.assertEqual(progreso["fases_aprobadas"], [])
+
+    def abrir_fase(self, sesion: str | None) -> None:
+        self.abrir_ticket()
+        harness.write_json(
+            harness.ticket_dir(self.root, "ISR-110722") / "plan.json", PLAN)
+        resultado = correr("open-fase", "--project", str(self.root), "--fase", "fase_1",
+                           sesion=sesion)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+
+    def test_open_fase_anota_la_sesion_que_conduce_la_fase(self):
+        self.abrir_fase("sesion-a")
+        self.assertEqual(harness.read_current(self.root)["sesion"], "sesion-a")
+
+    def test_fuera_de_claude_code_no_se_anota_ninguna_sesion(self):
+        self.abrir_fase(None)
+        self.assertNotIn("sesion", harness.read_current(self.root))
+
+    def test_retomar_la_fase_en_otra_sesion_le_pasa_la_conduccion(self):
+        self.abrir_fase("sesion-a")
+        correr("open-fase", "--project", str(self.root), "--fase", "fase_1",
+               sesion="sesion-b")
+        self.assertEqual(harness.read_current(self.root)["sesion"], "sesion-b")
+
+    def test_run_checks_desde_otra_sesion_tambien_se_la_pasa(self):
+        self.abrir_fase("sesion-a")
+        correr("run-checks", "--project", str(self.root), sesion="sesion-b")
+        actual = harness.read_current(self.root)
+        self.assertEqual((actual["fase_id"], actual["sesion"]), ("fase_1", "sesion-b"))
 
     def test_open_fase_rechaza_una_fase_inexistente_en_el_plan(self):
         self.abrir_ticket()
