@@ -82,16 +82,63 @@ def existe_commit(project_root: Path, commit: str) -> bool:
     return salida is not None and salida.returncode == 0
 
 
-def base_de_fase(project_root: Path, excluir: tuple[str, ...] = ()) -> dict:
+INSTANTANEA_MAXIMA = 2_000_000  # bytes; un sucio más grande se mide contra el commit
+
+
+def base_de_fase(project_root: Path, excluir: tuple[str, ...] = (),
+                 instantaneas: Path | None = None) -> dict:
     """Punto de partida de una fase: el commit en que se abrió y lo que ya estaba
     sin commitear en ese momento ({archivo: sha256}).
 
     El cambio de la fase se mide contra esto y no contra HEAD: así un commit a
     mitad de fase no lo esconde, y lo que quedó sin commitear de una fase anterior
-    no se le cuenta a ésta.
+    no se le cuenta a ésta. Con `instantaneas`, guarda ahí una copia de cada archivo
+    sucio: si la fase lo vuelve a tocar, se compara contra esa copia y no contra el
+    commit, y solo cuenta lo que la fase agregó.
     """
-    return {"commit": commit_actual(project_root),
-            "sucios": huella_cambio(project_root, excluir) or {}}
+    raiz = Path(project_root).resolve()
+    sucios = huella_cambio(raiz, excluir) or {}
+    if instantaneas is not None:
+        for relativo in sucios:
+            origen = raiz / relativo
+            try:
+                if origen.is_file() and origen.stat().st_size <= INSTANTANEA_MAXIMA:
+                    destino = Path(instantaneas) / relativo
+                    destino.parent.mkdir(parents=True, exist_ok=True)
+                    destino.write_bytes(origen.read_bytes())
+            except OSError:
+                continue  # sin copia, ese archivo se mide contra el commit
+    return {"commit": commit_actual(raiz), "sucios": sucios}
+
+
+def _instantanea(base: dict | None, relativo: str) -> bytes | None:
+    """Cómo estaba al abrir la fase un archivo que ya tenía cambios sin commitear;
+    None si no era uno de esos o no se guardó copia. Un sucio que al abrir estaba
+    borrado vale como vacío."""
+    if not isinstance(base, dict) or not isinstance(base.get("sucios"), dict):
+        return None
+    if relativo not in base["sucios"]:
+        return None
+    if base["sucios"][relativo] == "ausente":
+        return b""
+    carpeta = base.get("instantaneas")
+    if not carpeta:
+        return None
+    try:
+        return (Path(carpeta) / relativo).read_bytes()
+    except OSError:
+        return None
+
+
+def _agregadas_entre(anterior: bytes, actual: bytes) -> list[tuple[int, str]]:
+    anteriores = _decodificar_con_respaldo(anterior).splitlines()
+    nuevas = _decodificar_con_respaldo(actual).splitlines()
+    agregadas: list[tuple[int, str]] = []
+    comparador = difflib.SequenceMatcher(None, anteriores, nuevas, autojunk=False)
+    for operacion, _, _, desde, hasta in comparador.get_opcodes():
+        if operacion in ("replace", "insert"):
+            agregadas += [(i + 1, nuevas[i]) for i in range(desde, hasta)]
+    return agregadas
 
 
 def _commit_base(raiz: Path, base: dict | None) -> str | None:
@@ -122,6 +169,11 @@ def added_lines(project_root: Path, file_path: Path,
     dentro = _git(raiz, "rev-parse", "--is-inside-work-tree")
     if dentro is None or dentro.returncode != 0 or dentro.stdout.strip() != "true":
         return None
+
+    previo_sucio = _instantanea(base, relativo)
+    if previo_sucio is not None and archivo.is_file():
+        # Ya tenía cambios sin commitear al abrir la fase: solo cuenta lo de la fase.
+        return _agregadas_entre(previo_sucio, archivo.read_bytes())
 
     desde = _commit_base(raiz, base) or "HEAD"
     entrada = next((e for e in _estado(raiz) or [] if _misma(e[1], archivo)), None)
@@ -171,15 +223,45 @@ def _agregadas_por_comparacion(raiz: Path, relativo: str, actual: bytes,
     previo = _git(raiz, "show", f"{desde}:./{relativo}", crudo=True)
     if previo is None:
         return None
-    anteriores = (_decodificar_con_respaldo(previo.stdout).splitlines()
-                  if previo.returncode == 0 else [])
-    nuevas = _decodificar_con_respaldo(actual).splitlines()
-    agregadas: list[tuple[int, str]] = []
-    comparador = difflib.SequenceMatcher(None, anteriores, nuevas, autojunk=False)
-    for operacion, _, _, desde, hasta in comparador.get_opcodes():
-        if operacion in ("replace", "insert"):
-            agregadas += [(i + 1, nuevas[i]) for i in range(desde, hasta)]
-    return agregadas
+    return _agregadas_entre(previo.stdout if previo.returncode == 0 else b"", actual)
+
+
+def diff_de_fase(project_root: Path, relativos: list[str], base: dict | None = None) -> str:
+    """El diff de la fase, archivo por archivo, en formato unificado.
+
+    Lo genera el harness y no el agente: es lo que juzga el escéptico, y tiene que
+    ser el mismo cambio que midió la huella. Cada archivo se compara contra cómo
+    estaba al abrir la fase: su copia si ya tenía cambios sin commitear, y si no el
+    commit de apertura (HEAD sin `base`). Un archivo que no existía sale completo.
+    """
+    raiz = Path(project_root).resolve()
+    desde = _commit_base(raiz, base) or "HEAD"
+    partes: list[str] = []
+    for relativo in relativos:
+        anterior = _instantanea(base, relativo)
+        if anterior is None:
+            previo = _git(raiz, "show", f"{desde}:./{relativo}", crudo=True)
+            anterior = previo.stdout if previo is not None and previo.returncode == 0 else b""
+        try:
+            actual = (raiz / relativo).read_bytes()
+        except OSError:
+            actual = b""  # borrado en la fase
+        if anterior == actual:
+            continue
+        if any(b"\0" in datos and not datos.startswith(BOMS_ANCHOS + (codecs.BOM_UTF32_LE,
+                                                                     codecs.BOM_UTF32_BE))
+               for datos in (anterior, actual)):
+            partes.append(f"Binary file {relativo} differs")
+            continue
+        lineas = list(difflib.unified_diff(
+            _decodificar_con_respaldo(anterior).splitlines(),
+            _decodificar_con_respaldo(actual).splitlines(),
+            f"a/{relativo}" if anterior else "/dev/null",
+            f"b/{relativo}" if actual else "/dev/null", lineterm=""))
+        partes.append("\n".join(lineas) if lineas else
+                      f"--- a/{relativo}\n+++ b/{relativo}\n"
+                      f"(solo cambian los finales de línea o la codificación)")
+    return "\n".join(partes) + ("\n" if partes else "")
 
 
 def archivos_rastreados(project_root: Path) -> list[str] | None:

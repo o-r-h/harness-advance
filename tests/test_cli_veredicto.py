@@ -308,6 +308,36 @@ class TestBaseDeLaFase(TestEvidenciaAtadaAlCambio):
         self.assertEqual(resultado.returncode, 1)
         self.assertIn("codigo.txt (modificado)", resultado.stderr)
 
+    def diff(self) -> str:
+        return (self.intento() / "cambio.diff").read_text(encoding="utf-8")
+
+    def test_run_checks_escribe_el_diff_de_la_fase(self):
+        self.preparar()
+        self.assertIn("+++ b/codigo.txt", self.diff())
+        self.assertIn("\n+dos", self.diff())
+        self.assertNotIn("\n+uno", self.diff())
+
+    def test_el_diff_conserva_lo_commiteado_a_mitad_de_fase(self):
+        self.preparar()
+        antes = self.diff()
+        self.commitear()
+        self.assertEqual(self.checks().returncode, 0)
+        self.assertEqual(self.diff(), antes)
+
+    def test_un_archivo_nuevo_sale_completo_en_el_diff(self):
+        self.preparar()
+        (self.root / "nuevo.txt").write_text("a\nb\n", encoding="utf-8")
+        self.checks()
+        self.assertIn("--- /dev/null\n+++ b/nuevo.txt", self.diff())
+        self.assertIn("\n+a\n+b", self.diff())
+
+    def test_un_archivo_borrado_sale_en_el_diff(self):
+        self.preparar()
+        (self.root / "codigo.txt").unlink()
+        self.checks()
+        self.assertIn("--- a/codigo.txt\n+++ /dev/null", self.diff())
+        self.assertIn("\n-uno", self.diff())
+
     def test_reabrir_la_fase_no_mueve_la_base(self):
         self.preparar()
         original = self.base()
@@ -375,6 +405,37 @@ class TestLoQueYaEstabaSinCommitear(unittest.TestCase):
     def test_si_la_fase_lo_vuelve_a_tocar_si_entra(self):
         (self.root / "anterior.txt").write_text("fase anterior\ny esta\n", encoding="utf-8")
         self.assertEqual(self.huella(), ["anterior.txt"])
+
+    def diff(self) -> str:
+        intento = harness.intento_dir(self.root, "ISR-110722", "fase_1", 1)
+        return (intento / "cambio.diff").read_text(encoding="utf-8")
+
+    def test_el_diff_de_un_archivo_que_ya_estaba_sucio_trae_solo_lo_de_la_fase(self):
+        (self.root / "codigo.txt").write_text("uno\nfase anterior\nesta fase\n",
+                                              encoding="utf-8")
+        self.assertEqual(self.huella(), ["codigo.txt"])
+        self.assertIn("\n+esta fase", self.diff())
+        self.assertNotIn("+fase anterior", self.diff())
+
+    def test_un_sucio_sin_tocar_no_aparece_en_el_diff(self):
+        (self.root / "nuevo.txt").write_text("de esta fase\n", encoding="utf-8")
+        self.huella()
+        self.assertIn("nuevo.txt", self.diff())
+        self.assertNotIn("anterior.txt", self.diff())
+        self.assertNotIn("codigo.txt", self.diff())
+
+    def test_las_reglas_no_vuelven_a_juzgar_las_lineas_de_la_fase_anterior(self):
+        reglas = {"perfil": "p", "prohibido": [
+            {"id": "sin_anterior", "archivos": [".txt"], "severidad": "error",
+             "patron": "fase anterior", "mensaje": "línea de otra fase"}]}
+        harness.write_json(self.root / ".claude" / "rules.json", reglas)
+        plan = _plan(True)
+        plan["fases"][0]["checks_deterministas"] = ["sin_anterior"]
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json", plan)
+        (self.root / "codigo.txt").write_text("uno\nfase anterior\nesta fase\n",
+                                              encoding="utf-8")
+        # huella() exige que run-checks salga con 0: la línea vieja no disparó la regla.
+        self.assertIn("codigo.txt", self.huella())
 
     def test_commitear_los_restos_a_mitad_de_fase_tampoco_los_mete(self):
         git(self.root, "add", "-A")

@@ -186,11 +186,12 @@ def cmd_open_fase(args) -> int:
     print(f"Fase {fase['id']} {resumen}, "
           f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
     if base.get("commit"):
-        print(f"Base del cambio: {base['commit']} (el diff de la fase es "
-              f"'git diff {base['commit'][:10]}', más los archivos nuevos)")
+        print(f"Base del cambio: {base['commit']} (el diff de la fase lo escribe "
+              f"'run-checks' en {ARCHIVO_DIFF})")
     if base.get("sucios"):
         print(f"Aviso: al abrir la fase había {len(base['sucios'])} archivo(s) sin "
-              f"commitear. No cuentan como cambio de esta fase mientras sigan igual.")
+              f"commitear. No cuentan como cambio de esta fase mientras sigan igual; "
+              f"si la fase los toca, solo cuenta lo que ella agregue.")
     print(f"Ejecutor: {fase.get('agente_ejecutor') or 'el agente del perfil'}")
     if (ruta_plan.parent / "ticket.md").is_file():
         print(f"Requerimiento: {ruta_plan.parent / 'ticket.md'} (se pasa la ruta, "
@@ -270,6 +271,8 @@ FUERA_DE_LA_HUELLA = (".harness/", ".claude/biblioteca/",
 
 
 ARCHIVO_BASE = "base.json"
+CARPETA_SUCIOS = "base_sucios"
+ARCHIVO_DIFF = "cambio.diff"
 
 
 def _guardar_base(raiz: Path, carpeta_fase: Path) -> dict:
@@ -277,19 +280,23 @@ def _guardar_base(raiz: Path, carpeta_fase: Path) -> dict:
     reanudar o reintentar no mueven el punto de partida."""
     archivo = carpeta_fase / ARCHIVO_BASE
     if not archivo.is_file():
-        harness.write_json(archivo, gitdiff.base_de_fase(raiz, FUERA_DE_LA_HUELLA))
+        harness.write_json(archivo, gitdiff.base_de_fase(
+            raiz, FUERA_DE_LA_HUELLA, carpeta_fase / CARPETA_SUCIOS))
     return harness.read_json(archivo)
 
 
 def _base(carpeta_fase: Path) -> dict | None:
-    """La base de la fase; None en una fase abierta antes de que existiera (se mide
-    contra HEAD, como antes)."""
+    """La base de la fase, con la carpeta de las copias de lo que ya estaba sin
+    commitear; None en una fase abierta antes de que existiera (se mide contra
+    HEAD, como antes)."""
     archivo = carpeta_fase / ARCHIVO_BASE
     try:
         datos = harness.read_json(archivo) if archivo.is_file() else None
     except (OSError, ValueError):
         return None
-    return datos if isinstance(datos, dict) else None
+    if not isinstance(datos, dict):
+        return None
+    return {**datos, "instantaneas": str(carpeta_fase / CARPETA_SUCIOS)}
 
 
 def _huella(raiz: Path, base: dict | None) -> dict[str, str] | None:
@@ -377,6 +384,13 @@ def cmd_run_checks(args) -> int:
     harness.write_json(destino / "checks.json", resultado)
     print(f"checks: {resultado['resultado']} — {len(bloqueantes)} error(es) bloqueante(s), "
           f"{len(hallazgos) - len(bloqueantes)} no bloqueante(s) → {destino / 'checks.json'}")
+    if resultado["huella_cambio"] is not None:
+        # El diff que juzga el escéptico lo escribe el CLI, con la misma medida que la
+        # huella: no depende de cómo lo arme el agente.
+        (destino / ARCHIVO_DIFF).write_text(
+            gitdiff.diff_de_fase(raiz, list(resultado["huella_cambio"]), base),
+            encoding="utf-8")
+        print(f"Diff de la fase: {destino / ARCHIVO_DIFF}")
 
     # Un fallo de checks es un intento perdido, igual que un rechazo del escéptico:
     # el contador lo lleva el CLI, no la memoria del modelo.

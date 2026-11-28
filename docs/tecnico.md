@@ -91,10 +91,12 @@ se indica, se usa el proyecto del directorio actual.
     └── fase_1/
         ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos, pausas
         ├── base.json                  commit de apertura y lo que ya estaba sin commitear
+        ├── base_sucios/               copia de esos archivos, tal como estaban al abrir
         ├── hallazgos.json / .md       propuestas del reflector y decisiones
         └── intento_1/
             ├── resultado.md           lo que hizo el ejecutor, con evidencia
             ├── checks.json            hechos de los scripts
+            ├── cambio.diff            el diff de la fase, escrito por run-checks
             ├── prueba_manual.md       guion de clics
             ├── prueba_pasos.json      los mismos pasos, con su quien, para el probador
             ├── prueba_asistida.md     lo que corrió el probador, paso por paso
@@ -152,12 +154,20 @@ tenía al abrir. De ahí salen dos garantías:
 
 - **Un commit a mitad de fase no esconde el cambio ni mueve la huella.** Los checks
   siguen revisando lo agregado desde la base, y `checks.json` anota el commit en
-  `base_commit`: el diff de la fase es `git diff <base_commit>` más los archivos
-  nuevos.
+  `base_commit`.
 - **Lo que dejó sin commitear una fase anterior no se le cuenta a la siguiente**,
-  mientras siga igual. Si la fase lo vuelve a tocar, entra entero: las líneas
-  agregadas se miden contra el commit, no contra el estado sucio. `open-fase` avisa
-  cuántos archivos había.
+  mientras siga igual. `open-fase` avisa cuántos archivos había y guarda una copia
+  de cada uno en `fase_N/base_sucios/` (hasta 2 MB por archivo). Si la fase vuelve a
+  tocar uno, entra en la huella, pero las líneas agregadas y el diff se miden contra
+  esa copia: solo cuenta lo que la fase agregó. Sin copia (archivo más grande), se
+  mide contra el commit y entra entero.
+
+**El diff de la fase lo escribe el CLI.** `run-checks` deja en
+`intento_N/cambio.diff` el diff unificado de cada archivo de la huella contra cómo
+estaba al abrir la fase (su copia en `base_sucios/`, o el commit de la base). Un
+archivo nuevo sale completo y uno borrado, entero en rojo. Es lo que lee el
+escéptico: `ticket-loop` le pasa la ruta y no arma ni recorta un diff propio, así lo
+que se juzga es exactamente el cambio que midió la huella.
 
 Si el commit de la base ya no existe (un rebase, un clon nuevo), `run-checks` deja un
 `error_check` `base_de_fase` y mide contra HEAD. Una fase abierta antes de que
