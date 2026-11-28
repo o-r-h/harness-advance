@@ -58,10 +58,10 @@ se indica, se usa el proyecto del directorio actual.
 | Subcomando | Qué hace |
 |---|---|
 | `open-ticket --ticket-id --nroticket --desarrollador --fecha DD-MM-YYYY --perfil` | Crea el ticket y fija `ticket_context.json`. Se rechaza si la fase activa está corriendo, incluso con el mismo id. Avisa, sin bloquear, si falta o es inválido `.claude/prueba_asistida.json` |
-| `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla). Valida el plan, incluidas las `citas` contra `ticket.md`, e imprime la ruta del requerimiento |
+| `open-fase --fase fase_N` | Abre una fase, o reanuda una `pausada` sin gastar intento. Rechaza la apertura si una fase de `depende_de` no está aprobada, o si otra fase está corriendo (hay que pausarla o cerrarla). Valida el plan, incluidas las `citas` contra `ticket.md`, e imprime la ruta del requerimiento. La primera vez escribe `base.json` (el commit de apertura y lo que ya estaba sin commitear) e imprime la base del cambio |
 | `pausar-fase [--motivo]` | Pausa la fase activa (solo desde `en_ejecucion`, `en_correccion` o `en_verificacion`) y guarda el motivo en `pausas`. No toca el intento ni el historial de fallos. En `pausada`, `record-veredicto` y `generar-prueba` se rechazan |
 | `validate --contrato <nombre> --archivo <ruta>` | Valida un JSON contra su contrato (`plan`, `checks`, `veredicto`, `fase_state`, `ticket_context`, `hallazgos`, `prueba_asistida`). Con `plan`, si junto al archivo hay un `ticket.md`, cada cita de `fases[].citas` tiene que aparecer textual en él |
-| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion`. Guarda en `checks.json` la `huella_cambio` (qué archivos difieren de HEAD y el sha256 de cada uno) y agrega un `warning` `verificacion_tocada` por cada pieza de verificación que la fase tocó sin que el plan la nombre |
+| `run-checks` | Corre los checks de la fase y escribe `checks.json`. Con errores bloqueantes registra el fallo (origen `check`), suma el intento o escala, y sale con 1; si no, deja la fase en `en_verificacion`. Guarda en `checks.json` la `huella_cambio` (los archivos del cambio de la fase, medido contra `base.json`, y el sha256 de cada uno) y el `base_commit`, y agrega un `warning` `verificacion_tocada` por cada pieza de verificación que la fase tocó sin que el plan la nombre |
 | `record-veredicto --archivo [--modelo-esceptico]` | Registra el veredicto del escéptico; si rechaza, incrementa el intento. Solo en `en_verificacion` y con el `checks.json` del intento; si el código cambió desde `run-checks` lo rechaza nombrando los archivos, sin gastar intento. `--modelo-esceptico` guarda en `juicio_esceptico.modelo` qué modelo juzgó |
 | `modelo-esceptico --ejecutor <modelo\|desconocido>` | Imprime el modelo de Claude con el que debe juzgar el escéptico: `esceptico.modelo` de `rules.json` si está; si no, `sonnet`, salvo que el ejecutor ya sea Sonnet (entonces `opus`). Así quien juzga no comparte los puntos ciegos de quien hizo el trabajo |
 | `generar-prueba --pasos-json` | Valida los pasos (`paso`, `esperado`, `quien` = `agente`\|`humano`; un `agente` lleva `esperado`; un `humano` explícito lleva `motivo`; sin `quien` es `humano`), escribe `prueba_manual.md` y `prueba_pasos.json`, y cuenta los pasos del probador. Avisa, sin rechazar, si hay pasos `agente` y falta el setup, el setup es inválido, o `prueba_asistida.json` dice `"navegador": null` (el probador corre entonces solo los de consulta o API) |
@@ -90,6 +90,7 @@ se indica, se usa el proyecto del directorio actual.
     ├── plan.md / plan.json            el plan (humano / máquina)
     └── fase_1/
         ├── fase_state.json            estado, intento_actual, max_reintentos, historial_fallos, pausas
+        ├── base.json                  commit de apertura y lo que ya estaba sin commitear
         ├── hallazgos.json / .md       propuestas del reflector y decisiones
         └── intento_1/
             ├── resultado.md           lo que hizo el ejecutor, con evidencia
@@ -127,15 +128,41 @@ prohibida es un nombre de herramienta, sin comas ni espacios. Ningún perfil tra
 ### La evidencia va atada al cambio
 
 `run-checks` guarda en `checks.json` la `huella_cambio`: un objeto
-`{archivo: sha256}` con cada archivo que difiere de HEAD, incluidos los nuevos sin
+`{archivo: sha256}` con cada archivo del cambio de la fase, incluidos los nuevos sin
 rastrear (`null` si el proyecto no tiene git; entonces no se compara nada).
 `record-veredicto` y `record-manual --resultado ok` la recalculan y rechazan si
 cambió, nombrando los archivos: lo que juzgó el escéptico y lo que probó el humano
 tiene que ser el mismo código que pasó los checks. No cuentan como cambio de la fase
 `.harness/`, `.claude/biblioteca/`, `.claude/prueba_asistida.json` ni
 `.claude/agents/probador.md`, que el harness escribe con la fase abierta. Por eso los
-archivos de trabajo del ciclo van dentro de `.harness/`. Un commit a mitad de fase
-cambia la huella: el ciclo espera que el commit se haga con la fase cerrada.
+archivos de trabajo del ciclo van dentro de `.harness/`.
+
+El cambio de la fase se mide contra **la base de la fase**, no contra HEAD.
+`open-fase` la escribe una sola vez en `fase_N/base.json` (reabrir, reanudar o
+reintentar no la mueven):
+
+```json
+{ "commit": "<HEAD al abrir la fase, o null sin commits>",
+  "sucios": { "<archivo que ya estaba sin commitear>": "<sha256>" } }
+```
+
+Un archivo es del cambio si difiere del `commit` de la base —esté o no commiteado
+ya— o no está rastreado, salvo que aparezca en `sucios` con el mismo contenido que
+tenía al abrir. De ahí salen dos garantías:
+
+- **Un commit a mitad de fase no esconde el cambio ni mueve la huella.** Los checks
+  siguen revisando lo agregado desde la base, y `checks.json` anota el commit en
+  `base_commit`: el diff de la fase es `git diff <base_commit>` más los archivos
+  nuevos.
+- **Lo que dejó sin commitear una fase anterior no se le cuenta a la siguiente**,
+  mientras siga igual. Si la fase lo vuelve a tocar, entra entero: las líneas
+  agregadas se miden contra el commit, no contra el estado sucio. `open-fase` avisa
+  cuántos archivos había.
+
+Si el commit de la base ya no existe (un rebase, un clon nuevo), `run-checks` deja un
+`error_check` `base_de_fase` y mide contra HEAD. Una fase abierta antes de que
+existiera `base.json` también se mide contra HEAD. El hook `PostToolUse` sigue
+comparando contra HEAD: es autocorrección mientras se edita, no la verificación.
 
 ### El requerimiento va por referencia
 

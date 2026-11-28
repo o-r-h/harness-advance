@@ -96,6 +96,11 @@ entero antes de actuar** cuando llegues a esa situación; no las apliques de mem
    conversación con el ejecutor** — un verificador que leyó el razonamiento ya está
    contaminado.
 
+   **El diff es el de la fase, no el que haya contra HEAD:** `git diff <base_commit>`
+   (el `base_commit` de `checks.json`) limitado a los archivos de `huella_cambio`,
+   más el contenido de los que son nuevos. Así entra lo commiteado a mitad de fase y
+   queda fuera lo que ya estaba sin commitear al abrirla.
+
    **Con otro modelo.** Quien juzga no debe compartir los puntos ciegos de quien hizo
    el trabajo. El ejecutor es el `agente_ejecutor` de la fase (su modelo está en el
    `model:` de su `.md`) o, si no hay, tú (tu modelo está en tu contexto). Si el `.md`

@@ -245,6 +245,144 @@ class TestEvidenciaAtadaAlCambio(TestRecordVeredicto):
         self.assertNotIn("cambio_posterior", veredicto["prueba_manual"])
 
 
+class TestBaseDeLaFase(TestEvidenciaAtadaAlCambio):
+    """El cambio de la fase se mide contra el commit en que se abrió, no contra HEAD."""
+
+    def commitear(self, mensaje="a mitad de fase") -> None:
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-m", mensaje)
+
+    def base(self) -> dict:
+        return harness.read_json(
+            harness.fase_dir(self.root, "ISR-110722", "fase_1") / "base.json")
+
+    def huella(self) -> dict:
+        return harness.read_json(self.intento() / "checks.json")["huella_cambio"]
+
+    def test_open_fase_anota_el_commit_de_apertura(self):
+        self.preparar()
+        self.assertRegex(self.base()["commit"], r"^[0-9a-f]{40}$")
+        self.assertEqual(self.base()["sucios"], {})
+        checks = harness.read_json(self.intento() / "checks.json")
+        self.assertEqual(checks["base_commit"], self.base()["commit"])
+
+    def test_un_commit_a_mitad_de_fase_no_mueve_la_huella(self):
+        self.preparar()
+        antes = self.huella()
+        self.commitear()
+        self.assertEqual(self.aprobar().returncode, 0, self.aprobar().stderr)
+        resultado = self.manual("--resultado", "ok")
+        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        self.checks_no_se_movieron(antes)
+
+    def checks_no_se_movieron(self, antes: dict) -> None:
+        self.assertEqual(self.huella(), antes)
+
+    def test_tras_el_commit_los_checks_siguen_viendo_el_cambio(self):
+        self.preparar()
+        self.commitear()
+        self.assertEqual(self.checks().returncode, 0)
+        self.assertEqual(list(self.huella()), ["codigo.txt"])
+
+    def test_tras_el_commit_las_reglas_siguen_revisando_lo_agregado(self):
+        self.preparar()
+        reglas = {"perfil": "p", "prohibido": [
+            {"id": "sin_dos", "archivos": [".txt"], "severidad": "error",
+             "patron": "^dos$", "mensaje": "no se escribe dos"}]}
+        harness.write_json(self.root / ".claude" / "rules.json", reglas)
+        plan = _plan(True)
+        plan["fases"][0]["checks_deterministas"] = ["sin_dos"]
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json", plan)
+        self.commitear()
+        resultado = self.checks()
+        self.assertEqual(resultado.returncode, 1, resultado.stdout + resultado.stderr)
+        detalle = json.dumps(harness.read_json(self.intento() / "checks.json"),
+                             ensure_ascii=False)
+        self.assertIn("codigo.txt:2 no se escribe dos", detalle)
+
+    def test_un_cambio_despues_del_commit_se_sigue_rechazando(self):
+        self.preparar()
+        self.commitear()
+        (self.root / "codigo.txt").write_text("uno\ndos\ntres\n", encoding="utf-8")
+        resultado = self.aprobar()
+        self.assertEqual(resultado.returncode, 1)
+        self.assertIn("codigo.txt (modificado)", resultado.stderr)
+
+    def test_reabrir_la_fase_no_mueve_la_base(self):
+        self.preparar()
+        original = self.base()
+        self.commitear()
+        correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
+        self.assertEqual(self.base(), original)
+
+    def test_una_base_cuyo_commit_ya_no_existe_se_avisa_y_no_se_calla(self):
+        self.preparar()
+        ruta = harness.fase_dir(self.root, "ISR-110722", "fase_1") / "base.json"
+        harness.write_json(ruta, {"commit": "0" * 40, "sucios": {}})
+        self.assertEqual(self.checks().returncode, 0)
+        checks = harness.read_json(self.intento() / "checks.json")
+        aviso = [c for c in checks["checks"] if c["id"] == "base_de_fase"]
+        self.assertEqual([c["resultado"] for c in aviso], ["error_check"])
+        self.assertEqual(list(checks["huella_cambio"]), ["codigo.txt"])
+
+    def test_una_fase_sin_base_se_mide_contra_HEAD_como_antes(self):
+        self.preparar()
+        (harness.fase_dir(self.root, "ISR-110722", "fase_1") / "base.json").unlink()
+        self.assertEqual(self.checks().returncode, 0)
+        self.assertEqual(list(self.huella()), ["codigo.txt"])
+        self.assertIsNone(harness.read_json(self.intento() / "checks.json")["base_commit"])
+
+
+class TestLoQueYaEstabaSinCommitear(unittest.TestCase):
+    """Lo que dejó sin commitear una fase anterior no se le cuenta a la siguiente."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / ".claude").mkdir()
+        harness.write_json(self.root / ".claude" / "rules.json",
+                           {"perfil": "p", "audit_comments": {"requerido": False,
+                                                              "severidad": "warning"}})
+        (self.root / ".gitignore").write_text(".harness/\n", encoding="utf-8")
+        (self.root / "codigo.txt").write_text("uno\n", encoding="utf-8")
+        git(self.root, "init", "-q")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-m", "base")
+        # Restos de una fase anterior: un archivo modificado y uno nuevo, sin commit.
+        (self.root / "codigo.txt").write_text("uno\nfase anterior\n", encoding="utf-8")
+        (self.root / "anterior.txt").write_text("fase anterior\n", encoding="utf-8")
+        harness.write_json(harness.ticket_dir(self.root, "ISR-110722") / "plan.json",
+                           _plan(True))
+        correr("open-ticket", "--project", str(self.root), "--ticket-id", "ISR-110722",
+               "--nroticket", "110722", "--desarrollador", "OMAR RODRIGUEZ",
+               "--fecha", "28-07-2026", "--perfil", "p")
+        self.apertura = correr("open-fase", "--project", str(self.root), "--fase", "fase_1")
+
+    def huella(self) -> list[str]:
+        resultado = correr("run-checks", "--project", str(self.root))
+        assert resultado.returncode == 0, resultado.stdout + resultado.stderr
+        intento = harness.intento_dir(self.root, "ISR-110722", "fase_1", 1)
+        return list(harness.read_json(intento / "checks.json")["huella_cambio"])
+
+    def test_open_fase_avisa_de_lo_que_ya_estaba_sin_commitear(self):
+        self.assertIn("2 archivo(s) sin commitear", self.apertura.stdout)
+
+    def test_lo_que_ya_estaba_no_entra_en_la_huella(self):
+        (self.root / "nuevo.txt").write_text("de esta fase\n", encoding="utf-8")
+        self.assertEqual(self.huella(), ["nuevo.txt"])
+
+    def test_si_la_fase_lo_vuelve_a_tocar_si_entra(self):
+        (self.root / "anterior.txt").write_text("fase anterior\ny esta\n", encoding="utf-8")
+        self.assertEqual(self.huella(), ["anterior.txt"])
+
+    def test_commitear_los_restos_a_mitad_de_fase_tampoco_los_mete(self):
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-q", "-m", "lo de la fase anterior")
+        (self.root / "nuevo.txt").write_text("de esta fase\n", encoding="utf-8")
+        self.assertEqual(self.huella(), ["nuevo.txt"])
+
+
 class TestAgenteEsceptico(unittest.TestCase):
     def test_no_menciona_reglas_de_otro_proyecto(self):
         texto = (RAIZ / "harness" / "agents" / "skeptic.md").read_text(encoding="utf-8")

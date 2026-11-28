@@ -69,8 +69,43 @@ def read_text(path: Path) -> str:
     return _decodificar_con_respaldo(Path(path).read_bytes())
 
 
-def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | None:
+def commit_actual(project_root: Path) -> str | None:
+    """El commit en que está HEAD; None sin git usable o sin ningún commit."""
+    salida = _git(Path(project_root), "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    if salida is None or salida.returncode != 0:
+        return None
+    return salida.stdout.strip() or None
+
+
+def existe_commit(project_root: Path, commit: str) -> bool:
+    salida = _git(Path(project_root), "cat-file", "-e", f"{commit}^{{commit}}")
+    return salida is not None and salida.returncode == 0
+
+
+def base_de_fase(project_root: Path, excluir: tuple[str, ...] = ()) -> dict:
+    """Punto de partida de una fase: el commit en que se abrió y lo que ya estaba
+    sin commitear en ese momento ({archivo: sha256}).
+
+    El cambio de la fase se mide contra esto y no contra HEAD: así un commit a
+    mitad de fase no lo esconde, y lo que quedó sin commitear de una fase anterior
+    no se le cuenta a ésta.
+    """
+    return {"commit": commit_actual(project_root),
+            "sucios": huella_cambio(project_root, excluir) or {}}
+
+
+def _commit_base(raiz: Path, base: dict | None) -> str | None:
+    """El commit de la base si sigue existiendo; None manda a comparar contra HEAD."""
+    commit = base.get("commit") if isinstance(base, dict) else None
+    return commit if isinstance(commit, str) and existe_commit(raiz, commit) else None
+
+
+def added_lines(project_root: Path, file_path: Path,
+                base: dict | None = None) -> list[tuple[int, str]] | None:
     """Líneas agregadas respecto a HEAD, incluyendo lo que ya está en el index.
+
+    Con `base` (ver `base_de_fase`) se comparan contra el commit en que se abrió la
+    fase, para que lo commiteado a mitad de fase siga contando como agregado.
 
     Devuelve None si no hay git usable: el llamador debe registrarlo como
     error_check y no como violación de una regla.
@@ -88,6 +123,7 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     if dentro is None or dentro.returncode != 0 or dentro.stdout.strip() != "true":
         return None
 
+    desde = _commit_base(raiz, base) or "HEAD"
     entrada = next((e for e in _estado(raiz) or [] if _misma(e[1], archivo)), None)
     if entrada is not None and entrada[0] == "??":
         return [(i, linea) for i, linea in enumerate(read_text(archivo).splitlines(), start=1)]
@@ -97,18 +133,18 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
         # Renombrado (git mv): lo agregado es contra el archivo de origen en HEAD, no
         # todo el archivo como si fuera nuevo.
         origen = Path(os.path.relpath(entrada[2], raiz)).as_posix()
-        return _agregadas_por_comparacion(raiz, origen, actual)
+        return _agregadas_por_comparacion(raiz, origen, actual, desde)
     if actual.startswith(BOMS_ANCHOS):
-        return _agregadas_por_comparacion(raiz, relativo, actual)
+        return _agregadas_por_comparacion(raiz, relativo, actual, desde)
 
-    diff = _git(raiz, "diff", "HEAD", "--unified=0", "--no-color", "--", relativo)
+    diff = _git(raiz, "diff", desde, "--unified=0", "--no-color", "--", relativo)
     if diff is None or diff.returncode != 0:
         return None
     if RE_BINARIO.search(diff.stdout):
         # Era UTF-16 en HEAD y ya no lo es: git lo sigue viendo binario.
-        previo = _git(raiz, "show", f"HEAD:./{relativo}", crudo=True)
+        previo = _git(raiz, "show", f"{desde}:./{relativo}", crudo=True)
         if previo is not None and previo.returncode == 0 and previo.stdout.startswith(BOMS_ANCHOS):
-            return _agregadas_por_comparacion(raiz, relativo, actual)
+            return _agregadas_por_comparacion(raiz, relativo, actual, desde)
 
     agregadas: list[tuple[int, str]] = []
     linea_actual = 0
@@ -123,16 +159,16 @@ def added_lines(project_root: Path, file_path: Path) -> list[tuple[int, str]] | 
     return agregadas
 
 
-def _agregadas_por_comparacion(raiz: Path, relativo: str,
-                               actual: bytes) -> list[tuple[int, str]] | None:
+def _agregadas_por_comparacion(raiz: Path, relativo: str, actual: bytes,
+                               desde: str = "HEAD") -> list[tuple[int, str]] | None:
     """Líneas agregadas de un archivo que git trata como binario (UTF-16).
 
     `git diff` solo diría "Binary files differ" y el cambio quedaría sin
-    verificar en silencio; aquí se compara el texto decodificado contra HEAD.
+    verificar en silencio; aquí se compara el texto decodificado contra `desde`.
     """
     # "./" hace que git resuelva la ruta desde project_root y no desde el toplevel
     # del repo: el proyecto puede vivir en una subcarpeta.
-    previo = _git(raiz, "show", f"HEAD:./{relativo}", crudo=True)
+    previo = _git(raiz, "show", f"{desde}:./{relativo}", crudo=True)
     if previo is None:
         return None
     anteriores = (_decodificar_con_respaldo(previo.stdout).splitlines()
@@ -186,48 +222,81 @@ def _estado(raiz: Path) -> list[tuple[str, Path, Path | None]] | None:
     return entradas
 
 
-def archivos_modificados(project_root: Path) -> list[Path]:
-    """Archivos con cambios respecto a HEAD, incluidos los sin rastrear."""
-    raiz = Path(project_root).resolve()
-    rutas: list[Path] = []
-    for _, ruta, _ in _estado(raiz) or []:
+def _commiteados_desde(raiz: Path, commit: str) -> list[Path]:
+    """Rutas absolutas de lo que cambió entre `commit` y HEAD (commits a mitad de fase)."""
+    tope = _git(raiz, "rev-parse", "--show-toplevel")
+    salida = _git(raiz, "diff", "--name-only", "--no-renames", "-z", commit, "HEAD",
+                  crudo=True)
+    if tope is None or tope.returncode != 0 or salida is None or salida.returncode != 0:
+        return []
+    base = Path(tope.stdout.strip())
+    return [base / _decodificar_con_respaldo(r) for r in salida.stdout.split(b"\0") if r]
+
+
+def _sha256(archivo: Path) -> str:
+    try:
+        return hashlib.sha256(archivo.read_bytes()).hexdigest()
+    except OSError:
+        return "ausente"  # borrado, o un directorio (submódulo)
+
+
+def _relativos_del_cambio(raiz: Path, base: dict | None) -> list[str] | None:
+    """Rutas relativas al proyecto que forman el cambio; None sin git usable.
+
+    Sin `base`: lo que difiere de HEAD. Con `base`: lo que difiere del commit en que
+    se abrió la fase, menos lo que ya estaba sin commitear entonces y sigue igual.
+    """
+    entradas = _estado(raiz)
+    if entradas is None:
+        return None
+    rutas = [ruta for _, ruta, _ in entradas]
+    commit = _commit_base(raiz, base)
+    if commit:
+        rutas += _commiteados_desde(raiz, commit)
+    sucios = base.get("sucios") if isinstance(base, dict) else None
+    sucios = sucios if isinstance(sucios, dict) else {}
+    relativos: list[str] = []
+    for ruta in rutas:
         try:
-            relativo = ruta.resolve().relative_to(raiz)
+            relativo = ruta.resolve().relative_to(raiz).as_posix()
         except ValueError:
             continue  # fuera del proyecto
-        candidato = raiz / relativo
-        if candidato.is_file():
-            rutas.append(candidato)
-    return rutas
+        if relativo in relativos:
+            continue
+        if relativo in sucios and sucios[relativo] == _sha256(raiz / relativo):
+            continue  # ya estaba así al abrir la fase: no es de esta fase
+        relativos.append(relativo)
+    return relativos
 
 
-def huella_cambio(project_root: Path,
-                  excluir: tuple[str, ...] = ()) -> dict[str, str] | None:
+def archivos_modificados(project_root: Path, base: dict | None = None) -> list[Path]:
+    """Archivos con cambios respecto a HEAD, incluidos los sin rastrear.
+
+    Con `base` (ver `base_de_fase`), los del cambio de la fase."""
+    raiz = Path(project_root).resolve()
+    return [raiz / relativo for relativo in _relativos_del_cambio(raiz, base) or []
+            if (raiz / relativo).is_file()]
+
+
+def huella_cambio(project_root: Path, excluir: tuple[str, ...] = (),
+                  base: dict | None = None) -> dict[str, str] | None:
     """Huella del cambio respecto a HEAD: {archivo que difiere: sha256 de su contenido}.
 
     Ata la evidencia (checks, veredicto, prueba manual) al código que se revisó: si
     la huella ya no coincide, lo que se juzgó no es lo que hay. `excluir` son rutas
     relativas al proyecto ('carpeta/' o un archivo) que no cuentan como cambio de la
-    fase. None si no hay git usable: sin huella no se compara nada.
+    fase. Con `base` (ver `base_de_fase`) el cambio es el de la fase, no el que hay
+    contra HEAD. None si no hay git usable: sin huella no se compara nada.
     """
     raiz = Path(project_root).resolve()
-    entradas = _estado(raiz)
-    if entradas is None:
+    relativos = _relativos_del_cambio(raiz, base)
+    if relativos is None:
         return None
     huella: dict[str, str] = {}
-    for _, ruta, _ in entradas:
-        try:
-            relativo = ruta.resolve().relative_to(raiz).as_posix()
-        except ValueError:
-            continue  # fuera del proyecto
+    for relativo in relativos:
         if any(relativo == e or (e.endswith("/") and relativo.startswith(e)) for e in excluir):
             continue
-        archivo = raiz / relativo
-        try:
-            contenido = hashlib.sha256(archivo.read_bytes()).hexdigest()
-        except OSError:
-            contenido = "ausente"  # borrado, o un directorio (submódulo)
-        huella[relativo] = contenido
+        huella[relativo] = _sha256(raiz / relativo)
     return dict(sorted(huella.items()))
 
 
@@ -238,7 +307,7 @@ def diferencias_de_huella(antes: dict[str, str], ahora: dict[str, str]) -> list[
         if ruta not in antes:
             cambios.append(f"{ruta} (nuevo en el cambio)")
         elif ruta not in ahora:
-            cambios.append(f"{ruta} (volvió a como estaba en HEAD)")
+            cambios.append(f"{ruta} (volvió a como estaba antes del cambio)")
         elif antes[ruta] != ahora[ruta]:
             cambios.append(f"{ruta} (modificado)")
     return cambios
