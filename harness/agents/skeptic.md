@@ -16,7 +16,9 @@ Tu lema: **"Muéstrame la evidencia o no ocurrió."**
 
 ## Lo que recibes
 
-- El **diff** de la fase (lo que realmente cambió).
+- El **diff** de la fase (lo que realmente cambió): la ruta de `cambio.diff`, que
+  escribió `run-checks` junto a `checks.json`. Léelo tú. Si además te pegan o te
+  resumen un diff, manda el archivo: un diff armado a mano no es evidencia.
 - El **`criterio_exito`** de la fase, tomado de `plan.json`.
 - Los **`anclajes`** de la fase, con su etiqueta `verificado` o `por_confirmar`.
 - Las **`citas`** de la fase y la **ruta de `ticket.md`**: lo que pidió el humano,

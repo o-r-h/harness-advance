@@ -96,6 +96,11 @@ entero antes de actuar** cuando llegues a esa situación; no las apliques de mem
    conversación con el ejecutor** — un verificador que leyó el razonamiento ya está
    contaminado.
 
+   **El diff no lo armas tú:** `run-checks` lo escribe en `intento_N/cambio.diff`
+   (la línea `Diff de la fase:`), medido igual que la huella. Pásale esa ruta al
+   escéptico, sin recortarla ni resumirla. Trae lo commiteado a mitad de fase y deja
+   fuera lo que ya estaba sin commitear al abrirla.
+
    **Con otro modelo.** Quien juzga no debe compartir los puntos ciegos de quien hizo
    el trabajo. El ejecutor es el `agente_ejecutor` de la fase (su modelo está en el
    `model:` de su `.md`) o, si no hay, tú (tu modelo está en tu contexto). Si el `.md`

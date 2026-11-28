@@ -182,8 +182,16 @@ def cmd_open_fase(args) -> int:
         resumen = f"en estado '{estado['estado']}'"
     harness.write_current(raiz, ticket_id, fase["id"])
     state.marcar_fase_actual(raiz, ticket_id, fase["id"])
+    base = _guardar_base(raiz, harness.fase_dir(raiz, ticket_id, fase["id"]))
     print(f"Fase {fase['id']} {resumen}, "
           f"intento {estado['intento_actual']}/{estado['max_reintentos']}")
+    if base.get("commit"):
+        print(f"Base del cambio: {base['commit']} (el diff de la fase lo escribe "
+              f"'run-checks' en {ARCHIVO_DIFF})")
+    if base.get("sucios"):
+        print(f"Aviso: al abrir la fase había {len(base['sucios'])} archivo(s) sin "
+              f"commitear. No cuentan como cambio de esta fase mientras sigan igual; "
+              f"si la fase los toca, solo cuenta lo que ella agregue.")
     print(f"Ejecutor: {fase.get('agente_ejecutor') or 'el agente del perfil'}")
     if (ruta_plan.parent / "ticket.md").is_file():
         print(f"Requerimiento: {ruta_plan.parent / 'ticket.md'} (se pasa la ruta, "
@@ -262,8 +270,37 @@ FUERA_DE_LA_HUELLA = (".harness/", ".claude/biblioteca/",
                       f".claude/agents/{prueba_asistida.AGENTE}")
 
 
-def _huella(raiz: Path) -> dict[str, str] | None:
-    return gitdiff.huella_cambio(raiz, FUERA_DE_LA_HUELLA)
+ARCHIVO_BASE = "base.json"
+CARPETA_SUCIOS = "base_sucios"
+ARCHIVO_DIFF = "cambio.diff"
+
+
+def _guardar_base(raiz: Path, carpeta_fase: Path) -> dict:
+    """Anota desde dónde se mide el cambio de la fase. Solo la primera vez: reabrir,
+    reanudar o reintentar no mueven el punto de partida."""
+    archivo = carpeta_fase / ARCHIVO_BASE
+    if not archivo.is_file():
+        harness.write_json(archivo, gitdiff.base_de_fase(
+            raiz, FUERA_DE_LA_HUELLA, carpeta_fase / CARPETA_SUCIOS))
+    return harness.read_json(archivo)
+
+
+def _base(carpeta_fase: Path) -> dict | None:
+    """La base de la fase, con la carpeta de las copias de lo que ya estaba sin
+    commitear; None en una fase abierta antes de que existiera (se mide contra
+    HEAD, como antes)."""
+    archivo = carpeta_fase / ARCHIVO_BASE
+    try:
+        datos = harness.read_json(archivo) if archivo.is_file() else None
+    except (OSError, ValueError):
+        return None
+    if not isinstance(datos, dict):
+        return None
+    return {**datos, "instantaneas": str(carpeta_fase / CARPETA_SUCIOS)}
+
+
+def _huella(raiz: Path, base: dict | None) -> dict[str, str] | None:
+    return gitdiff.huella_cambio(raiz, FUERA_DE_LA_HUELLA, base)
 
 
 def _cambio_desde_los_checks(raiz: Path, carpeta: Path) -> str:
@@ -275,7 +312,7 @@ def _cambio_desde_los_checks(raiz: Path, carpeta: Path) -> str:
     if not archivo.is_file():
         return ""
     guardada = harness.read_json(archivo).get("huella_cambio")
-    actual = _huella(raiz)
+    actual = _huella(raiz, _base(carpeta.parent))
     if not isinstance(guardada, dict) or actual is None:
         return ""
     cambios = gitdiff.diferencias_de_huella(guardada, actual)
@@ -291,6 +328,7 @@ def cmd_run_checks(args) -> int:
     if estado["estado"] not in EN_CICLO:
         return _error(f"la fase '{fase['id']}' está en estado '{estado['estado']}': los "
                       f"checks se corren mientras la fase está en ejecución o en corrección")
+    harness.marcar_sesion(raiz)
     reglas = harness.load_rules(raiz)
 
     pedidos = [c for c in fase.get("checks_deterministas") or [] if isinstance(c, str)]
@@ -301,10 +339,20 @@ def cmd_run_checks(args) -> int:
                           "detalle": f"'{nombre}' no existe como check ni como grupo "
                                      f"en rules.json"})
 
-    archivos = gitdiff.archivos_modificados(raiz)
+    base = _base(harness.fase_dir(raiz, ticket_id, fase["id"]))
+    commit_base = base.get("commit") if base else None
+    if commit_base and not gitdiff.existe_commit(raiz, commit_base):
+        hallazgos.append({"id": "base_de_fase", "resultado": "error_check",
+                          "severidad": "error",
+                          "detalle": f"el commit en que se abrió la fase ({commit_base[:10]}) "
+                                     f"ya no existe en el repo: el cambio se midió contra "
+                                     f"HEAD, y lo commiteado desde entonces quedó sin revisar"})
+
+    archivos = gitdiff.archivos_modificados(raiz, base)
     declarativos = [c for c in resueltos if c not in (reglas.get("checks_estructurales") or [])]
     for archivo in archivos:
-        hallazgos += checks.run_file_checks(raiz, archivo, reglas, ctx, solo=declarativos)
+        hallazgos += checks.run_file_checks(raiz, archivo, reglas, ctx, solo=declarativos,
+                                            base=base)
 
     hallazgos += verificacion.hallazgos(raiz, archivos, fase, reglas)
 
@@ -324,7 +372,8 @@ def cmd_run_checks(args) -> int:
         "fase_id": fase["id"],
         "intento": estado["intento_actual"],
         "resultado": "fallo" if bloqueantes else "ok",
-        "huella_cambio": _huella(raiz),
+        "base_commit": commit_base,
+        "huella_cambio": _huella(raiz, base),
         "checks": hallazgos if hallazgos else [{"id": "sin_hallazgos", "resultado": "ok"}],
     }
     errores_contrato = contracts.validate_checks_result(resultado)
@@ -336,6 +385,13 @@ def cmd_run_checks(args) -> int:
     harness.write_json(destino / "checks.json", resultado)
     print(f"checks: {resultado['resultado']} — {len(bloqueantes)} error(es) bloqueante(s), "
           f"{len(hallazgos) - len(bloqueantes)} no bloqueante(s) → {destino / 'checks.json'}")
+    if resultado["huella_cambio"] is not None:
+        # El diff que juzga el escéptico lo escribe el CLI, con la misma medida que la
+        # huella: no depende de cómo lo arme el agente.
+        (destino / ARCHIVO_DIFF).write_text(
+            gitdiff.diff_de_fase(raiz, list(resultado["huella_cambio"]), base),
+            encoding="utf-8")
+        print(f"Diff de la fase: {destino / ARCHIVO_DIFF}")
 
     # Un fallo de checks es un intento perdido, igual que un rechazo del escéptico:
     # el contador lo lleva el CLI, no la memoria del modelo.

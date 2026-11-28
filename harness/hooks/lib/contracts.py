@@ -245,6 +245,9 @@ def validate_checks_result(data: dict) -> list[str]:
     if huella is not None and not (isinstance(huella, dict) and all(
             isinstance(k, str) and isinstance(v, str) for k, v in huella.items())):
         errores.append("huella_cambio: objeto {archivo: sha256}, o null si no hay git")
+    base = data.get("base_commit")  # opcional: null sin git o sin commits
+    if base is not None and not (isinstance(base, str) and base.strip()):
+        errores.append("base_commit: el commit en que se abrió la fase, o null")
     checks = data.get("checks")
     if not isinstance(checks, list):
         errores.append("checks: requerido, lista")

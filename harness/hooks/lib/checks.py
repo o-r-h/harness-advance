@@ -174,8 +174,12 @@ def check_no_new_deps(rel_path: str, agregadas: list[tuple[int, str]],
 
 
 def run_file_checks(project_root: Path, file_path: Path, rules: dict,
-                    ctx: dict | None, solo: list[str] | None = None) -> list[dict]:
-    """Corre los checks declarativos sobre un archivo. `solo` los filtra por id."""
+                    ctx: dict | None, solo: list[str] | None = None,
+                    base: dict | None = None) -> list[dict]:
+    """Corre los checks declarativos sobre un archivo. `solo` los filtra por id.
+
+    `base` es el punto de partida de la fase (`gitdiff.base_de_fase`); sin él, lo
+    agregado se mide contra HEAD."""
     raiz = Path(project_root)
     archivo = Path(file_path)
     try:
@@ -183,7 +187,7 @@ def run_file_checks(project_root: Path, file_path: Path, rules: dict,
     except ValueError:
         return []
 
-    agregadas = gitdiff.added_lines(raiz, archivo)
+    agregadas = gitdiff.added_lines(raiz, archivo, base)
     if agregadas is None:
         return [_hallazgo("git_diff", "error",
                           f"{relativo}: no se pudo obtener el diff (¿repo git?); "

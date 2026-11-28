@@ -110,6 +110,76 @@ class TestHookStop(unittest.TestCase):
         self.con_estado("en_ejecucion")
         self.assertEqual(lanzar(self.payload(reentrada=True)).returncode, 0)
 
+    # Formas de background_tasks capturadas con probe_hook.py (docs/hook-payloads.md).
+    SUBAGENTE = {"id": "a1c6734a796fdfbd9", "type": "subagent", "status": "running",
+                 "description": "Ejecutar fase_1", "agent_type": "agent-api"}
+    SHELL = {"id": "b322jltpk", "type": "shell", "status": "running",
+             "description": "API de prueba", "command": "dotnet run"}
+
+    def con_tareas(self, tareas) -> dict:
+        return {**self.payload(), "background_tasks": tareas}
+
+    def test_NO_bloquea_mientras_un_subagente_sigue_corriendo(self):
+        for estado in ("en_ejecucion", "en_verificacion", "en_correccion"):
+            with self.subTest(estado=estado):
+                self.con_estado(estado)
+                resultado = lanzar(self.con_tareas([self.SUBAGENTE]))
+                self.assertEqual(resultado.returncode, 0, resultado.stderr)
+                self.assertEqual(resultado.stderr.strip(), "")
+
+    def test_un_shell_en_segundo_plano_no_apaga_el_gate(self):
+        self.con_estado("en_ejecucion")
+        self.assertEqual(lanzar(self.con_tareas([self.SHELL])).returncode, 2)
+
+    def test_un_subagente_que_ya_no_corre_no_apaga_el_gate(self):
+        self.con_estado("en_ejecucion")
+        terminado = {**self.SUBAGENTE, "status": "completed"}
+        self.assertEqual(lanzar(self.con_tareas([terminado])).returncode, 2)
+
+    def test_basta_un_subagente_corriendo_entre_varias_tareas(self):
+        self.con_estado("en_verificacion")
+        self.assertEqual(lanzar(self.con_tareas([self.SHELL, self.SUBAGENTE])).returncode, 0)
+
+    def test_background_tasks_con_forma_inesperada_bloquea_igual(self):
+        self.con_estado("en_ejecucion")
+        for tareas in ([], None, "subagent", [None, "x", 3], {"type": "subagent"}):
+            with self.subTest(tareas=tareas):
+                self.assertEqual(lanzar(self.con_tareas(tareas)).returncode, 2)
+
+    def con_duena(self, sesion: str | None) -> None:
+        datos = {"ticket_id": "ISR-110722", "fase_id": "fase_1"}
+        if sesion is not None:
+            datos["sesion"] = sesion
+        harness.write_json(harness.current_pointer_path(self.root), datos)
+
+    def desde(self, sesion: str | None) -> dict:
+        payload = self.payload()
+        if sesion is not None:
+            payload["session_id"] = sesion
+        return payload
+
+    def test_NO_bloquea_a_otra_sesion_abierta_en_el_mismo_proyecto(self):
+        for estado in ("en_ejecucion", "en_verificacion", "en_correccion"):
+            with self.subTest(estado=estado):
+                self.con_estado(estado)
+                self.con_duena("sesion-que-abrio-la-fase")
+                resultado = lanzar(self.desde("otra-sesion"))
+                self.assertEqual(resultado.returncode, 0, resultado.stderr)
+                self.assertEqual(resultado.stderr.strip(), "")
+
+    def test_bloquea_a_la_sesion_que_conduce_la_fase(self):
+        self.con_estado("en_ejecucion")
+        self.con_duena("sesion-que-abrio-la-fase")
+        self.assertEqual(lanzar(self.desde("sesion-que-abrio-la-fase")).returncode, 2)
+
+    def test_sin_saber_quien_conduce_bloquea_como_siempre(self):
+        self.con_estado("en_ejecucion")
+        for duena, esta in ((None, "otra-sesion"), ("sesion-a", None), ("", "otra-sesion"),
+                            ("sesion-a", ""), (None, None)):
+            with self.subTest(duena=duena, esta=esta):
+                self.con_duena(duena)
+                self.assertEqual(lanzar(self.desde(esta)).returncode, 2)
+
     def test_es_inerte_sin_perfil(self):
         with tempfile.TemporaryDirectory() as sin_perfil:
             resultado = lanzar({"hook_event_name": "Stop", "cwd": sin_perfil,
